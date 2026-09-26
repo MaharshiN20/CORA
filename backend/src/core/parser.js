@@ -1,5 +1,5 @@
 // Free text -> structured check-in answers.
-// Regex/keyword first (offline, en + es); Claude fills gaps for other phrasing/languages.
+// Regex/keyword first (offline, en + es); the LLM chain fills gaps for other phrasing/languages.
 import * as llm from './llm.js';
 
 // Red-flag phrases we act on IMMEDIATELY, whatever step we're in.
@@ -60,8 +60,8 @@ export function parseFreeText(text) {
 export const isYes = (text) => KEYWORDS.yes.test(String(text).trim());
 export const isNo = (text) => KEYWORDS.no.test(String(text).trim());
 
-// Claude fallback for messages the keyword parser couldn't understand.
-export async function parseWithClaude(text) {
+// LLM fallback (Claude / Ollama / LM Studio) for phrasing or languages the keyword lists miss.
+export async function parseWithLLM(text) {
   const out = await llm.completeJSON(
     'You extract heart-failure check-in answers from a patient message (any language). ' +
       'Only include fields the message clearly states. Fields: ' +

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 process.env.HEARTBRIDGE_DB = path.join(os.tmpdir(), `heartbridge-test-${process.pid}.json`);
-delete process.env.ANTHROPIC_API_KEY;
+process.env.LLM_PROVIDER = 'none'; // deterministic: never hit a local Ollama/LM Studio during tests
 delete process.env.TELEGRAM_BOT_TOKEN;
 
 let store, agent;

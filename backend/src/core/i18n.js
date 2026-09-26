@@ -1,5 +1,5 @@
 // Patient-facing strings. English + Spanish are built in (work offline).
-// Any other language is translated by Claude at send time, falling back to English.
+// Any other language is translated by the LLM chain (Claude/Ollama/LM Studio) at send time, falling back to English.
 import * as llm from './llm.js';
 
 const STRINGS = {
@@ -96,8 +96,8 @@ export const hasNative = (lang) => lang in STRINGS;
 const LANG_NAMES = { vi: 'Vietnamese', hi: 'Hindi', zh: 'Simplified Chinese', ko: 'Korean', fr: 'French', ar: 'Arabic', ht: 'Haitian Creole', pt: 'Portuguese', ru: 'Russian', tl: 'Tagalog' };
 const cache = new Map();
 
-// Translate an English string into the patient's language with Claude (cached).
-// Returns the original text if the language is native or Claude is unavailable.
+// Translate an English string into the patient's language with the LLM chain (cached).
+// Returns the original text if the language is native or no LLM is available.
 export async function localize(lang, text) {
   if (hasNative(lang) || !llm.enabled() || !text) return text;
   const key = `${lang}:${text}`;

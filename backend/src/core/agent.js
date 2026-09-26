@@ -77,7 +77,7 @@ function offerCheckin(patient) {
   ];
 }
 
-// Languages without built-in strings (vi, hi, ...) get translated by Claude; en/es pass through.
+// Languages without built-in strings (vi, hi, ...) get translated by the LLM chain; en/es pass through.
 async function localizeReply(patient, r) {
   if (hasNative(patient.language)) return r;
   const text = await localize(patient.language, r.text);

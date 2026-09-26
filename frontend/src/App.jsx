@@ -24,10 +24,15 @@ export default function App() {
   }, [selectedId]);
 
   useEffect(() => {
-    api.health().then(setHealth).catch(() => setHealth({ ok: false }));
+    const loadHealth = () => api.health().then(setHealth).catch(() => setHealth({ ok: false }));
+    loadHealth();
+    const timer = setInterval(loadHealth, 30_000);
     refresh();
     socket.on('change', refresh);
-    return () => socket.off('change', refresh);
+    return () => {
+      socket.off('change', refresh);
+      clearInterval(timer);
+    };
   }, [refresh]);
 
   const openAlerts = alerts.filter((a) => a.status === 'open');
@@ -39,7 +44,7 @@ export default function App() {
         <div className="status">
           <Pill ok={health?.ok} label="API" />
           <Pill ok={health?.telegram} label="Telegram" />
-          <Pill ok={health?.claude} label="Claude" />
+          <Pill ok={health?.llm && health.llm.provider !== 'none'} label={llmLabel(health?.llm)} />
           <button className="ghost" onClick={() => api.reset()}>Reset demo</button>
         </div>
       </header>
@@ -165,6 +170,13 @@ function PatientDetail({ p }) {
       </div>
     </>
   );
+}
+
+const LLM_NAMES = { claude: 'Claude', ollama: 'Ollama', lmstudio: 'LM Studio' };
+function llmLabel(llm) {
+  if (!llm || llm.provider === 'none') return 'AI: rules only';
+  const model = llm.provider === 'claude' ? '' : ` · ${llm.model.split(/[/:]/).find(Boolean)}`;
+  return `AI: ${LLM_NAMES[llm.provider]}${model}`;
 }
 
 const Pill = ({ ok, label }) => <span className={`pill ${ok ? 'on' : 'off'}`}>{label}</span>;

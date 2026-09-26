@@ -3,11 +3,12 @@ import { Router } from 'express';
 import * as store from '../store.js';
 import * as channels from '../channels/index.js';
 import { handleInbound, startCheckin } from '../core/agent.js';
+import * as llm from '../core/llm/index.js';
 
 export const api = Router();
 
 api.get('/health', (_req, res) =>
-  res.json({ ok: true, telegram: !!process.env.TELEGRAM_BOT_TOKEN, claude: !!process.env.ANTHROPIC_API_KEY }),
+  res.json({ ok: true, telegram: !!process.env.TELEGRAM_BOT_TOKEN, llm: llm.status() }),
 );
 
 api.get('/patients', (_req, res) => res.json(store.listPatients()));

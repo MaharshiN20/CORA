@@ -111,13 +111,16 @@ async function applyText(a, text, step) {
   for (const [k, v] of Object.entries(extra)) if (a[k] == null) a[k] = v;
   if (extra.chestPain || extra.confusion || extra.fainting) a.redflagsAsked = true;
 
-  // Keyword parser understood nothing? Let Claude try (any language, any phrasing).
+  // Let the LLM read anything richer than a bare answer ("152", "yes"): keyword lists
+  // only cover en/es, so "152, mắt cá chân sưng hơn" must still yield the swelling.
+  // It only fills fields the rules left empty; it never overrides them.
   let textEn = null;
-  if (JSON.stringify(a) === before && llm.enabled()) {
-    const c = await parser.parseWithClaude(text);
+  const bareAnswer = /^\s*([\d.,]+\s*(lb|lbs|pounds|libras|kg|%)?|y|yes|no|n|si|sí|ok)\s*$/i.test(text);
+  if ((JSON.stringify(a) === before || !bareAnswer) && llm.enabled()) {
+    const c = await parser.parseWithLLM(text);
     if (c) {
       textEn = c.textEn ?? null;
-      if (c.weightLb && a.weightLb == null) a.weightLb = c.weightLb;
+      if (c.weightLb && a.weightLb == null && step === 'weight') a.weightLb = c.weightLb;
       for (const k of ['breath', 'orthopnea', 'swelling', 'chestPain', 'dizzy', 'confusion', 'fainting', 'diureticTaken']) {
         if (c[k] != null && a[k] == null) a[k] = c[k];
       }
