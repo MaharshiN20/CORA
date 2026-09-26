@@ -139,8 +139,16 @@ test('mergeConcerns keeps AI wording and only adds uncovered categories', () => 
 test('mergeConcerns: distinct congestion signs survive when the LLM only mentions one', () => {
   const ai = [{ category: 'congestion', text: 'Orthopnea', evidence: '"cant lay flat so im propped up on the couch" (2026-09-25)' }];
   const sig = [
-    { category: 'congestion', text: 'Possible orthopnea', evidence: '"cant lay flat so im propped up on the couch" (2026-09-25)' },
-    { category: 'congestion', text: 'Possible worsening edema', evidence: '"my sneakers dont fit" (2026-09-26)' },
+    { category: 'congestion', text: 'Possible orthopnea', evidence: '"cant lay flat so im propped up on the couch" (2026-09-25)', phrase: 'cant lay flat' },
+    { category: 'congestion', text: 'Possible worsening edema', evidence: '"my sneakers dont fit" (2026-09-26)', phrase: 'sneakers dont fit' },
   ];
   assert.deepEqual(mergeConcerns(ai, sig).map((c) => c.text), ['Orthopnea', 'Possible worsening edema']);
+});
+
+test('mergeConcerns: no duplicate when the LLM already mentioned the keyword', () => {
+  const ai = [{ category: 'congestion', text: 'Orthopnea and edema', evidence: "propped up on the couch; sneakers don't fit (2026-09-26)" }];
+  const sig = [{ category: 'congestion', text: 'Possible worsening edema', evidence: '"fine. no swelling i think but my sneakers dont fit" (2026-09-26)', phrase: 'sneakers dont fit' }];
+  const out = mergeConcerns(ai, sig);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].phrase, undefined);
 });

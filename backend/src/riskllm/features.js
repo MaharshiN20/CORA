@@ -98,7 +98,7 @@ export function detectSignals(caseData, messages = []) {
     for (const hit of matchCues(m.text)) {
       if (seen.has(hit.id)) continue;
       seen.add(hit.id);
-      out.push({ category: hit.category, text: hit.sign, evidence: `"${m.text}" (${String(m.ts ?? '').slice(0, 10)})` });
+      out.push({ category: hit.category, text: hit.sign, evidence: `"${m.text}" (${String(m.ts ?? '').slice(0, 10)})`, phrase: hit.phrase });
     }
   }
   return out;

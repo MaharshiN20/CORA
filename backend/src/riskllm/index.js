@@ -21,6 +21,7 @@
 //      }
 // ============================================================================
 import { buildCase, detectSignals } from './features.js';
+import { normalize } from './lexicon.js';
 
 export { buildCase } from './features.js';
 
@@ -101,18 +102,18 @@ export function buildPrompt(caseData, messages = [], signals = []) {
 
 // LLM concerns first; add any code-detected signal the LLM didn't cover, so a small
 // model's missed detail still reaches the nurse. Congestion has several distinct signs
-// (orthopnea, edema, ...), so there a signal only counts as covered if the LLM quoted
-// the same message; other categories are covered by any LLM concern in that category.
-const quoteOf = (s) => /^"(.*)" \(/.exec(s.evidence ?? '')?.[1];
+// (orthopnea, edema, ...), so there a signal only counts as covered if the LLM mentioned
+// the keyword that triggered it; other categories are covered by any LLM concern in that category.
+const squash = (s) => normalize(s).replace(/ /g, '');
 
 export function mergeConcerns(aiConcerns = [], signals = []) {
   const covered = (s) =>
     aiConcerns.some((c) => {
       if (c.category !== s.category) return false;
-      const q = quoteOf(s);
-      return s.category !== 'congestion' || !q || `${c.text} ${c.evidence}`.includes(q.slice(0, 25));
+      if (s.category !== 'congestion' || !s.phrase) return true;
+      return squash(`${c.text} ${c.evidence}`).includes(squash(s.phrase));
     });
-  return [...aiConcerns, ...signals.filter((s) => !covered(s))];
+  return [...aiConcerns, ...signals.filter((s) => !covered(s))].map(({ phrase, ...c }) => c);
 }
 
 // Ollama's /api/chat with `format` set to our JSON schema constrains decoding,
