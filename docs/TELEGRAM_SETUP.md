@@ -71,7 +71,9 @@ store.linkChat(code, chatId)      // -> { role: 'patient'|'caregiver', patient }
 store.findByChatId(chatId)        // -> { role, patient } | null
 ```
 
-Button `data` is at most **64 bytes** (a Telegram limit). The core keeps it short, like `breath:rest`.
+Button `data` is at most **64 bytes** (a Telegram limit). The core keeps it short, like `ci:breath:rest`.
+
+Replies may also include `textEn` (English copy for the dashboard). Ignore it when sending to Telegram.
 
 ## 5. Your task list
 
@@ -79,7 +81,7 @@ The skeleton already handles `/start CODE`, text, button taps and `sendToChat`. 
 
 - [ ] **Verify basics**: link, text round-trip, button taps (tap → `answerCallbackQuery` so the spinner stops)
 - [ ] **Nicer button UX**: after a tap, edit the original message to show the choice and remove the keyboard (`ctx.editMessageReplyMarkup()`), so people can't double-tap
-- [ ] **Welcome message in the patient's language** (`patient.language`: `en`, `es`, `vi`, `hi`). Hardcode en/es for now, and core will expose `i18n.t()` later
+- [ ] **Welcome message in the patient's language** (`patient.language`: `en`, `es`, `vi`, `hi`). Use `t(patient.language, key, vars)` from `core/i18n.js` (add a `welcome` key there in en + es)
 - [ ] **Commands**: `/checkin` → call `startCheckin(patientId)` from `core/agent.js` and send the replies. `/help` → short explainer
 - [ ] **Nurse group**: create a Telegram group "HeartBridge Care Team", add the bot, send a message, then log `ctx.chat.id` (a negative number) → put it in `.env` as `NURSE_CHAT_ID`. Core's `channels.sendToNurses()` already posts there. In BotFather, `/setprivacy` → Disable if you need the bot to see all group messages
 - [ ] **Caregiver chat**: `/start CG_GARCIA1` links a caregiver. Make sure caregiver texts get a friendly "you'll receive alerts here" reply
