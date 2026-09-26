@@ -13,7 +13,7 @@
 
 ## P1: Care loop
 - [x] **P1-1 Clock everywhere**: replace every remaining `new Date()`/`Date.now()` in core (checkin.finish, triage callers, escalation) with `clock`. Test: advancing the clock 1 day then checking in records the weight on the new day and the 24h delta uses the previous one.
-- [ ] **P1-2 Scheduler** `core/scheduler.js`:
+- [x] **P1-2 Scheduler** `core/scheduler.js`:
   - A persisted `jobs` collection `{ id, kind, patientId, dueAt, status, payload }`, a 30s interval tick, and an instant tick on `clockEvents 'advance'`.
   - `scheduleForPatient(p)` builds jobs from the risk plan (check-in times, med times).
   - `POST /api/demo/tick`, and start the scheduler from `index.js`.

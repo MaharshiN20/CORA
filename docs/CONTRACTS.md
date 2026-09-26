@@ -136,9 +136,11 @@ Other collections:
 | `GET /api/alerts` | P | worklist, newest first |
 | `PATCH /api/alerts/:id` | P | `{ status?, outcome?, assignee?, note?, by? }` |
 | `POST /api/devices/readings` | P | `{ patientId, type, value, device?, ts? }` → 201 (triage on readings, coming: P3-14) |
-| `GET /api/demo/clock` · `POST /api/demo/advance {hours}` · `POST /api/demo/reset` | P | demo clock |
+| `GET /api/demo/clock` · `POST /api/demo/reset` | P | demo clock; reset reseeds + replans jobs |
+| `POST /api/demo/advance {hours}` | P | moves the clock, plans the skipped window, runs due jobs → `{ now, offsetMs, jobs: { ran, missed, failed } }` |
+| `GET /api/demo/jobs?patientId=&status=&kind=` | P | scheduled jobs `{ id, key, kind, patientId, dueAt, status: pending\|running\|done\|missed\|failed\|cancelled, result?, error? }` |
+| `POST /api/demo/tick` | P | run due jobs now → `{ ran, missed, failed }` |
 | `GET /api/demo/scenarios` · `POST /api/demo/scenario/:name` | P | list is `[]` until P4-15. Render whatever it returns |
-| `POST /api/demo/tick` | P | coming: P1-2. Run due scheduler jobs |
 | `GET /api/join` | K | `{ bot, links: [{ language, name, nativeName, url }] }` for QR codes |
 | `POST /webhooks/twilio/sms` · `/whatsapp` | K | coming: K5 |
 | `GET /api/insights/*` | M | coming: M2 (`/impact`, `/engagement`, `/equity`, `/roi`) |
