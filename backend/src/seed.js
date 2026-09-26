@@ -1,9 +1,11 @@
 import { scoreRisk } from './core/risk.js';
+import * as clock from './core/clock.js';
 
 // Demo patients. Mrs. Garcia is the "hero" patient for the pitch: high risk,
 // Spanish-speaking, weight trending up, unfilled diuretic refill.
 const DAY = 24 * 60 * 60 * 1000;
-const iso = (daysAgo) => new Date(Date.now() - daysAgo * DAY).toISOString();
+// Relative to the demo clock so clones made after a fast-forward (judge mode) stay current.
+const iso = (daysAgo) => new Date(clock.now() - daysAgo * DAY).toISOString();
 
 // weights: oldest -> newest (lb), one per day
 const weightLog = (weights) =>

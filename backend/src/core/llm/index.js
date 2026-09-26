@@ -18,6 +18,8 @@ const CHAIN = ['claude', 'ollama', 'lmstudio'];
 const REPROBE_MS = 60_000;
 
 let providers = []; // available providers, in priority order
+// Probe timing uses real time on purpose (infrastructure, not patient logic),
+// so it is not affected by the demo clock.
 let probedAt = 0;
 let probing = null;
 

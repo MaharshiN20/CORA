@@ -10,6 +10,7 @@ import { triage, consecutiveMissedDiureticDays } from './triage.js';
 import { escalate } from './escalation.js';
 import * as parser from './parser.js';
 import * as llm from './llm.js';
+import * as clock from './clock.js';
 
 // Order matters. `enabled(plan)` lets risk tier decide how deep the check-in goes.
 const STEPS = [
@@ -142,7 +143,7 @@ export function isActive(patient) {
 export function start(patient) {
   const { plan } = scoreRisk(patient);
   const steps = STEPS.filter((s) => !s.enabled || s.enabled(plan));
-  store.updatePatient(patient.id, { checkin: { state: steps[0].id, answers: {}, startedAt: new Date().toISOString() } });
+  store.updatePatient(patient.id, { checkin: { state: steps[0].id, answers: {}, startedAt: clock.nowISO() } });
   return [reply(patient, 'greeting', { name: firstName(patient) }), prompt(patient, steps[0].id)];
 }
 
@@ -171,7 +172,7 @@ export async function handle(patient, { text, buttonData }) {
 }
 
 async function finish(patient, a) {
-  const now = new Date().toISOString();
+  const now = clock.nowISO();
   const today = now.slice(0, 10);
 
   // Record today's weight (replace if already logged today).
