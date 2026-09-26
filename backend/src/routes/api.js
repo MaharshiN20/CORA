@@ -40,6 +40,7 @@ api.post('/patients/:id/checkin', async (req, res) => {
 // Pretend to be the patient without Telegram — handy for backend dev + demo backup.
 api.post('/patients/:id/simulate', async (req, res) => {
   const { text, buttonData } = req.body;
+  if (!store.getPatient(req.params.id)) return res.status(404).json({ error: 'not found' });
   const replies = await handleInbound({ patientId: req.params.id, text, buttonData });
   res.json(replies);
 });

@@ -20,5 +20,6 @@ export const api = {
   ackAlert: (id) => req('PATCH', `/alerts/${id}`, { status: 'acknowledged' }),
   startCheckin: (id) => req('POST', `/patients/${id}/checkin`),
   simulate: (id, text) => req('POST', `/patients/${id}/simulate`, { text }),
+  tap: (id, buttonData) => req('POST', `/patients/${id}/simulate`, { buttonData }),
   reset: () => req('POST', '/reset'),
 };

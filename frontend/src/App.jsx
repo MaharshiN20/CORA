@@ -9,6 +9,9 @@ const TIER_ORDER = { RED: 0, YELLOW: 1, GREEN: 2 };
 export default function App() {
   const [health, setHealth] = useState(null);
   const [patients, setPatients] = useState([]);
+  const sortedPatients = [...patients].sort(
+    (a, b) => (TIER_ORDER[a.lastTier] ?? 3) - (TIER_ORDER[b.lastTier] ?? 3) || b.riskScore - a.riskScore,
+  );
   const [alerts, setAlerts] = useState([]);
   const [selectedId, setSelectedId] = useState('p1');
   const [detail, setDetail] = useState(null);
@@ -44,11 +47,14 @@ export default function App() {
       <main>
         <section className="col">
           <h2>Patients</h2>
-          {patients.map((p) => (
+          {sortedPatients.map((p) => (
             <div key={p.id} className={`card patient ${p.id === selectedId ? 'active' : ''}`} onClick={() => setSelectedId(p.id)}>
               <div className="row">
                 <strong>{p.name}</strong>
-                <span className={`tier ${p.riskTier ?? 'NA'}`}>{p.riskTier ?? 'risk —'}</span>
+                <span>
+                  {p.lastTier && <span className={`tier ${p.lastTier}`}>{p.lastTier}</span>}{' '}
+                  <span className={`tier ${p.riskTier}`}>{p.riskTier} risk</span>
+                </span>
               </div>
               <small>
                 {p.age}y · {p.language.toUpperCase()} · {p.chatId ? '📱 linked' : `code ${p.linkCode}`}
@@ -80,6 +86,7 @@ export default function App() {
 
 function PatientDetail({ p }) {
   const [draft, setDraft] = useState('');
+  const lastPatientMsg = p.messages.findLastIndex((m) => m.to === 'patient');
   const weights = p.weights.map((w) => ({ day: new Date(w.ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), lb: w.lb }));
 
   const send = async (e) => {
@@ -98,6 +105,15 @@ function PatientDetail({ p }) {
       <p className="muted">
         Discharged {new Date(p.dischargedAt).toLocaleDateString()} · Dry weight {p.dryWeightLb} lb · Caregiver: {p.caregiver.name} ({p.caregiver.relation})
       </p>
+
+      <div className="card">
+        <h3>Readmission risk: {p.riskTier} ({p.riskScore} pts)</h3>
+        <div className="factors">
+          {p.riskFactors?.map((f) => (
+            <span key={f.label} className="factor">{f.label} +{f.points}</span>
+          ))}
+        </div>
+      </div>
 
       <div className="card">
         <h3>Daily weight</h3>
@@ -126,11 +142,19 @@ function PatientDetail({ p }) {
         <h3>Conversation</h3>
         <div className="chat">
           {p.messages.length === 0 && <p className="muted">No messages yet.</p>}
-          {p.messages.map((m) => (
+          {p.messages.map((m, i) => (
             <div key={m.id} className={`bubble ${m.direction} ${m.to}`}>
               {m.to === 'caregiver' && <em>→ caregiver: </em>}
               {m.text}
               {m.textEn && m.textEn !== m.text && <div className="en">EN: {m.textEn}</div>}
+              {/* Only the latest patient message's buttons are tappable, like in Telegram. */}
+              {m.buttons && i === lastPatientMsg && (
+                <div className="chips">
+                  {m.buttons.flat().map((b) => (
+                    <button key={b.data} className="chip" onClick={() => api.tap(p.id, b.data)}>{b.label}</button>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

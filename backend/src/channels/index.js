@@ -16,7 +16,7 @@ async function deliver(chatId, msg) {
 }
 
 export async function sendToPatient(patient, msg) {
-  store.addMessage({ patientId: patient.id, direction: 'out', to: 'patient', text: msg.text });
+  store.addMessage({ patientId: patient.id, direction: 'out', to: 'patient', text: msg.text, textEn: msg.textEn, buttons: msg.buttons });
   return deliver(patient.chatId, msg);
 }
 

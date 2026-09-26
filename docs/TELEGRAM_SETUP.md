@@ -39,7 +39,7 @@ We use **long polling** (`bot.start()`), so you don't need ngrok, a public URL o
 ## 3. Try it right away
 
 Open `https://t.me/<your_bot_username>?start=GARCIA1` on your phone and press **Start**.
-You're now linked as the demo patient Maria Garcia. Send any text. The stub agent echoes it back with buttons.
+You're now linked as the demo patient Maria Garcia. Send any text and the bot offers a check-in. Tap through it (buttons + free text both work). Try "chest pain" to see a RED escalation.
 
 Demo link codes (from `backend/src/seed.js`):
 

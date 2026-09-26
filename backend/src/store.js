@@ -8,7 +8,7 @@ import { buildSeed } from './seed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '..', 'data');
-const DB_FILE = path.join(DATA_DIR, 'db.json');
+const DB_FILE = process.env.HEARTBRIDGE_DB || path.join(DATA_DIR, 'db.json');
 
 // Emits 'change' with { type, payload } so socket.io can push live updates to the dashboard.
 export const events = new EventEmitter();
@@ -24,7 +24,7 @@ function load() {
 }
 
 function save() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
   fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 
@@ -76,17 +76,24 @@ export function findByChatId(chatId) {
 }
 
 // ---------- messages (conversation log shown on dashboard) ----------
-export function addMessage({ patientId, direction, to = 'patient', text, textEn }) {
-  const msg = { id: crypto.randomUUID(), ts: new Date().toISOString(), patientId, direction, to, text, textEn };
+export function addMessage({ patientId, direction, to = 'patient', text, textEn, buttons }) {
+  const msg = { id: crypto.randomUUID(), ts: new Date().toISOString(), patientId, direction, to, text, textEn, buttons };
   db.messages.push(msg);
   emit('message', msg);
   return msg;
 }
+export function updateMessage(id, patch) {
+  const m = db.messages.find((x) => x.id === id);
+  if (!m) return null;
+  Object.assign(m, patch);
+  emit('message', m);
+  return m;
+}
 export const listMessages = (patientId) => db.messages.filter((m) => m.patientId === patientId);
 
 // ---------- alerts ----------
-export function addAlert({ patientId, tier, reasons }) {
-  const alert = { id: crypto.randomUUID(), ts: new Date().toISOString(), patientId, tier, reasons, status: 'open' };
+export function addAlert({ patientId, tier, reasons, ...extra }) {
+  const alert = { id: crypto.randomUUID(), ts: new Date().toISOString(), patientId, tier, reasons, status: 'open', ...extra };
   db.alerts.unshift(alert);
   emit('alert', alert);
   return alert;

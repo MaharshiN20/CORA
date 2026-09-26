@@ -1,3 +1,5 @@
+import { scoreRisk } from './core/risk.js';
+
 // Demo patients. Mrs. Garcia is the "hero" patient for the pitch: high risk,
 // Spanish-speaking, weight trending up, unfilled diuretic refill.
 const DAY = 24 * 60 * 60 * 1000;
@@ -14,7 +16,7 @@ const CHF_MEDS = [
 ];
 
 function patient(p) {
-  return {
+  const out = {
     condition: 'CHF',
     channel: 'telegram',
     chatId: null,
@@ -25,7 +27,11 @@ function patient(p) {
     riskTier: null,
     ...p,
     caregiver: { chatId: null, ...p.caregiver },
+    checkins: [],
+    lastTier: null,
   };
+  const risk = scoreRisk(out);
+  return { ...out, riskScore: risk.score, riskTier: risk.tier, riskFactors: risk.factors };
 }
 
 export function buildSeed() {
