@@ -6,7 +6,8 @@ A Telegram agent that checks in daily with heart-failure patients after they lea
 
 **Design principle:** the LLM handles *language*, deterministic rules make *clinical decisions*. Triage never depends on an LLM.
 
-📌 **Start with [docs/STRATEGY.md](docs/STRATEGY.md)**: problem analysis, thesis, demo plan, roadmap, ownership.
+📌 **Start with [docs/STRATEGY.md](docs/STRATEGY.md)** (why), **[docs/CONTRACTS.md](docs/CONTRACTS.md)** (interfaces), and **[CLAUDE.md](CLAUDE.md)** (team workflow).
+👥 Three lanes run in parallel, each with its own task file: [Prannav: core](docs/team/PRANNAV.md) · [Krish: channels](docs/team/KRISH.md) · [Maharshi: risk, insights, dashboard](docs/team/MAHARSHI.md). Cross-lane asks go in [REQUESTS.md](docs/team/REQUESTS.md).
 
 ## Layout
 
@@ -22,10 +23,10 @@ docs/       TELEGRAM_SETUP.md: bot setup + task list for the Telegram owner
 ## Run it
 
 ```bash
-# terminal 1
-cd backend && cp .env.example .env && npm install && npm run dev     # :3001
-# terminal 2
-cd frontend && npm install && npm run dev                            # :5173
+cp backend/.env.example backend/.env   # optional: add tokens/keys
+npm run setup                          # install root + backend + frontend
+npm run dev                            # backend :3001 + dashboard :5173
+npm run check                          # all tests + frontend build (run before every push)
 ```
 
 No keys needed to start. Without a Telegram token you can still chat as a patient from the dashboard's "Simulate a patient reply" box.

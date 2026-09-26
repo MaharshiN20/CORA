@@ -1,0 +1,17 @@
+{
+  "name": "heartbridge",
+  "version": "0.2.0",
+  "private": true,
+  "description": "HeartBridge: multilingual post-discharge co-pilot (Telegram agent + nurse dashboard)",
+  "scripts": {
+    "setup": "npm install && npm --prefix backend install && npm --prefix frontend install",
+    "dev": "concurrently -k -n api,web -c blue,magenta \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "test": "npm --prefix backend test",
+    "build": "npm --prefix frontend run build",
+    "check": "npm test && npm run build",
+    "seed": "npm --prefix backend run seed"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

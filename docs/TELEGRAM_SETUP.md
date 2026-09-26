@@ -77,6 +77,8 @@ Replies may also include `textEn` (English copy for the dashboard). Ignore it wh
 
 ## 5. Your task list
 
+> **Superseded:** the current, detailed task list is **[docs/team/KRISH.md](team/KRISH.md)**. The items below are kept for reference.
+
 The skeleton already handles `/start CODE`, text, button taps and `sendToChat`. Build on it:
 
 - [ ] **Verify basics**: link, text round-trip, button taps (tap → `answerCallbackQuery` so the spinner stops)

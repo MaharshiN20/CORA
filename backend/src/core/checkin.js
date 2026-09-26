@@ -199,7 +199,7 @@ async function finish(patient, a) {
   const name = firstName(patient);
   const replies = [];
   if (result.tier === 'RED') {
-    replies.push(reply(patient, 'red_911', { name, caregiver: patient.caregiver?.name?.split(' ')[0] ?? 'your family' }));
+    replies.push({ ...reply(patient, 'red_911', { name, caregiver: patient.caregiver?.name?.split(' ')[0] ?? 'your family' }), urgent: true });
     return replies;
   }
   replies.push(reply(patient, result.tier === 'YELLOW' ? 'thanks_yellow' : 'thanks_green', { name }));
@@ -221,5 +221,5 @@ export async function handleUrgentFreeText(patient, text) {
   const result = triage({ weights: patient.weights, answers: extra });
   store.updatePatient(patient.id, { lastTier: result.tier });
   await escalate(store.getPatient(patient.id), result, { source: 'unprompted message' });
-  return [reply(patient, 'red_interrupt')];
+  return [{ ...reply(patient, 'red_interrupt'), urgent: true }];
 }

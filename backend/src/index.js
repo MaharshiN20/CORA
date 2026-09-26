@@ -1,18 +1,11 @@
 import http from 'node:http';
-import express from 'express';
-import cors from 'cors';
 import { Server } from 'socket.io';
-import { api } from './routes/api.js';
+import { createApp } from './app.js';
 import { events } from './store.js';
 import * as telegram from './channels/telegram.js';
 import * as llm from './core/llm/index.js';
 
-const app = express();
-app.use(cors());
-app.use(express.json());
-app.use('/api', api);
-
-const server = http.createServer(app);
+const server = http.createServer(createApp());
 const io = new Server(server, { cors: { origin: '*' } });
 
 // Push every store change to the dashboard so it updates live.
@@ -26,4 +19,4 @@ await llm.detect({ force: true });
 const ai = llm.status();
 console.log(`[llm] using ${ai.provider}${ai.model ? ` (${ai.model})` : ' — rule fallbacks only'}`);
 setInterval(() => llm.detect().catch(() => {}), 60_000).unref();
-// TODO(core): scheduler.start() — daily check-ins, med reminders, refill checks
+// TODO(core P1-2): scheduler.start() — daily check-ins, med reminders, refill checks, outreach ladder

@@ -15,9 +15,11 @@ const CHF_MEDS = [
   { name: 'Lisinopril', dose: '10 mg', times: ['08:00'] },
 ];
 
-function patient(p) {
+// Fills defaults + computes baseline risk. Exported for core/enroll.js (new patients, demo clones).
+export function makePatient(p) {
   const out = {
     condition: 'CHF',
+    source: 'seed',
     channel: 'telegram',
     chatId: null,
     checkin: { state: 'idle', answers: {} },
@@ -29,6 +31,9 @@ function patient(p) {
     caregiver: { chatId: null, ...p.caregiver },
     checkins: [],
     lastTier: null,
+    voiceMode: false,
+    caregiverConsent: true,
+    dischargeInstructions: null,
   };
   const risk = scoreRisk(out);
   return { ...out, riskScore: risk.score, riskTier: risk.tier, riskFactors: risk.factors };
@@ -37,7 +42,7 @@ function patient(p) {
 export function buildSeed() {
   return {
     patients: [
-      patient({
+      makePatient({
         id: 'p1',
         linkCode: 'GARCIA1',
         name: 'Maria Garcia',
@@ -55,7 +60,7 @@ export function buildSeed() {
         ],
         caregiver: { name: 'Sofia Garcia', relation: 'daughter', language: 'en' },
       }),
-      patient({
+      makePatient({
         id: 'p2',
         linkCode: 'JOHNSON1',
         name: 'Robert Johnson',
@@ -73,7 +78,7 @@ export function buildSeed() {
         ],
         caregiver: { name: 'Linda Johnson', relation: 'wife', language: 'en' },
       }),
-      patient({
+      makePatient({
         id: 'p3',
         linkCode: 'NGUYEN1',
         name: 'Thanh Nguyen',
@@ -87,7 +92,7 @@ export function buildSeed() {
         prescriptions: [{ med: 'Furosemide', expectedPickup: iso(8), pickedUpAt: iso(8) }],
         caregiver: { name: 'Minh Nguyen', relation: 'son', language: 'en' },
       }),
-      patient({
+      makePatient({
         id: 'p4',
         linkCode: 'PATEL1',
         name: 'Anil Patel',
@@ -104,7 +109,7 @@ export function buildSeed() {
         ],
         caregiver: { name: 'Priya Patel', relation: 'granddaughter', language: 'en' },
       }),
-      patient({
+      makePatient({
         id: 'p5',
         linkCode: 'SMITH1',
         name: 'Dorothy Smith',

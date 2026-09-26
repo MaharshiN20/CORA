@@ -1,14 +1,23 @@
 // ============================================================================
-// THE CONTRACT between any messaging channel (Telegram today) and the core logic.
+// THE CONTRACT between any messaging channel (Telegram, SMS, WhatsApp, dashboard
+// simulator) and the core logic. Full spec: docs/CONTRACTS.md.
 //
-//   handleInbound({ patientId, text?, buttonData?, voiceTranscript? })
-//     -> Promise<Reply[]>
+//   handleInbound({
+//     patientId,                          // required, resolve via store.findByChatId
+//     role?: 'patient' | 'caregiver',     // default 'patient'
+//     channel?: 'telegram'|'sms'|'whatsapp'|'sim',
+//     text?, buttonData?, voiceTranscript?,
+//     photo?: { base64: string, mime: string },
+//   }) -> Promise<Reply[]>
 //
-//   Reply = { text: string, buttons?: Button[][], textEn?: string }   // rows of buttons
-//   Button = { label: string, data: string }         // data comes back as buttonData (<= 64 bytes)
+//   Reply  = { text, buttons?: Button[][], textEn?, urgent?: boolean, voice?: boolean }
+//   Button = { label, data }              // data comes back as buttonData (<= 64 bytes)
 //
-// The channel layer only has to: identify the patient, call this, and render
-// the replies (text + buttons; ignore textEn). It never makes clinical decisions.
+//   urgent: render as an emergency (bold / alert styling).
+//   voice:  patient prefers audio: also send a TTS voice note of `text`.
+//
+// The channel layer only has to: identify the patient, call this, and render the
+// replies (text + buttons, honour urgent/voice; ignore textEn). No clinical logic.
 // ============================================================================
 import * as store from '../store.js';
 import * as checkin from './checkin.js';
@@ -16,17 +25,25 @@ import { t, localize, toEnglish, hasNative } from './i18n.js';
 
 const START_WORDS = /^\/?(check-?in|start|chequeo|empezar|hola|hi|hello)\b/i;
 
-export async function handleInbound({ patientId, text, buttonData, voiceTranscript }) {
+export async function handleInbound({ patientId, role = 'patient', channel, text, buttonData, voiceTranscript, photo }) {
   const patient = store.getPatient(patientId);
   if (!patient) return [{ text: 'Sorry, I could not find your record. Ask your care team for your link code.' }];
 
   const input = voiceTranscript ?? text;
-  const inbound = store.addMessage({ patientId, direction: 'in', text: input ?? buttonLabel(patientId, buttonData) });
+  const shown = photo ? '[photo]' : input ?? buttonLabel(patientId, buttonData);
+  const inbound = store.addMessage({ patientId, direction: 'in', from: role, to: role, text: shown, channel });
 
   let replies;
   let textEn = null;
 
-  if (buttonData === 'cmd:checkin') {
+  if (role === 'caregiver') {
+    // TODO(core P1-7): proxy check-in for the patient. Until then, acknowledge.
+    replies = [caregiverAck(patient)];
+  } else if (photo) {
+    // TODO(core P3-13): med-bottle photo reconciliation via llm.completeVision.
+    store.audit('photo_received', patientId, { mime: photo.mime, bytes: Math.round((photo.base64?.length ?? 0) * 0.75) });
+    replies = [{ text: t(patient.language, 'photo_received'), textEn: t('en', 'photo_received') }];
+  } else if (buttonData === 'cmd:checkin') {
     replies = checkin.start(patient);
   } else if (checkin.isActive(patient)) {
     ({ replies, textEn } = await checkin.handle(patient, { text: input, buttonData }));
@@ -45,8 +62,16 @@ export async function handleInbound({ patientId, text, buttonData, voiceTranscri
   }
 
   replies = await Promise.all(replies.map((r) => localizeReply(patient, r)));
-  for (const r of replies) store.addMessage({ patientId, direction: 'out', text: r.text, textEn: r.textEn, buttons: r.buttons });
+  if (patient.voiceMode && role === 'patient') replies = replies.map((r) => ({ ...r, voice: true }));
+  const to = role === 'caregiver' ? 'caregiver' : 'patient';
+  for (const r of replies) store.addMessage({ patientId, direction: 'out', to, text: r.text, textEn: r.textEn, buttons: r.buttons, channel });
   return replies;
+}
+
+function caregiverAck(patient) {
+  const first = patient.name.split(' ')[0];
+  const text = `Thanks! You're connected as a caregiver for ${first}. You'll get alerts and a weekly summary here.`;
+  return { text, textEn: text };
 }
 
 // Called by the scheduler / dashboard to start a check-in proactively.
