@@ -1,0 +1,37 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: #f4f6fb; color: #1b2330; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #fff; border-bottom: 1px solid #e3e7ef; }
+h1 { font-size: 20px; margin: 0; }
+h1 span { font-weight: 400; color: #6b7686; font-size: 14px; margin-left: 8px; }
+h2 { font-size: 16px; margin: 0 0 10px; }
+h3 { font-size: 13px; margin: 0 0 8px; text-transform: uppercase; color: #6b7686; letter-spacing: .04em; }
+main { display: grid; grid-template-columns: 260px 1fr 300px; gap: 16px; padding: 16px 20px; }
+.col.wide { min-width: 0; }
+.card { background: #fff; border: 1px solid #e3e7ef; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.patient { cursor: pointer; }
+.patient.active { border-color: #2563eb; box-shadow: 0 0 0 2px #2563eb22; }
+small, .muted { color: #6b7686; font-size: 13px; }
+.tier { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: #e3e7ef; }
+.tier.RED, .tier.High { background: #fde2e1; color: #b42318; }
+.tier.YELLOW, .tier.Med { background: #fff3cd; color: #8a6100; }
+.tier.GREEN, .tier.Low { background: #dcfce7; color: #166534; }
+.alert.RED { border-left: 4px solid #d92d20; }
+.alert.YELLOW { border-left: 4px solid #e0a800; }
+.alert.acknowledged { opacity: .55; }
+.alert ul { margin: 6px 0; padding-left: 18px; font-size: 13px; }
+.badge { background: #d92d20; color: #fff; border-radius: 99px; padding: 1px 8px; font-size: 12px; }
+.pill { font-size: 12px; padding: 3px 10px; border-radius: 99px; margin-left: 6px; }
+.pill.on { background: #dcfce7; color: #166534; }
+.pill.off { background: #eceff4; color: #8a93a3; }
+button { background: #2563eb; color: #fff; border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+button.ghost { background: transparent; color: #2563eb; border: 1px solid #2563eb; margin-left: 10px; }
+input { flex: 1; padding: 8px 10px; border: 1px solid #d5dbe5; border-radius: 8px; }
+.ok { color: #166534; font-size: 13px; }
+.warn { color: #b42318; font-size: 13px; font-weight: 600; }
+.chat { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.bubble { max-width: 80%; padding: 8px 10px; border-radius: 12px; font-size: 14px; white-space: pre-wrap; }
+.bubble.in { align-self: flex-end; background: #2563eb; color: #fff; }
+.bubble.out { align-self: flex-start; background: #eef1f6; }
+.bubble.caregiver { background: #f3e8ff; }
+.bubble .en { font-size: 12px; opacity: .75; margin-top: 4px; }
