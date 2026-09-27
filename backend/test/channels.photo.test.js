@@ -134,8 +134,8 @@ test('a file that turns out larger than declared is refused after download', asy
   assert.equal(photoAudits().length, 0);
 });
 
-test('a failed download does not reach the core or crash the bot', async () => {
-  const { bot } = await linkedMaria();
+test('a failed download tells the patient and does not reach the core', async () => {
+  const { bot, calls } = await linkedMaria();
   download = () => new Response('gone', { status: 404 });
   const err = console.error;
   console.error = () => {};
@@ -144,6 +144,7 @@ test('a failed download does not reach the core or crash the bot', async () => {
   } finally {
     console.error = err;
   }
+  assert.equal(h.lastSent(calls).text, i18n.t('es', 'photo_failed'));
   assert.equal(photoAudits().length, 0);
 });
 

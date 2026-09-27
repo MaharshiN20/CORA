@@ -114,7 +114,10 @@ async function inbound(link, phone, channel, body) {
       console.error('[webhooks] media download failed:', err.message);
     }
     if (media === 'too_large') return [{ text: await localize(lang, t(lang, 'file_too_large')) }];
-    if (media && mediaType.startsWith('image/')) return handleInbound({ ...base, photo: { base64: media.toString('base64'), mime: mediaType } });
+    if (mediaType.startsWith('image/')) {
+      if (!media) return [{ text: await localize(lang, t(lang, 'photo_failed')) }];
+      return handleInbound({ ...base, photo: { base64: media.toString('base64'), mime: mediaType } });
+    }
     if (mediaType.startsWith('audio/')) {
       const transcript = media ? await transcribe(media, mediaType, lang) : null;
       if (!transcript) return [{ text: await localize(lang, t(lang, 'voice_unavailable')) }];

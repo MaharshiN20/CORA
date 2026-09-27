@@ -331,8 +331,7 @@ export function buildBot(token, { botInfo } = {}) {
       } catch (err) {
         if (err instanceof FileTooLargeError) return ctx.reply(await say(lang, 'file_too_large'));
         console.error('[telegram] photo download failed:', err.message);
-        if (t(lang, 'photo_failed') !== 'photo_failed') await ctx.reply(await say(lang, 'photo_failed'));
-        return;
+        return ctx.reply(await say(lang, 'photo_failed'));
       }
       const photo = { base64: buffer.toString('base64'), mime };
       const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', photo });
