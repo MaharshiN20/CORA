@@ -18,9 +18,12 @@ import { occurrences, isMonitored, allPlanners } from './planning.js';
 // Feature modules register their job kinds + planners on import.
 import './meds.js';
 import './pharmacy.js';
+import { startLadder } from './outreach.js';
 
 const HORIZON_MS = 48 * clock.HOUR;
 const TICK_MS = 30_000;
+// A check-in started this long before the next scheduled one is stale (never finished).
+const STALE_CHECKIN_MS = 12 * clock.HOUR;
 
 // Check-in times by plan (local time). High risk (2/day) adds an evening check.
 export const CHECKIN_TIMES = { 1: ['09:00'], 2: ['09:00', '19:00'] };
@@ -31,9 +34,18 @@ scheduler.defineJob('checkin_due', {
   collapse: true,
   async run(job) {
     const p = store.getPatient(job.patientId);
-    if (checkinActive(p)) return { skipped: 'checkin already in progress' };
+    if (checkinActive(p)) {
+      // Started recently (patient mid-answer): leave it alone.
+      if (Date.parse(job.dueAt) - Date.parse(p.checkin.startedAt) < STALE_CHECKIN_MS) {
+        return { skipped: 'checkin already in progress' };
+      }
+      // Yesterday's never-finished check-in: abandon it (keep what was answered) and ask fresh.
+      store.audit('checkin_abandoned', p.id, { startedAt: p.checkin.startedAt, step: p.checkin.state, partial: p.checkin.answers });
+      store.updatePatient(p.id, { checkin: { state: 'idle', answers: {} } });
+    }
     const replies = await startCheckin(p.id);
     for (const r of replies) await channels.sendToPatient(p, r);
+    startLadder(p, store.getPatient(p.id).checkin.startedAt);
     store.audit('checkin_sent', p.id, { jobId: job.id, scheduledFor: job.dueAt });
     return { sent: replies.length };
   },

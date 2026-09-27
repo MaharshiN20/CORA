@@ -142,6 +142,11 @@ export function isActive(patient) {
   return patient.checkin?.state && patient.checkin.state !== 'idle';
 }
 
+// The question the patient is currently on (for reminders), or null if no check-in is running.
+export function currentPrompt(patient) {
+  return isActive(patient) ? prompt(patient, patient.checkin.state) : null;
+}
+
 export function start(patient) {
   const { plan } = scoreRisk(patient);
   const steps = STEPS.filter((s) => !s.enabled || s.enabled(plan));

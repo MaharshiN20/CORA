@@ -26,7 +26,7 @@
   - `ride`/`cost` → `addTask` kind `refill` plus a resource message (pharmacy delivery, assistance programs); `picked` → `pickedUpAt`.
   - `POST /api/patients/:id/prescriptions/:med/picked-up` for the dashboard.
   - **Test:** Maria's furosemide gets a nudge after advance, a cost barrier creates a task, and picked stops the nudges.
-- [ ] **P1-5 Outreach ladder** `core/outreach.js`:
+- [x] **P1-5 Outreach ladder** `core/outreach.js`:
   - No reply to a check-in: +2h reminder, +6h caregiver ping with a "check in for her" button (`cmd:proxy`), +24h `addTask` kind `unreachable` (tier YELLOW).
   - Any reply cancels the ladder, and every step is audited (`outreach`).
   - **Test:** each rung fires at the right time via clock advance, and a reply mid-ladder cancels the rest.

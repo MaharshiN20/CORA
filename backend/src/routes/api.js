@@ -8,6 +8,7 @@ import { createPatient, languages } from '../core/enroll.js';
 import { getSignals } from '../core/signals.js';
 import { adherence } from '../core/meds.js';
 import { markPickedUp } from '../core/pharmacy.js';
+import { startLadder } from '../core/outreach.js';
 import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
 
@@ -105,6 +106,7 @@ api.post('/patients/:id/checkin', async (req, res) => {
   if (!p) return res.status(404).json({ error: 'not found' });
   const replies = await startCheckin(p.id);
   for (const r of replies) await channels.sendToPatient(p, r);
+  startLadder(p, store.getPatient(p.id).checkin.startedAt); // silence after this escalates
   res.json({ sent: replies.length });
 });
 

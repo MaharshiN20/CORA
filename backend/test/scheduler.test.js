@@ -114,16 +114,37 @@ test('re-planning and restarting never duplicate jobs', async () => {
   assert.equal(store.collection('jobs').length, n);
 });
 
-test('a check-in already in progress is not restarted by the scheduler', async () => {
+// Move the demo clock to the next local HH:MM without running jobs.
+function jumpTo(hhmm) {
+  const at = jobs.occurrences([hhmm], clock.now(), clock.now() + clock.DAY)[0].at;
+  clock.advance(at - clock.now());
+}
+
+test('a check-in the patient is answering right now is not restarted', async () => {
   const agent = await import('../src/core/agent.js');
+  jumpTo('08:30');
+  await jobs.start({ intervalMs: 0 });
   await agent.startCheckin('p5');
   await agent.handleInbound({ patientId: 'p5', text: '140' }); // now on the breath step
-  await jobs.start({ intervalMs: 0 });
-  clock.advance(clock.DAY);
-  await jobs.afterAdvance(clock.DAY);
+  clock.advance(clock.HOUR); // 09:30: the 09:00 check-in comes due
+  await jobs.afterAdvance(clock.HOUR);
   const job = scheduler.listJobs({ kind: 'checkin_due', patientId: 'p5', status: 'done' })[0];
   assert.match(job.result.skipped, /in progress/);
   assert.equal(store.getPatient('p5').checkin.state, 'breath');
+});
+
+test("yesterday's unfinished check-in is abandoned (audited) and a fresh one starts", async () => {
+  const agent = await import('../src/core/agent.js');
+  jumpTo('08:00');
+  await jobs.start({ intervalMs: 0 });
+  await agent.startCheckin('p5');
+  await agent.handleInbound({ patientId: 'p5', text: '140' }); // stops on breath, never finishes
+  clock.advance(clock.DAY + 2 * clock.HOUR); // next day 10:00 (09:00 check-in is ~25h after the stale one)
+  await jobs.afterAdvance(clock.DAY + 2 * clock.HOUR);
+  const p = store.getPatient('p5');
+  assert.equal(p.checkin.state, 'weight'); // fresh check-in from the top
+  const abandoned = store.listAudit('p5').find((e) => e.type === 'checkin_abandoned');
+  assert.equal(abandoned.data.partial.weightLb, 140);
 });
 
 test('patients past the 30-day monitoring window get no check-ins', () => {

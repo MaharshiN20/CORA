@@ -74,6 +74,10 @@ const STRINGS = {
     rx_help_ride: "Thanks for telling me. 🚗 Most pharmacies can deliver or mail your {med}, often for free. Call the number on your prescription label and ask for delivery. I've also let your care team know so they can help.",
     rx_help_cost: "Thanks for telling me. 💲 There are ways to lower the price of {med}: ask your pharmacist for a generic or a discount program, and Medicare 'Extra Help' may cover it. I've asked your care team to help you with this.",
     rx_help_other: "Thanks for letting me know. A nurse from your care team will reach out to help you get your {med}.",
+    // --- outreach ladder (core/outreach.js) ---
+    outreach_reminder: 'Hi {name}, just checking on you 💙 When you have a minute, please answer today’s heart check-in. It helps your care team keep you well at home.',
+    outreach_caregiver: "💙 HeartBridge: {name} hasn't answered today's heart check-in yet. Could you check on {name}? If you're with {name}, you can answer the questions here for them.",
+    outreach_proxy_btn: '📋 Answer for {name}',
   },
   es: {
     greeting: '¡Buenos días {name}! 💙 Es hora de su chequeo diario del corazón. Toma como un minuto.',
@@ -143,6 +147,9 @@ const STRINGS = {
     rx_help_ride: 'Gracias por decírmelo. 🚗 La mayoría de las farmacias pueden entregar o enviar su {med} por correo, muchas veces gratis. Llame al número de la etiqueta de su receta y pida entrega a domicilio. También avisé a su equipo médico para que le ayuden.',
     rx_help_cost: "Gracias por decírmelo. 💲 Hay maneras de bajar el precio de {med}: pida a su farmacéutico un genérico o un programa de descuento, y la 'Ayuda Adicional' de Medicare puede cubrirlo. Le pedí a su equipo médico que le ayude con esto.",
     rx_help_other: 'Gracias por avisarme. Una enfermera de su equipo médico se comunicará para ayudarle a conseguir su {med}.',
+    outreach_reminder: 'Hola {name}, solo quería saber de usted 💙 Cuando tenga un minuto, por favor conteste el chequeo del corazón de hoy. Ayuda a su equipo médico a cuidarle en casa.',
+    outreach_caregiver: '💙 HeartBridge: {name} todavía no ha contestado el chequeo del corazón de hoy. ¿Podría ver cómo está {name}? Si está con {name}, puede contestar las preguntas aquí por él o ella.',
+    outreach_proxy_btn: '📋 Contestar por {name}',
   },
 };
 

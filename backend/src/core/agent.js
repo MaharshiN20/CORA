@@ -23,6 +23,7 @@ import * as store from '../store.js';
 import * as checkin from './checkin.js';
 import * as meds from './meds.js';
 import * as pharmacy from './pharmacy.js';
+import * as outreach from './outreach.js';
 import { t, localize, toEnglish, hasNative } from './i18n.js';
 
 const START_WORDS = /^\/?(check-?in|start|chequeo|empezar|hola|hi|hello)\b/i;
@@ -37,6 +38,9 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
 
   let replies;
   let textEn = null;
+
+  // Any sign of life from the patient stops the non-response ladder.
+  if (role === 'patient') outreach.onPatientReply(patient);
 
   if (role === 'caregiver') {
     // TODO(core P1-7): proxy check-in for the patient. Until then, acknowledge.
