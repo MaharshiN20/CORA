@@ -12,6 +12,7 @@ import * as channels from '../channels/index.js';
 import { t, hasNative, localize } from './i18n.js';
 import { addPlanner, occurrences, isMonitored } from './planning.js';
 import { LESSONS } from '../conditions/chf/lessons.js';
+import { skipDuringRedLock } from './escalation.js';
 
 const LESSON_TIME = '17:00';
 const MAX_ATTEMPTS = 2;
@@ -53,6 +54,7 @@ async function lessonReply(p, lesson) {
 }
 
 scheduler.defineJob('lesson_due', {
+  skipIf: skipDuringRedLock,
   collapse: true,
   async run(job) {
     const p = store.getPatient(job.patientId);

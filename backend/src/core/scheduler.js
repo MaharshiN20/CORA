@@ -16,8 +16,9 @@ import * as clock from './clock.js';
 const handlers = new Map(); // kind -> { run(job), collapse, collapseKey(job)? }
 let running = null;
 
-export function defineJob(kind, { run, collapse = false, collapseKey }) {
-  handlers.set(kind, { run, collapse, collapseKey });
+// skipIf(job) -> reason string to skip (job is marked done with { skipped }), or falsy to run.
+export function defineJob(kind, { run, collapse = false, collapseKey, skipIf }) {
+  handlers.set(kind, { run, collapse, collapseKey, skipIf });
 }
 
 const groupOf = (j) => `${j.kind}:${handlers.get(j.kind)?.collapseKey?.(j) ?? j.patientId}`;
@@ -112,7 +113,8 @@ async function runDue() {
       try {
         if (!h) throw new Error(`no handler for "${j.kind}"`);
         if (j.patientId && !store.getPatient(j.patientId)) throw new Error(`patient ${j.patientId} not found`);
-        j.result = (await h.run(j)) ?? null;
+        const skip = h.skipIf?.(j);
+        j.result = skip ? { skipped: skip } : ((await h.run(j)) ?? null);
         j.status = 'done';
         summary.ran++;
       } catch (err) {

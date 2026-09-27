@@ -2,8 +2,43 @@
 // GREEN does nothing here; the patient just gets advice.
 import * as store from '../store.js';
 import * as channels from '../channels/index.js';
+import * as clock from './clock.js';
 
 const ICON = { RED: '🚨', YELLOW: '⚠️' };
+
+// ---------- RED lock ----------
+// After a patient is told to call 911, nothing else may distract them: no next question, no
+// tips, no "I can help with…" answers. For RED_LOCK_MS after a RED triage alert, or until a
+// nurse resolves it, every inbound message re-asserts 911 and is appended to that alert.
+export const RED_LOCK_MS = 60 * 60 * 1000;
+
+// -> the open RED triage alert holding the lock, or null.
+export function redLock(patient) {
+  const now = clock.now();
+  return (
+    store
+      .listAlerts()
+      .find((a) => a.patientId === patient.id && a.tier === 'RED' && (a.kind ?? 'triage') === 'triage' && a.status !== 'resolved' && now - Date.parse(a.ts) < RED_LOCK_MS) ?? null
+  );
+}
+
+// Scheduler skipIf for routine patient messages (check-ins, lessons, screens, reminders):
+// nothing but "call 911" while the lock holds.
+export function skipDuringRedLock(job) {
+  const p = job.patientId && store.getPatient(job.patientId);
+  return p && redLock(p) ? 'RED lock: patient was told to call 911' : null;
+}
+
+// Record a message that arrived during the lock on the RED alert itself (one incident, not a
+// second card) and nudge the nurses. `note` flags anything the nurse must see (a med question).
+export async function appendToRedAlert(patient, alert, { who = 'Patient', text, note } = {}) {
+  const at = new Date(clock.now()).toTimeString().slice(0, 5);
+  const said = text ? `: "${String(text).slice(0, 160)}"` : '';
+  const reason = `${who} messaged again at ${at}${said}${note ? ` (${note})` : ''}`;
+  store.updateAlert(alert.id, { reasons: [...(alert.reasons ?? []), reason] });
+  store.audit('red_lock', patient.id, { alertId: alert.id, who, text: text ?? null, note: note ?? null });
+  await channels.sendToNurses({ patientId: patient.id, text: `🚨 RED follow-up: ${patient.name}. ${reason}. Patient was told to call 911.` });
+}
 
 // reporter: 'patient' | 'caregiver' (proxy check-in). A caregiver who just reported
 // the answers isn't sent an alert about them; the nurse is told who reported.

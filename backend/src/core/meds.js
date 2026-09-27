@@ -14,6 +14,7 @@ import * as scheduler from './scheduler.js';
 import * as channels from '../channels/index.js';
 import { t } from './i18n.js';
 import { addPlanner, occurrences, isMonitored, localDayKey } from './planning.js';
+import { skipDuringRedLock } from './escalation.js';
 
 const shortId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 8);
 const medTimes = (p) => [...new Set((p.meds ?? []).flatMap((m) => m.times ?? []))].sort();
@@ -22,6 +23,7 @@ const slotMeds = (p, time) => (p.meds ?? []).filter((m) => m.times?.includes(tim
 // ---------- scheduling ----------
 
 scheduler.defineJob('med_reminder', {
+  skipIf: skipDuringRedLock,
   collapse: true,
   collapseKey: (j) => `${j.patientId}:${j.payload.time}`, // 08:00 and 20:00 never swallow each other
   async run(job) {

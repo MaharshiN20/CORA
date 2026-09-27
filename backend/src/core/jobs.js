@@ -23,6 +23,7 @@ import './digest.js';
 import './lessons.js';
 import './sdoh.js';
 import { startLadder } from './outreach.js';
+import { skipDuringRedLock } from './escalation.js';
 
 const HORIZON_MS = 48 * clock.HOUR;
 const TICK_MS = 30_000;
@@ -35,6 +36,7 @@ export const CHECKIN_TIMES = { 1: ['09:00'], 2: ['09:00', '19:00'] };
 // ---------- job kinds ----------
 
 scheduler.defineJob('checkin_due', {
+  skipIf: skipDuringRedLock,
   collapse: true,
   async run(job) {
     const p = store.getPatient(job.patientId);

@@ -15,9 +15,20 @@ import { allSections } from '../conditions/chf/content.js';
 
 const LANG_NAMES = { en: 'English', es: 'Spanish', vi: 'Vietnamese', zh: 'Simplified Chinese', hi: 'Hindi', ko: 'Korean', ht: 'Haitian Creole', ar: 'Arabic', pt: 'Portuguese', tl: 'Tagalog' };
 
-// Asking to change how a medicine is taken: only a clinician answers that.
-export const DOSING_CHANGE =
-  /\b(skip|stop|quit|double|extra|more|less|half|cut|change|increase|decrease|lower|raise)\b.{0,30}\b(pill|pills|dose|doses|medicine|medicines|medication|meds|furosemide|lasix|carvedilol|coreg|lisinopril|water pill)|\b(dejar|dejo|saltar|salto|suspender|doble|duplicar|más|menos|mitad|cambiar|aumentar|bajar)\b.{0,30}\b(pastilla|pastillas|dosis|medicina|medicinas|medicamento|furosemida|carvedilol|lisinopril)/i;
+// Asking to change how a medicine is taken, or how much to take ("how many mg of
+// furosemide?"): only a clinician answers that, never the bot or the LLM.
+const MED_EN = '(?:pill|pills|dose|doses|medicine|medicines|medication|meds|furosemide|lasix|torsemide|bumetanide|carvedilol|coreg|metoprolol|lisinopril|entresto|spironolactone|water pill)';
+const MED_ES = '(?:pastilla|pastillas|dosis|medicina|medicinas|medicamento|furosemida|lasix|carvedilol|metoprolol|lisinopril|espironolactona)';
+export const DOSING_CHANGE = new RegExp(
+  [
+    `\\b(?:skip|stop|quit|double|extra|more|less|half|cut|change|increase|decrease|lower|raise|another)\\b.{0,30}\\b${MED_EN}`,
+    `\\b(?:how (?:much|many)|what dose|dosage|mg of|milligrams? of)\\b.{0,40}\\b${MED_EN}`,
+    `\\b${MED_EN}\\b.{0,30}\\b(?:how (?:much|many)|how many mg|what dose|dosage)\\b`,
+    `\\b(?:dejar|dejo|saltar|salto|suspender|doble|duplicar|más|menos|mitad|cambiar|aumentar|bajar|otra)\\b.{0,30}\\b${MED_ES}`,
+    `\\bcu[aá]nt[oa]s? (?:mg|miligramos|pastillas)\\b|\\bqu[eé] dosis\\b`,
+  ].join('|'),
+  'i',
+);
 
 const QUESTION_START =
   /^(can|could|should|may|is|are|do|does|did|what|when|where|why|how|which|who|will|am|puedo|puede|debo|debería|es|está|qué|que|cuándo|cuando|dónde|por qué|cómo|como|cuál|cuánto|cuanto)\b/i;
@@ -59,30 +70,38 @@ function citation(lang, sec) {
   return t(lang, 'companion_source', { source, title: s.title });
 }
 
-async function nurseTask(patient, question, { dosing = false } = {}) {
-  const lang = patient.language;
+async function nurseTask(patient, question, { dosing = false, lang = patient.language, reporter = 'patient' } = {}) {
   const textEn = lang === 'en' ? question : (await toEnglish(lang, question)) ?? question;
   store.addTask({
     patientId: patient.id,
     kind: 'question',
     tier: dosing ? 'YELLOW' : 'INFO',
     title: `${dosing ? 'Medication question' : 'Question'}: ${textEn}`.slice(0, 120),
-    reasons: [textEn, ...(textEn !== question ? [`Original: ${question}`] : []), ...(dosing ? ['Asks about changing how a medicine is taken'] : [])],
+    reasons: [
+      textEn,
+      ...(textEn !== question ? [`Original: ${question}`] : []),
+      ...(dosing ? ['Asks about changing how a medicine is taken'] : []),
+      ...(reporter === 'caregiver' ? [`Asked by caregiver ${patient.caregiver?.name ?? ''}`.trim()] : []),
+    ],
     question,
     dosing,
+    reporter,
   });
 }
 
 // -> { kind: 'answer'|'nurse'|'dosing'|'symptom'|'other', replies, sectionIds? }
 // kind 'symptom' means the caller should start a check-in instead.
-export async function answer(patient, question) {
-  const lang = patient.language;
+// opts: { lang, reporter } for a caregiver asking on the patient's behalf (answered in the
+// caregiver's language, and the nurse task says who asked).
+export async function answer(patient, question, { lang = patient.language, reporter = 'patient' } = {}) {
   const L = hasNative(lang) ? lang : 'en'; // non-native languages get localized by agent.js
+  const dosingReply = () =>
+    reporter === 'caregiver' ? both(L, 'companion_dosing_cg', { name: patient.name.split(' ')[0] }) : both(L, 'companion_dosing');
 
   if (DOSING_CHANGE.test(question)) {
-    await nurseTask(patient, question, { dosing: true });
-    store.audit('companion', patient.id, { kind: 'dosing' });
-    return { kind: 'dosing', replies: [both(L, 'companion_dosing')] };
+    await nurseTask(patient, question, { dosing: true, lang, reporter });
+    store.audit('companion', patient.id, { kind: 'dosing', reporter });
+    return { kind: 'dosing', replies: [dosingReply()] };
   }
 
   const sections = allSections(patient);
@@ -100,9 +119,9 @@ export async function answer(patient, question) {
     );
     if (out) {
       if (out.category === 'dosing') {
-        await nurseTask(patient, question, { dosing: true });
-        store.audit('companion', patient.id, { kind: 'dosing', via: 'llm' });
-        return { kind: 'dosing', replies: [both(L, 'companion_dosing')] };
+        await nurseTask(patient, question, { dosing: true, lang, reporter });
+        store.audit('companion', patient.id, { kind: 'dosing', via: 'llm', reporter });
+        return { kind: 'dosing', replies: [dosingReply()] };
       }
       if (out.category === 'symptom') return { kind: 'symptom', replies: [] };
       if (out.category === 'other') return { kind: 'other', replies: [both(L, 'companion_other')] };
@@ -131,7 +150,7 @@ export async function answer(patient, question) {
     }
   }
 
-  await nurseTask(patient, question);
-  store.audit('companion', patient.id, { kind: 'nurse' });
+  await nurseTask(patient, question, { lang, reporter });
+  store.audit('companion', patient.id, { kind: 'nurse', reporter });
   return { kind: 'nurse', replies: [both(L, 'companion_nurse')] };
 }

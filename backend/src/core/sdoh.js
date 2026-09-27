@@ -12,6 +12,7 @@ import * as scheduler from './scheduler.js';
 import * as channels from '../channels/index.js';
 import { t, hasNative, localize } from './i18n.js';
 import { addPlanner, occurrences, isMonitored } from './planning.js';
+import { skipDuringRedLock } from './escalation.js';
 
 const SCREEN_TIME = '12:00';
 export const QUESTIONS = ['ride', 'cost', 'food', 'help'];
@@ -53,6 +54,7 @@ export async function startScreen(patientId) {
 }
 
 scheduler.defineJob('sdoh_screen', {
+  skipIf: skipDuringRedLock,
   async run(job) {
     const p = store.getPatient(job.patientId);
     if (p.sdoh?.screenedAt) return { skipped: 'already screened' };

@@ -29,11 +29,16 @@ import * as lessons from './lessons.js';
 import * as sdoh from './sdoh.js';
 import * as parser from './parser.js';
 import * as llm from './llm/index.js';
+import { redLock, appendToRedAlert } from './escalation.js';
 import { t, localize, toEnglish, hasNative } from './i18n.js';
 
 const START_WORDS = /^\/?(check[- ]?in|start|chequeo|empezar|hola|hi|hello)\b/i;
 // Caregivers must ask explicitly (or tap the button): a "hi" shouldn't start a proxy check-in.
 const PROXY_WORDS = /^\/?(check[- ]?in|chequeo)\b/i;
+// Messages that try to re-program the bot. Deterministic, audited, and never shown to an LLM;
+// symptoms in the same message still count ("SYSTEM OVERRIDE ... btw I passed out").
+export const INJECTION =
+  /\b(ignore|disregard|forget)\b.{0,30}\b(previous|prior|above|all|your)\b.{0,20}\b(instructions?|rules|prompts?)\b|\bsystem (override|prompt)\b|\byou are now\b|\bact as (a|an|my)\b|\bdeveloper mode\b|\bjailbreak\b|\b(ignora|olvida)\b.{0,30}\binstrucciones\b/i;
 
 // Background English translations of inbound messages (tests / e2e can wait for them).
 const pendingTranslations = new Set();
@@ -55,8 +60,16 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
   // Any sign of life from the patient stops the non-response ladder.
   if (role === 'patient') outreach.onPatientReply(patient);
 
-  if (role === 'caregiver') {
-    ({ replies, textEn } = await handleCaregiver(patient, { input, buttonData }));
+  const injection = !!input && INJECTION.test(input);
+  if (injection) store.audit('injection_attempt', patientId, { role, text: input.slice(0, 300) });
+
+  const lock = redLock(patient);
+  if (lock) {
+    // Told to call 911 within the hour: re-assert it, whatever they sent, and add it to the
+    // RED incident ("should I take an extra Lasix instead?" is part of the emergency).
+    replies = await redLockReplies(patient, lock, { role, text: photo ? '[photo]' : input ?? buttonLabel(patientId, buttonData) });
+  } else if (role === 'caregiver') {
+    ({ replies, textEn } = await handleCaregiver(patient, { input, buttonData, injection }));
   } else if (photo) {
     // TODO(core P3-13): med-bottle photo reconciliation via llm.completeVision.
     store.audit('photo_received', patientId, { mime: photo.mime, bytes: Math.round((photo.base64?.length ?? 0) * 0.75) });
@@ -75,7 +88,7 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
   } else if (checkin.isActive(patient)) {
     ({ replies, textEn } = await checkin.handle(patient, { text: input, buttonData }));
   } else if (input) {
-    ({ replies, textEn } = await handleFreeText(patient, input));
+    ({ replies, textEn } = await handleFreeText(patient, input, { injection }));
   } else {
     replies = offerCheckin(patient);
   }
@@ -107,12 +120,14 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
 // Patient free text outside a check-in, in safety order:
 // emergency -> start words -> medication-change question -> volunteered symptom
 // (pre-filled check-in) -> question (discharge companion) -> offer a check-in.
-async function handleFreeText(patient, input) {
+async function handleFreeText(patient, input, { injection = false } = {}) {
   const urgent = await checkin.handleUrgentFreeText(patient, input);
   if (urgent) return { replies: urgent };
   if (START_WORDS.test(input.trim())) return { replies: checkin.start(patient) };
   if (companion.DOSING_CHANGE.test(input)) return { replies: (await companion.answer(patient, input)).replies };
   if (Object.keys(parser.parseFreeText(input)).length) return checkin.startWith(patient, input);
+  // A re-programming attempt with no symptom or medicine question: a safe canned reply, no LLM.
+  if (injection) return { replies: [{ text: t(patient.language, 'companion_other'), textEn: t('en', 'companion_other') }] };
   if (companion.looksLikeQuestion(input) || llm.enabled()) {
     const res = await companion.answer(patient, input);
     if (res.kind === 'symptom') return checkin.startWith(patient, input);
@@ -122,15 +137,29 @@ async function handleFreeText(patient, input) {
   return { replies: offerCheckin(patient) };
 }
 
-function caregiverAck(patient) {
-  const first = patient.name.split(' ')[0];
-  const text = `Thanks! You're connected as a caregiver for ${first}. You'll get alerts and a weekly summary here.`;
-  return { text, textEn: text };
+function caregiverAck(patient, lang) {
+  const name = patient.name.split(' ')[0];
+  return { text: t(lang, 'caregiver_ack', { name }), textEn: t('en', 'caregiver_ack', { name }) };
+}
+
+// Everything that arrives while the RED lock holds: 911 again (in the sender's language), and
+// the message goes onto the RED alert instead of starting anything new.
+async function redLockReplies(patient, alert, { role, text }) {
+  const caregiver = role === 'caregiver';
+  const lang = caregiver ? patient.caregiver?.language ?? 'en' : patient.language;
+  const L = hasNative(lang) ? lang : 'en';
+  const note = text && companion.DOSING_CHANGE.test(text) ? 'asks about changing a medicine instead of calling 911' : null;
+  const who = caregiver ? `Caregiver ${patient.caregiver?.name ?? ''}`.trim() : 'Patient';
+  await appendToRedAlert(patient, alert, { who, text, note });
+  const key = caregiver ? 'proxy_red_lock' : 'red_lock';
+  const name = patient.name.split(' ')[0];
+  return [{ text: t(L, key, { name }), textEn: t('en', key, { name }), urgent: true }];
 }
 
 // Caregiver messages (P1-7): answer the check-in for the patient (proxy), report an
-// emergency on their behalf, or just get acknowledged.
-async function handleCaregiver(patient, { input, buttonData }) {
+// emergency on their behalf, ask the nurse about a medicine, ask a question, or just
+// get acknowledged. Nothing a caregiver says is silently dropped.
+async function handleCaregiver(patient, { input, buttonData, injection = false }) {
   const cgLang = patient.caregiver?.language ?? 'en';
   const name = patient.name.split(' ')[0];
   const wantsProxy = buttonData === 'cmd:proxy' || (input && PROXY_WORDS.test(input.trim()));
@@ -148,8 +177,14 @@ async function handleCaregiver(patient, { input, buttonData }) {
   if (input) {
     const urgent = await checkin.handleUrgentFreeText(patient, input, { reporter: 'caregiver', lang: cgLang });
     if (urgent) return { replies: urgent };
+    // "Can I stop her carvedilol? It makes her tired": always to the nurse.
+    if (companion.DOSING_CHANGE.test(input)) return { replies: (await companion.answer(patient, input, { lang: cgLang, reporter: 'caregiver' })).replies };
+    if (!injection && companion.looksLikeQuestion(input)) {
+      const res = await companion.answer(patient, input, { lang: cgLang, reporter: 'caregiver' });
+      if (['answer', 'nurse', 'dosing'].includes(res.kind)) return { replies: res.replies };
+    }
   }
-  return { replies: [caregiverAck(patient)] };
+  return { replies: [caregiverAck(patient, hasNative(cgLang) ? cgLang : 'en')] };
 }
 
 // Called by the scheduler / dashboard to start a check-in proactively.

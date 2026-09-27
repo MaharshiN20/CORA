@@ -44,7 +44,8 @@ test('bad signals raise the live tier and deepen tomorrow\'s check-in', async ()
   // Dorothy (baseline Low) with two missed water pills and an open RED alert
   const dosesDays = [2, 1].map((d) => ({ id: `x${d}`, ts: new Date(Date.now() - d * 86400000).toISOString(), med: 'Furosemide', diuretic: true, taken: false }));
   store.updatePatient('p5', { doses: dosesDays });
-  store.addAlert({ patientId: 'p5', tier: 'RED', reasons: ['Chest pain'] });
+  // 2h old: past the 1h RED lock, so the check-in below runs normally
+  store.addAlert({ patientId: 'p5', tier: 'RED', reasons: ['Chest pain'], ts: new Date(Date.now() - 2 * 3600000).toISOString() });
   const p = store.getPatient('p5');
   const live = risk.scoreRisk(p, signals.getSignals(p));
   assert.notEqual(live.tier, 'Low');
