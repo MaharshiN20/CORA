@@ -166,3 +166,10 @@ test('core/risk.js recordRisk (what aireview.js calls) appends to history', asyn
   // Never throws into the caller: a broken patient resolves to null.
   assert.equal(await risk.recordRisk(null), null);
 });
+
+test('unknown baseline values (null/undefined) add no points', () => {
+  const unknown = { id: 'u', age: null, profile: { priorAdmits12mo: null, ejectionFraction: null, lengthOfStay: null } };
+  assert.deepEqual(risk.scoreRisk(unknown).factors, []); // `null <= 30` is true in JS: must not count as low EF
+  assert.deepEqual(risk.scoreRisk({ id: 'v' }).factors, []); // no profile at all
+  assert.deepEqual(risk.scoreRisk({ id: 'w', age: 50, profile: { ejectionFraction: 25 } }).factors.map((f) => f.label), ['Ejection fraction ≤ 30%']);
+});

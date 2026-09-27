@@ -1,0 +1,26 @@
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "entry": [
+    { "resource": { "resourceType": "Condition", "id": "c-1",
+      "clinicalStatus": { "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "active" }] },
+      "code": { "coding": [{ "system": "http://snomed.info/sct", "code": "84114007", "display": "Heart failure" }], "text": "Heart failure with reduced ejection fraction" },
+      "subject": { "reference": "Patient/hb-rosa-1" } } },
+    { "resource": { "resourceType": "Condition", "id": "c-2",
+      "clinicalStatus": { "coding": [{ "code": "active" }] },
+      "code": { "coding": [{ "system": "http://hl7.org/fhir/sid/icd-10-cm", "code": "N18.3", "display": "Chronic kidney disease, stage 3" }] },
+      "subject": { "reference": "Patient/hb-rosa-1" } } },
+    { "resource": { "resourceType": "Condition", "id": "c-3",
+      "clinicalStatus": { "coding": [{ "code": "active" }] },
+      "code": { "text": "Type 2 diabetes mellitus" },
+      "subject": { "reference": "Patient/hb-rosa-1" } } },
+    { "resource": { "resourceType": "Condition", "id": "c-4",
+      "clinicalStatus": { "coding": [{ "code": "resolved" }] },
+      "code": { "coding": [{ "system": "http://snomed.info/sct", "code": "13645005", "display": "Chronic obstructive lung disease" }] },
+      "subject": { "reference": "Patient/hb-rosa-1" } } },
+    { "resource": { "resourceType": "Condition", "id": "c-5",
+      "clinicalStatus": { "coding": [{ "code": "active" }] },
+      "code": { "coding": [{ "system": "http://snomed.info/sct", "code": "38341003", "display": "Hypertensive disorder" }], "text": "Hypertension" },
+      "subject": { "reference": "Patient/hb-rosa-1" } } }
+  ]
+}

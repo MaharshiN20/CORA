@@ -9,8 +9,11 @@ async function req(method, path, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
-    const err = new Error(`${method} ${path} -> ${res.status}`);
+    // Keep the JSON error body ({ error, ... }) so callers can show it or act on it.
+    const body = await res.json().catch(() => null);
+    const err = new Error(body?.error ?? `${method} ${path} -> ${res.status}`);
     err.status = res.status;
+    err.body = body;
     throw err;
   }
   return res.json();
@@ -39,6 +42,10 @@ export const api = {
   demoReset: () => req('POST', '/demo/reset'),
   scenarios: () => req('GET', '/demo/scenarios'),
   runScenario: (name) => req('POST', `/demo/scenario/${encodeURIComponent(name)}`),
+  // EHR import (M5)
+  fhirSearch: (name) => req('GET', `/fhir/search${qs({ name })}`),
+  fhirPreview: (fhirId) => req('GET', `/fhir/preview/${encodeURIComponent(fhirId)}`),
+  fhirImport: (fhirPatientId) => req('POST', '/fhir/import', { fhirPatientId }),
   // insights (M2)
   insight: (name, params = {}) => req('GET', `/insights/${name}${qs(params)}`),
 };

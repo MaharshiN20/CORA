@@ -1,0 +1,11 @@
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "total": 2,
+  "entry": [
+    { "resource": { "resourceType": "Patient", "id": "hb-rosa-1", "name": [{ "use": "official", "family": "Delgado", "given": ["Rosa", "María"] }], "gender": "female", "birthDate": "1948-03-12",
+      "communication": [{ "language": { "coding": [{ "code": "es-MX" }] }, "preferred": true }] } },
+    { "resource": { "resourceType": "Patient", "id": "hb-luis-3", "name": [{ "family": "Delgado", "given": ["Luis"] }], "birthDate": "1961" } },
+    { "resource": { "resourceType": "OperationOutcome", "issue": [{ "severity": "information", "code": "informational" }] } }
+  ]
+}

@@ -51,9 +51,12 @@ function Header({ p }) {
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div>
-        <h2 className="text-2xl font-bold">{p.name}</h2>
+        <h2 className="text-2xl font-bold">
+          {p.name}
+          {p.source === 'fhir' && <span className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 align-middle text-xs font-medium text-blue-700">from EHR</span>}
+        </h2>
         <div className="text-sm text-slate-500">
-          {p.age}y · {languageName(p.language)} · day {s.daysSinceDischarge ?? '—'} since discharge ({shortDate(p.dischargedAt)}) · dry weight {p.dryWeightLb ?? '—'} lb
+          {p.age != null ? `${p.age}y` : 'age unknown'} · {languageName(p.language)} · day {s.daysSinceDischarge ?? '—'} since discharge ({shortDate(p.dischargedAt)}) · dry weight {p.dryWeightLb ?? '—'} lb
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -160,7 +163,7 @@ function CheckinTimeline({ p }) {
 }
 
 // The explainability panel: every decision with its inputs, from the audit log + alert reasons.
-const AUDIT_LABEL = { triage: '🩺 Triage', escalation: '🚨 Escalation', nurse_action: '👩‍⚕️ Nurse', enroll: '📝 Enrolled', device_reading: '📟 Device', photo_received: '📷 Photo', outreach: '📣 Outreach', outreach_recovered: '↩️ Recovered', refill_nudge: '💊 Refill nudge', refill_barrier: '💊 Refill barrier', llm_parse: '🤖 AI parse', ai_review: '🤖 AI review' };
+const AUDIT_LABEL = { triage: '🩺 Triage', escalation: '🚨 Escalation', nurse_action: '👩‍⚕️ Nurse', enroll: '📝 Enrolled', device_reading: '📟 Device', photo_received: '📷 Photo', outreach: '📣 Outreach', outreach_recovered: '↩️ Recovered', refill_nudge: '💊 Refill nudge', refill_barrier: '💊 Refill barrier', llm_parse: '🤖 AI parse', ai_review: '🤖 AI review', fhir_import: '🏥 EHR import', risk: '📈 Risk' };
 
 export function auditSummary(e) {
   const d = e.data ?? {};
@@ -175,6 +178,7 @@ export function auditSummary(e) {
   if (d.med) parts.push(d.med);
   if (d.barrier) parts.push(d.barrier);
   if (d.note) parts.push(`“${d.note}”`);
+  if (d.fhirId) parts.push(`FHIR ${d.fhirId}${d.conditions?.length ? ` · ${d.conditions.join(', ')}` : ''}`);
   return parts.join(' · ') || Object.keys(d).slice(0, 3).map((k) => `${k}: ${typeof d[k] === 'object' ? '…' : d[k]}`).join(', ');
 }
 

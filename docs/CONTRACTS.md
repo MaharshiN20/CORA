@@ -163,7 +163,9 @@ Other collections:
 | `POST /webhooks/twilio/sms` · `/whatsapp` | K | coming: K5 |
 | `GET /api/insights/impact` · `/engagement` · `/equity` · `/roi` | M | `?source=cohort|live|all` (default all). `/roi` takes `discharges, readmitRate, costPerReadmit, reduction, penaltyPct, medicareRevenue, tcmContactRate, tcmHighComplexityShare, rpmEligibleRate`; TCM/RPM rates default to measured values |
 | `POST /api/insights/cohort/regenerate` | M | `{ seed?, size? }` → `{ ok, seed, size }`. The synthetic cohort lives in `store.collection('cohort')`, never in patients |
-| `POST /api/fhir/import` | M | coming: M5 |
+| `GET /api/fhir/search?name=` | M | `[{ fhirId, name, age, birthDate, gender, language, importedAs }]` from the FHIR R4 server (`FHIR_BASE_URL`, default public HAPI sandbox; read-only) |
+| `GET /api/fhir/preview/:fhirId` | M | `{ data, summary }`: what an import would create (meds, conditions, warnings); saves nothing |
+| `POST /api/fhir/import` | M | `{ fhirPatientId }` → 201 `{ patient, summary }` via `createPatient({ ..., source: 'fhir' })`; 409 `{ patientId }` if already imported; 404 / 422 (no name) / 502 (EHR down) |
 
 ## 5. LLM chain (core-internal, but everyone may call it)
 ```js

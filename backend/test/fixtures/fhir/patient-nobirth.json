@@ -1,0 +1,7 @@
+{
+  "resourceType": "Patient",
+  "id": "hb-ahmed-2",
+  "name": [{ "text": "Ahmed Warsame" }],
+  "gender": "male",
+  "communication": [{ "language": { "coding": [{ "system": "urn:ietf:bcp:47", "code": "so" }], "text": "Somali" }, "preferred": true }]
+}

@@ -8,6 +8,7 @@ import { useHealth } from '../App.jsx';
 import { sortWorklist, filterWorklist, KINDS, TIER_RANK } from '../lib/worklist.js';
 import { languageName } from '../lib/format.js';
 import AlertCard from '../components/AlertCard.jsx';
+import ImportDialog from '../components/ImportDialog.jsx';
 import { Card, Empty, TierBadge, Button, TREND_ICON } from '../components/ui.jsx';
 
 const LAST_TIER_RANK = { RED: 0, YELLOW: 1, GREEN: 2 };
@@ -77,8 +78,17 @@ function PatientPanel({ patients }) {
   const sorted = [...patients].sort(
     (a, b) => (LAST_TIER_RANK[a.lastTier] ?? 3) - (LAST_TIER_RANK[b.lastTier] ?? 3) || (b.riskScore ?? 0) - (a.riskScore ?? 0),
   );
+  const [importing, setImporting] = useState(false);
   return (
-    <Card title={`Patients (${patients.length})`}>
+    <Card
+      title={`Patients (${patients.length})`}
+      action={
+        <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => setImporting(true)}>
+          ⤓ Import from EHR
+        </Button>
+      }
+    >
+      {importing && <ImportDialog onClose={() => setImporting(false)} />}
       <ul className="-mx-2 divide-y divide-slate-100">
         {sorted.map((p) => (
           <li key={p.id}>
@@ -86,7 +96,7 @@ function PatientPanel({ patients }) {
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{p.name}</div>
                 <div className="text-xs text-slate-500">
-                  {p.age}y · {languageName(p.language)} · day {p.signals?.daysSinceDischarge ?? '—'}
+                  {p.age != null ? `${p.age}y` : 'age unknown'} · {languageName(p.language)} · day {p.signals?.daysSinceDischarge ?? '—'}
                   {p.signals?.missedCheckins7d > 0 && <span className="text-amber-700"> · {p.signals.missedCheckins7d} missed</span>}
                 </div>
               </div>
