@@ -44,7 +44,10 @@ export async function sendNurseMessage(patientId, { text, template, time, from }
 
   const delivered = await channels.sendToPatient(p, { text: msg.text, textEn: msg.textEn });
   store.audit('nurse_message', p.id, { from: nurse, template: template ?? null, delivered, translated: msg.translated ?? null });
-  return { delivered, text: msg.text, textEn: msg.textEn };
+  // translated: false = a non-English patient got the English text (no translator available);
+  // delivered: false = logged in the chat but the patient isn't linked to a messaging app.
+  const translated = p.language === 'en' ? null : template ? hasNative(p.language) || msg.text !== msg.textEn : !!msg.translated;
+  return { delivered, translated, language: p.language, text: msg.text, textEn: msg.textEn };
 }
 
 export async function notifyAck(alert, by) {

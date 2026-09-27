@@ -24,6 +24,8 @@ before(async () => {
 beforeEach(async () => {
   jobs.stop();
   store.reset();
+  // These tests reason about fresh reminder doses; seeded history is covered in risk-live.test.js.
+  for (const p of store.listPatients()) store.updatePatient(p.id, { doses: [] });
   const six = planning.occurrences(['06:00'], clock.now(), clock.now() + clock.DAY)[0].at;
   clock.advance(six - clock.now());
   await jobs.start({ intervalMs: 0 });

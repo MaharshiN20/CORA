@@ -93,3 +93,37 @@ test('INFO tasks (refill/SDOH) do not send an ack notice', async () => {
   await send('PATCH', `/api/alerts/${t.id}`, { status: 'acknowledged', by: 'Nurse Kim' });
   assert.equal(store.listMessages('p5').length, before);
 });
+
+// ---------- audit fixes: honest delivery/translation status, false alarms clear the tier ----------
+test('the API says when a message went out untranslated or undelivered', async () => {
+  const es = await nurse.sendNurseMessage('p1', { text: 'An ambulance is on the way.', from: 'Nurse Kim' });
+  assert.equal(es.translated, false); // no LLM: the English body was kept
+  assert.equal(es.delivered, false); // Maria isn't linked to Telegram in tests
+  assert.equal(es.language, 'es');
+  const en = await nurse.sendNurseMessage('p5', { text: 'Hi', from: 'Nurse Kim' });
+  assert.equal(en.translated, null); // English patient: nothing to translate
+});
+
+test('resolving a triage alert as a false alarm clears the patient tier', async () => {
+  const a = store.addAlert({ patientId: 'p5', tier: 'RED', reasons: ['Chest pain'] });
+  store.updatePatient('p5', { lastTier: 'RED' });
+  const r = await send('PATCH', `/api/alerts/${a.id}`, { status: 'resolved', outcome: 'false_positive', by: 'Nurse Kim' });
+  assert.equal(r.status, 200);
+  assert.equal(store.getPatient('p5').lastTier, 'GREEN');
+  assert.ok(store.listAudit('p5').some((e) => e.type === 'tier_cleared'));
+});
+
+test('a false alarm keeps any other open triage tier', async () => {
+  store.addAlert({ patientId: 'p5', tier: 'YELLOW', reasons: ['Weight up'] });
+  const red = store.addAlert({ patientId: 'p5', tier: 'RED', reasons: ['Chest pain'] });
+  store.updatePatient('p5', { lastTier: 'RED' });
+  await send('PATCH', `/api/alerts/${red.id}`, { status: 'resolved', outcome: 'false_positive' });
+  assert.equal(store.getPatient('p5').lastTier, 'YELLOW');
+});
+
+test('a real problem resolved does not rewrite history', async () => {
+  const a = store.addAlert({ patientId: 'p5', tier: 'RED', reasons: ['Chest pain'] });
+  store.updatePatient('p5', { lastTier: 'RED' });
+  await send('PATCH', `/api/alerts/${a.id}`, { status: 'resolved', outcome: 'true_positive' });
+  assert.equal(store.getPatient('p5').lastTier, 'RED');
+});

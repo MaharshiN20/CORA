@@ -56,3 +56,21 @@ test('bad signals raise the live tier and deepen tomorrow\'s check-in', async ()
   await agent.handleInbound({ patientId: 'p5', buttonData: 'ci:breath:normal' });
   assert.equal(store.getPatient('p5').checkin.state, 'orthopnea'); // Med/High plans ask about pillows; Low didn't
 });
+
+test('seed data is internally consistent: no missed check-ins, distinct meds, dose history, labs', async () => {
+  const meds = new Set();
+  for (const p of store.listPatients()) {
+    const s = signals.getSignals(p);
+    assert.equal(s.missedCheckins7d, 0, `${p.name} shows missed check-ins`);
+    assert.ok(p.checkins.length >= 1, `${p.name} has no check-ins`);
+    assert.ok(p.doses.length > 0 && s.adherence7d != null, `${p.name} has no dose history`);
+    assert.ok(p.labs?.potassium && p.labs?.creatinine && p.contactPhone, `${p.name} lacks labs/phone`);
+    meds.add(p.meds.map((m) => m.name).join(','));
+    // every prescription is for a med the patient takes
+    for (const rx of p.prescriptions ?? []) assert.ok(p.meds.some((m) => m.name === rx.med), `${p.name}: ${rx.med}`);
+  }
+  assert.ok(meds.size >= 4, 'patients should not all share one regimen');
+  // Maria's story: refill not picked up and two missed water pills
+  const maria = store.getPatient('p1');
+  assert.equal(maria.doses.filter((d) => d.diuretic && d.taken === false).length, 2);
+});

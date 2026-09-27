@@ -88,8 +88,20 @@ api.patch('/alerts/:id', async (req, res) => {
   if (!a) return res.status(404).json({ error: 'not found' });
   store.audit('nurse_action', a.patientId, { alertId: a.id, ...patch });
   if (status === 'acknowledged') await notifyAck(a, by ?? assignee);
+  if (status === 'resolved' && outcome === 'false_positive' && (a.kind ?? 'triage') === 'triage') clearFalseAlarmTier(a);
   res.json(store.getAlert(a.id));
 });
+
+// A nurse marked a triage alert a false alarm: the patient list shouldn't keep showing that
+// tier. lastTier becomes the highest tier among their other open triage alerts, else GREEN.
+function clearFalseAlarmTier(alert) {
+  const p = store.getPatient(alert.patientId);
+  if (!p || p.lastTier !== alert.tier) return;
+  const open = store.listAlerts().filter((x) => x.patientId === p.id && x.id !== alert.id && (x.kind ?? 'triage') === 'triage' && x.status !== 'resolved');
+  const lastTier = open.some((x) => x.tier === 'RED') ? 'RED' : open.some((x) => x.tier === 'YELLOW') ? 'YELLOW' : 'GREEN';
+  store.updatePatient(p.id, { lastTier });
+  store.audit('tier_cleared', p.id, { alertId: alert.id, from: alert.tier, to: lastTier, reason: 'false_positive' });
+}
 
 // POST /api/patients/:id/message { text } | { template: 'call_scheduled', time } (+ from?)
 // Nurse -> patient via their channel, translated to the patient's language.

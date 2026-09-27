@@ -92,6 +92,7 @@ test('enroll: createPatient fills defaults and validates', () => {
 
 // ---------- signals ----------
 test('signals: stable shape with nulls for missing data', () => {
+  store.updatePatient('p1', { doses: [] }); // no dose data -> null, never 0
   const s = signals.getSignals(store.getPatient('p1'));
   for (const k of ['daysSinceDischarge', 'missedCheckins7d', 'adherence7d', 'weightDelta24h', 'weightDelta7d', 'openAlerts', 'sdohFlags', 'lessonScore', 'rpmDays30']) {
     assert.ok(k in s, `missing ${k}`);
