@@ -55,7 +55,7 @@
 
 ## P3: Platform
 - [ ] **P3-12 Condition packs**: move CHF steps, prompts, rules and advice to `conditions/chf/`. Keep `core/triage.js` as a re-export so the existing tests pass unchanged. Add `conditions/copd/` (SpO2, inhaler use, sputum colour, breathlessness scale) with its own triage tests, and `patient.condition` selects the pack.
-- [ ] **P3-13 Med-bottle photo reconciliation**:
+- [ ] **P3-13 Med-bottle photo reconciliation** (half done: `llm.completeVisionJSON` + provider `vision` flags landed with scale-photo reading, see Audit fixes; the med-bottle compare is still open):
   - Add `llm.completeVision` (Claude image blocks; Ollama/LM Studio OpenAI-style `image_url` data URIs; prefer VL models).
   - Extract `{ drug, strength, directions }`, compare against `patient.meds`, and flag a mismatch or unknown drug → `addTask` kind `med_discrepancy`.
   - Without a vision model, ask the patient to type the label.
@@ -63,11 +63,21 @@
 - [ ] **P3-14 Device readings → triage**: run triage on `POST /api/devices/readings` (SpO2 < 90 RED, weight trend), merge device and self-reported weights, and the RPM day count in signals. Test: a device SpO2 of 88 → RED alert + caregiver.
 
 ## P4: Demo readiness
-- [ ] **P4-15 Scenarios** `core/scenarios/`: `maria` (5-day decompensation), `johnson` (refill barrier), `nguyen` (silent → ladder → caregiver proxy), `judge` (fresh demo patient). `GET /api/demo/scenarios` + `POST /api/demo/scenario/:name`, deterministic.
+- [x] **P4-15 Scenarios** `core/scenarios.js`: `dorothy` (stable GREEN), `maria` (Spanish fluid gain → YELLOW + standing order), `thanh` (fainted → RED + caregiver + RED lock), `anil` (silent → reminder → caregiver). `GET /api/demo/scenarios` + `POST /api/demo/scenario/:name`, deterministic, paced ~1.2 s/step, `?fast=1` for tests. (The Johnson refill-barrier story stays covered by the e2e run; judge mode is Krish's `DEMO_<LANG>` link.)
 - [ ] **P4-16 E2E for every scenario** (extend P1-8), running both with no LLM and with a local LLM.
-- [ ] **P4-17 Docs**: `docs/DEMO_SCRIPT.md` (3-minute pitch + click path + fallback plan), `docs/SAFETY_PRIVACY.md`, `docs/ARCHITECTURE.md` (with a diagram).
+- [ ] **P4-17 Docs**: `docs/DEMO_SCRIPT.md` ✅ (3-minute pitch + click path + fallback plan), `docs/SAFETY_PRIVACY.md`, `docs/ARCHITECTURE.md` (with a diagram).
 - [x] **Integration 1** (dashboard + demo console + API + scheduler + AI chain, driven headless in Edge): Maria's story end to end, ack/message/resolve, +1 day ladder, caregiver proxy. 8 gaps fixed (see commit). Live Telegram leg still to run with a bot token + a real phone.
 - [ ] **Integration 2** (everything, incl. Telegram on real phones + judge QR): full dress rehearsal, fix gaps, update CONTRACTS.md.
+
+## Audit fixes (external full-stack audit, Sep 27 2026) ✅
+Prannav approved fixing across all lanes in one pass (Krish/Maharshi FYI in REQUESTS.md).
+- [x] Check-in safety: red flags asked first; "usual 2 pillows" ≠ orthopnea; orthopnea vs PND split; "2000" never becomes 200; weights in words; volunteered symptoms acknowledged; "not yet" ≠ missed pill; med questions mid-check-in → nurse; empty simulate → 400
+- [x] RED lock (1 h / until resolved), med questions merged into the RED incident, caregiver med requests + questions, prompt-injection audit
+- [x] Evidence-checked LLM extraction, 4 s chain deadline, `parse_trace` audit
+- [x] Realistic seed (history spans the stay, distinct regimens, dose history, labs, phone); false alarm clears `lastTier`; nurse message reports translated/delivered
+- [x] Scripted scenarios (P4-15), standing diuretic order HF-02 (protocol file), FHIR export + enroll guard
+- [x] Dashboard: self-healing live data, simulator (typing dots, scroll, errors, photo), triage-vs-risk badges, RED card/banner/toast, vitals strip, real projector mode, Impact honesty, protocol card, Judge debug drawer (D), Export to EHR, silent-alarm countdown
+- [x] Telegram typing indicator; scale photos read by a vision model (always confirmed); vi/hi templates regenerated
 
 ## Definition of done (every task)
 Tests written and green, `npm run check` green, a manual check noted in the commit body, box ticked here, then commit `[core] …` and push.

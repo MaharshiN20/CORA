@@ -29,7 +29,9 @@ Button = { label, data }                     // data ≤ 64 bytes, returned as b
 - Button data prefixes the core emits: `ci:*` (check-in), `cmd:checkin`, `med:*` (medication confirmations, work any time), `rx:*` (refill barriers), `cmd:proxy` (caregiver answers for the patient, sent to caregivers), `lesson:*` (teach-back quiz answers), `sdoh:*` (social-needs screen), and later `sdoh:*`, `lesson:*`, `lang:*`. Pass every one through untouched.
 - Caregiver messages: call `handleInbound({ role: 'caregiver', patientId })` with the *patient's* id. The core handles:
   `cmd:proxy` button or "check in"/"chequeo" → proxy check-in (questions in the caregiver's language, answers tagged `reporter: 'caregiver'`);
-  `ci:*` taps during that proxy check-in; emergency phrases ("he has chest pain") → RED escalation + 911 reply to the caregiver; anything else → acknowledgement.
+  `ci:*` taps during that proxy check-in; emergency phrases ("he has chest pain") → RED escalation + 911 reply to the caregiver; a medicine-change request → YELLOW dosing task (`reporter: caregiver`); a question → discharge companion in the caregiver's language; anything else → acknowledgement (i18n `caregiver_ack`).
+- Check-in `ci:*` values: `ci:rf:none|chest|dizzy|confused|fainted`, `ci:breath:normal|exertion|rest`, `ci:orth:pillows|pnd|no` (legacy `ci:orth:yes` = pillows), `ci:swell:none|mild|worse`, `ci:diu:yes|later|no`, `ci:spo2:none`, `ci:wconf:yes|no`.
+- A photo during the weight question is read by a vision model (if any) and always confirmed with `ci:wconf:*`; other photos are saved for the care team.
   Replies go back to the caregiver chat, in `caregiver.language`.
 
 ### Outbound: `channels/index.js` (Krish owns the implementation, core calls it)
@@ -109,8 +111,13 @@ The patient object (from `GET /api/patients/:id`, which also adds `signals`, `ad
   doses: [{ id, ts, med, dose, diuretic, taken: true|false|null, source: 'reminder'|'checkin', reminderId?, respondedAt?, confirmedBy? }],
                                          // taken=null = unanswered reminder (never counted as missed)
   meds: [{ name, dose, times, diuretic? }],
+  contactPhone?,                         // display only (tap-to-call on the worklist); `phone` is the SMS link
+  labs?: { potassium, creatinine, at, source },   // standing-order eligibility (HF-02)
+  vitals?: [{ ts, sbp, dbp, source }],   // e.g. a typed "118/72"
   prescriptions: [{ med, expectedPickup, pickedUpAt, barrier?: 'transport'|'cost'|'other', barrierAt?, nudges?: [iso], escalatedAt? }],
   checkin: { state, answers, startedAt, reporter: 'patient'|'caregiver', lang? }, checkins: [{ ts, answers, tier, flags, weight, reporter }],
+                                         // step order: redflags -> weight -> breath -> orthopnea -> swelling -> diuretic -> spo2
+                                         // answers may include pnd (woke up breathless), diureticAsked ("not yet today"), weightPending
   caregiver: { name, relation, language, chatId },
   dischargeInstructions,                 // optional hospital free text
   carePlan: { fluidLimitL, sodiumMg },   // drives the personalised discharge instructions (companion)
@@ -126,11 +133,13 @@ Other collections:
 |---|---|
 | `messages` | `{ id, ts, patientId, direction: 'in'\|'out', from?, to: 'patient'\|'caregiver'\|'nurse', text, textEn?, buttons?, channel? }` |
 | `alerts` (nurse worklist) | `{ id, ts, patientId, kind, tier: 'RED'\|'YELLOW'\|'INFO', title, reasons[], status, dueBy, assignee, outcome, note?, history: [{ ts, status, by }], source?, priority?, reporter?: 'patient'\|'caregiver', med?, barrier? }`. AI-review alerts (`source: 'ai_review'`, YELLOW, only ever on a GREEN rules day) carry `nurseSummary`, `suggestedActions[]`, `readmissionRisk`, `model`; reasons quote the patient's words as evidence. SDOH tasks (kind `sdoh`, INFO) carry `needs[]` (the flags). Question tasks (discharge companion) carry `question` (original text) and `dosing` (true = medication-change question, YELLOW). Unreachable tasks (outreach ladder, YELLOW) carry `silentDays`. Refill tasks carry `med` + `barrier` (`transport\|cost\|other\|no_response`) |
-| `audit` | `{ id, ts, type, patientId, data }`. Types include `triage`, `escalation`, `nurse_action`, `enroll`, `device_reading`, `photo_received`, `checkin_sent`, `checkin_abandoned`, `med_reminder`, `med_response`, `refill_nudge`, `refill_barrier`, `refill_picked_up`, `outreach` (`data.event`/`data.rung`), `outreach_recovered` (`data.afterRung`: the patient replied after the ladder fired, a recovery metric), `nurse_message`, `nurse_ack_notice`, `digest`, `ai_review` (`data.rulesTier/aiTier/finalTier/escalate/readmissionRisk/model`), `sdoh` (`data.event`: started\|answer\|completed), `lesson_sent`, `lesson_answer` (`data.lesson/correct/attempt`), `companion` (`data.kind`: answer\|nurse\|dosing, `data.via`: llm\|keywords, `data.sectionIds`), `job_failed`. `outreach_recovered.data.via` is `patient` or `caregiver` |
+| `audit` | `{ id, ts, type, patientId, data }`. New: `parse_trace` (every check-in input: `{ text|button, step, rules, llm: { fields (with evidence), dropped[], unverified[], timedOut, ms } | null, answers, outcome?: { tier, flags } }`, the Judge debug drawer), `red_lock` (message during the RED lock), `injection_attempt`, `protocol_applied`, `tier_cleared` (false alarm), `scenario`, `scale_photo`, `vital_reported`. Types include `triage`, `escalation`, `nurse_action`, `enroll`, `device_reading`, `photo_received`, `checkin_sent`, `checkin_abandoned`, `med_reminder`, `med_response`, `refill_nudge`, `refill_barrier`, `refill_picked_up`, `outreach` (`data.event`/`data.rung`), `outreach_recovered` (`data.afterRung`: the patient replied after the ladder fired, a recovery metric), `nurse_message`, `nurse_ack_notice`, `digest`, `ai_review` (`data.rulesTier/aiTier/finalTier/escalate/readmissionRisk/model`), `sdoh` (`data.event`: started\|answer\|completed), `lesson_sent`, `lesson_answer` (`data.lesson/correct/attempt`), `companion` (`data.kind`: answer\|nurse\|dosing, `data.via`: llm\|keywords, `data.sectionIds`), `job_failed`. `outreach_recovered.data.via` is `patient` or `caregiver` |
 | `readings` | `{ id, ts, patientId, type: 'weight'\|'spo2'\|'hr', value, source: 'self'\|'device'\|'caregiver', device? }` |
 | custom | `store.collection('<name>')` for lane-owned data (e.g. Maharshi's `cohort`). Call `store.persist()` after mutating |
 
-- `alert.kind`: `triage | unreachable | refill | sdoh | question | med_discrepancy | device`
+- `alert.kind`: `triage | unreachable | refill | sdoh | question | med_discrepancy | device | protocol_followup`
+- RED lock: for 1 h after a RED triage alert (or until it's resolved) every inbound message is answered with "call 911" and appended to that alert's `reasons`; routine jobs are skipped (`escalation.redLock`, scheduler `skipIf`)
+- `GET /api/alerts` adds `protocolCheck` (see HF-02 below) to open YELLOW triage alerts that trigger a standing order; an applied one carries `protocol: { id, version, appliedAt, by, followUpTaskId }`
 - `alert.status`: `open → acknowledged → contacted → resolved`
 - `alert.outcome`: `true_positive | false_positive | ed_avoided | readmitted | other`
 - SLA (`dueBy`): RED 15 min, YELLOW 4 h, INFO 24 h
@@ -148,36 +157,41 @@ Other collections:
 | `GET /api/patients/:id` | P | patient + `signals`, `adherence`, `messages`, `alerts`, `readings`, `audit` |
 | `POST /api/patients` | P | `createPatient` body → 201 |
 | `POST /api/patients/:id/checkin` | P | start a check-in (sends via channel) |
-| `POST /api/patients/:id/simulate` | P | `{ text?, buttonData?, role?, photo? }` → `Reply[]` (dashboard phone simulator) |
-| `POST /api/patients/:id/message` | P | nurse → patient: `{ text, from? }` or `{ template: 'call_scheduled', time, from? }` → `{ delivered, text, textEn }`. Translated to the patient's language (English body kept if no LLM); 400 on empty/unknown template/missing time |
+| `POST /api/patients/:id/simulate` | P | `{ text?, buttonData?, role?, photo? }` → `Reply[]` (dashboard phone simulator); 400 when all are empty |
+| `POST /api/patients/:id/message` | P | nurse → patient: `{ text, from? }` or `{ template: 'call_scheduled', time, from? }` / `{ template: 'ask_bp' }` → `{ delivered, translated (null for en, false = English body sent), language, text, textEn }`. Translated to the patient's language (English body kept if no LLM); 400 on empty/unknown template/missing time |
 | `GET /api/patients/:id/digest?lang=` · `POST /api/patients/:id/digest` | P | weekly caregiver digest: preview `{ text }` / send now → `{ sent, delivered?, text?, textEn?, reason? }` (auto-sent Sundays 18:00) |
 | `POST /api/patients/:id/sdoh/start` | P | send the 4-question social-needs screen now → `{ sent }` (auto-sent at the first noon ≥24h after discharge, once) |
 | `POST /api/patients/:id/prescriptions/:med/picked-up` | P | `{ by? }` → updated prescription; resolves open refill tasks (pharmacy-feed stand-in / dashboard button) |
 | `GET /api/alerts` | P | worklist, newest first |
-| `PATCH /api/alerts/:id` | P | `{ status?, outcome?, assignee?, note?, by? }`. First `acknowledged` on a RED/YELLOW triage/unreachable/device/question alert sends the patient "<nurse> saw your update" and sets `patientNotifiedAt` |
+| `PATCH /api/alerts/:id` | P | `{ status?, outcome?, assignee?, note?, by? }`. First `acknowledged` on a RED/YELLOW triage/unreachable/device/question alert sends the patient "<nurse> saw your update" and sets `patientNotifiedAt`. Resolving a triage alert as `false_positive` recomputes the patient's `lastTier` |
+| `POST /api/alerts/:id/protocol` | P | `{ by? }` → `{ alert, task, message, fhir: { medicationRequest, communicationRequest } }`; 409 `{ error, checks }` if not eligible. Standing order HF-02 (`conditions/chf/protocols/hf-02.json`, clinic-authored; demo values). `protocolCheck` = `{ protocol: { id, version, title, authoredBy, demo, disclaimer }, triggered, eligible, applied?, checks: [{ id, label, status: pass\|fail\|unknown, detail, required, action?: 'ask_bp' }] }` |
 | `POST /api/devices/readings` | P | `{ patientId, type, value, device?, ts? }` → 201 (triage on readings, coming: P3-14) |
 | `GET /api/demo/clock` · `POST /api/demo/reset` | P | demo clock; reset reseeds + replans jobs |
 | `POST /api/demo/advance {hours}` | P | moves the clock, plans the skipped window, runs due jobs → `{ now, offsetMs, jobs: { ran, missed, failed } }` |
 | `GET /api/demo/jobs?patientId=&status=&kind=` | P | scheduled jobs `{ id, key, kind, patientId, dueAt, status: pending\|running\|done\|missed\|failed\|cancelled, result?, error? }` |
 | `POST /api/demo/tick` | P | run due jobs now → `{ ran, missed, failed }` |
-| `GET /api/demo/scenarios` · `POST /api/demo/scenario/:name` | P | list is `[]` until P4-15. Render whatever it returns |
+| `GET /api/demo/scenarios` · `POST /api/demo/scenario/:name[?fast=1]` | P | `[{ name, title, description, tier: GREEN\|YELLOW\|RED\|SILENT, patientId, steps }]`; POST resets that patient to the seed and plays the conversation in the background (~1.2 s/step) → `{ name, patientId, steps, delayMs }`; `fast=1` plays instantly; 409 while that patient's scenario runs |
 | `GET /api/join` | K | `{ bot, links: [{ language, name, nativeName, url }] }` for QR codes |
 | `POST /webhooks/twilio/sms` · `/whatsapp` | K | coming: K5 |
 | `GET /api/insights/impact` · `/engagement` · `/equity` · `/roi` | M | `?source=cohort|live|all` (default all). `/roi` takes `discharges, readmitRate, costPerReadmit, reduction, penaltyPct, medicareRevenue, tcmContactRate, tcmHighComplexityShare, rpmEligibleRate`; TCM/RPM rates default to measured values |
 | `POST /api/insights/cohort/regenerate` | M | `{ seed?, size? }` → `{ ok, seed, size }`. The synthetic cohort lives in `store.collection('cohort')`, never in patients |
 | `GET /api/fhir/search?name=` | M | `[{ fhirId, name, age, birthDate, gender, language, importedAs }]` from the FHIR R4 server (`FHIR_BASE_URL`, default public HAPI sandbox; read-only) |
 | `GET /api/fhir/preview/:fhirId` | M | `{ data, summary }`: what an import would create (meds, conditions, warnings); saves nothing |
-| `POST /api/fhir/import` | M | `{ fhirPatientId }` → 201 `{ patient, summary }` via `createPatient({ ..., source: 'fhir' })`; 409 `{ patientId }` if already imported; 404 / 422 (no name) / 502 (EHR down) |
+| `POST /api/fhir/import` | M | `{ fhirPatientId, override? }` → 201 `{ patient, summary }` via `createPatient({ ..., source: 'fhir' })`; 409 `{ patientId }` if already imported; 422 `{ needsOverride, reasons }` for no heart-failure diagnosis / under 18 unless `override: true`; 404 / 422 (no name) / 502 (EHR down) |
+| `GET /api/fhir/export/:patientId` | M | FHIR R4 collection Bundle preview (Patient, weight/SpO2/BP Observations, Flag, Tasks); nothing is sent |
 
 ## 5. LLM chain (core-internal, but everyone may call it)
 ```js
 import * as llm from '../core/llm/index.js';
 llm.enabled() → boolean; llm.status() → { provider, model, available }
 llm.complete(system, user, maxTokens?, { json?, schema?, model?, timeoutMs? }) → Promise<string | null>
-llm.completeJSON(system, user, { maxTokens?, schema?, model?, timeoutMs? }) → Promise<object | null>
+llm.completeJSON(system, user, { maxTokens?, schema?, model?, timeoutMs?, deadlineMs? }) → Promise<object | null>
 // chain: Claude -> Gemini -> Ollama -> LM Studio; `model` is used only by a provider that has it;
 // 503/429 are retried once per provider, then the next provider is tried
-llm.completeVision(system, prompt, { base64, mime }) → Promise<string | null>   // coming: P3-13
+// deadlineMs caps the WHOLE chain (patient-facing parsing uses 4 s, then rules take over)
+llm.visionEnabled() → boolean   // some provider can read images (Gemini, Claude, local *-vl / llava / gemma-3)
+llm.completeVisionJSON(system, prompt, { base64, mime }, opts?) → Promise<object | null>   // text-only providers are skipped
+parser.parseWithLLM(text, { step? }) → flat answers | null   // evidence-checked (parser.validateExtraction)
 ```
 Always handle `null`. That's the no-LLM path, and it must work.
 
