@@ -44,7 +44,7 @@
 - [x] **P1-8 E2E harness** `backend/tools/e2e-demo.js` (`npm run e2e`): boots the app on a temp DB and drives the Maria story over HTTP (check-in → YELLOW → worklist → ack → message), asserting each step. It grows with every later feature.
 
 ## P2: Intelligence & equity
-- [ ] **P2-8 Discharge companion** `core/companion.js`:
+- [x] **P2-8 Discharge companion** `core/companion.js` (content lives in `conditions/chf/content.js`, bilingual JS rather than markdown, so the offline fallback works in Spanish):
   - Seed discharge instructions per patient plus `conditions/chf/education.md`.
   - Order: safety gate (red flags → triage) → LLM intent classification → an answer **only** from those sources, with a citation → otherwise "I'll ask your nurse" + `addTask` kind `question`.
   - Keyword-FAQ fallback without an LLM.

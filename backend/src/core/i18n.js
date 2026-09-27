@@ -100,6 +100,14 @@ const STRINGS = {
     digest_alerts_none: '🩺 No care-team alerts this week 👍',
     digest_refills: '🏥 Still to pick up at the pharmacy: {meds}',
     digest_footer: 'Thank you for helping {name} stay well at home.',
+    // --- discharge companion (core/companion.js) ---
+    companion_source: '📄 From {source}: "{title}"',
+    src_discharge: 'your discharge instructions',
+    src_guide: 'the HeartBridge heart-failure guide',
+    companion_nurse: "Good question! I don't have that in your instructions, so I've sent it to your nurse, who will get back to you. 💙",
+    companion_dosing: "Only your care team can change how you take your medicines, so I've sent your question to your nurse. Until they reply, please keep taking them as prescribed. 💊",
+    companion_other: 'I can help with questions about your heart, medicines, food and daily care. For anything else, please ask your family or care team. 💙',
+    companion_symptom_intro: "Thanks for telling me. Let's do a quick check-in so your nurse has the details.",
   },
   es: {
     greeting: '¡Buenos días {name}! 💙 Es hora de su chequeo diario del corazón. Toma como un minuto.',
@@ -192,6 +200,13 @@ const STRINGS = {
     digest_alerts_none: '🩺 Sin alertas al equipo médico esta semana 👍',
     digest_refills: '🏥 Falta recoger en la farmacia: {meds}',
     digest_footer: 'Gracias por ayudar a {name} a estar bien en casa.',
+    companion_source: '📄 De {source}: "{title}"',
+    src_discharge: 'sus instrucciones de alta',
+    src_guide: 'la guía de insuficiencia cardíaca de HeartBridge',
+    companion_nurse: '¡Buena pregunta! Eso no está en sus instrucciones, así que se la envié a su enfermera, quien le responderá. 💙',
+    companion_dosing: 'Solo su equipo médico puede cambiar cómo toma sus medicinas, así que envié su pregunta a su enfermera. Mientras le responden, siga tomándolas como se las recetaron. 💊',
+    companion_other: 'Puedo ayudarle con preguntas sobre su corazón, medicinas, comida y cuidado diario. Para otras cosas, pregunte a su familia o a su equipo médico. 💙',
+    companion_symptom_intro: 'Gracias por decírmelo. Hagamos un chequeo rápido para que su enfermera tenga los detalles.',
   },
 };
 

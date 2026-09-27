@@ -29,13 +29,16 @@ export function makePatient(p) {
     doses: [],
     riskScore: null,
     riskTier: null,
-    ...p,
-    caregiver: { chatId: null, ...p.caregiver },
     checkins: [],
     lastTier: null,
     voiceMode: false,
     caregiverConsent: true,
-    dischargeInstructions: null,
+    dischargeInstructions: null, // optional free text from the hospital; the companion also builds personalised ones
+    // Per-patient care plan the discharge instructions are generated from (clinician-editable).
+    carePlan: { fluidLimitL: 2, sodiumMg: 2000 },
+    followUp: { with: 'your heart clinic', at: new Date(Date.parse(p.dischargedAt ?? clock.nowISO()) + 7 * DAY).toISOString() },
+    ...p, // caller values win over every default above
+    caregiver: { chatId: null, ...p.caregiver },
   };
   const risk = scoreRisk(out);
   return { ...out, riskScore: risk.score, riskTier: risk.tier, riskFactors: risk.factors };
@@ -61,6 +64,8 @@ export function buildSeed() {
           { med: 'Lisinopril', expectedPickup: iso(5), pickedUpAt: iso(5) },
         ],
         caregiver: { name: 'Sofia Garcia', relation: 'daughter', language: 'en' },
+        carePlan: { fluidLimitL: 1.5, sodiumMg: 2000 },
+        followUp: { with: 'Dr. Rivera (cardiology)', at: iso(-2) },
       }),
       makePatient({
         id: 'p2',
