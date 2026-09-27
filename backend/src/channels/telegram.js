@@ -320,6 +320,34 @@ export function buildBot(token, { botInfo } = {}) {
     }),
   );
 
+  // --- Photos (med bottles, discharge papers): hand the core base64, it decides what to do ---
+  const onImage = (pick) =>
+    linked(async (ctx, link) => {
+      const lang = langOf(link);
+      const { size, mime } = pick(ctx.message);
+      let buffer;
+      try {
+        buffer = await downloadFile(ctx, size);
+      } catch (err) {
+        if (err instanceof FileTooLargeError) return ctx.reply(await say(lang, 'file_too_large'));
+        console.error('[telegram] photo download failed:', err.message);
+        if (t(lang, 'photo_failed') !== 'photo_failed') await ctx.reply(await say(lang, 'photo_failed'));
+        return;
+      }
+      const photo = { base64: buffer.toString('base64'), mime };
+      const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', photo });
+      await replyAll(ctx, link, replies);
+    });
+
+  // Telegram sends several sizes of the same photo, smallest first; ctx.getFile() fetches the largest.
+  dm.on('message:photo', onImage((m) => ({ size: m.photo.at(-1).file_size, mime: 'image/jpeg' })));
+  // Photos sent "as file" keep full quality and arrive as documents.
+  dm.on(
+    'message:document',
+    async (ctx, next) => (ctx.message.document.mime_type?.startsWith('image/') ? next() : undefined),
+    onImage((m) => ({ size: m.document.file_size, mime: m.document.mime_type })),
+  );
+
   // --- Inline button taps ---
   dm.on('callback_query:data', async (ctx) => {
     await ctx.answerCallbackQuery();

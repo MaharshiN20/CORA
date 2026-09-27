@@ -41,7 +41,7 @@
   - Show a "🎙️ heard: …" line so the patient can see what was understood.
   - **Accept:** unit tests with mocked `fetch` for both Groq success and failure and for TTS URL building, plus a bot test where a voice update produces a check-in answer. The no-key path is tested.
 
-- [ ] **K4. Photos**
+- [x] **K4. Photos**
   - `message:photo` → take the largest `photo` size → download → base64 → `handleInbound({ photo: { base64, mime: 'image/jpeg' } })`. Also handle `message:document` images.
   - Reject files over 8 MB with a friendly message.
   - The core replies with a placeholder until P3-13 (med-bottle reconciliation) lands, and nothing needs to change on your side when it does.
