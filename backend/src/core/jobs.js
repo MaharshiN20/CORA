@@ -19,6 +19,7 @@ import { occurrences, isMonitored, allPlanners } from './planning.js';
 import './meds.js';
 import './pharmacy.js';
 import './digest.js';
+import './lessons.js';
 import { startLadder } from './outreach.js';
 
 const HORIZON_MS = 48 * clock.HOUR;

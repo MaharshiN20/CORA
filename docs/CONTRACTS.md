@@ -26,7 +26,7 @@ Button = { label, data }                     // data ≤ 64 bytes, returned as b
 - Render `text` and `buttons` (rows). **Ignore `textEn`**; it's the English copy for the dashboard.
 - `urgent: true` → emergency styling (bold, 🚨, pinned if possible).
 - `voice: true` → also send a TTS voice note of `text` (the patient enabled voice mode).
-- Button data prefixes the core emits: `ci:*` (check-in), `cmd:checkin`, `med:*` (medication confirmations, work any time), `rx:*` (refill barriers), `cmd:proxy` (caregiver answers for the patient, sent to caregivers), and later `sdoh:*`, `lesson:*`, `lang:*`. Pass every one through untouched.
+- Button data prefixes the core emits: `ci:*` (check-in), `cmd:checkin`, `med:*` (medication confirmations, work any time), `rx:*` (refill barriers), `cmd:proxy` (caregiver answers for the patient, sent to caregivers), `lesson:*` (teach-back quiz answers), and later `sdoh:*`, `lesson:*`, `lang:*`. Pass every one through untouched.
 - Caregiver messages: call `handleInbound({ role: 'caregiver', patientId })` with the *patient's* id. The core handles:
   `cmd:proxy` button or "check in"/"chequeo" → proxy check-in (questions in the caregiver's language, answers tagged `reporter: 'caregiver'`);
   `ci:*` taps during that proxy check-in; emergency phrases ("he has chest pain") → RED escalation + 911 reply to the caregiver; anything else → acknowledgement.
@@ -108,7 +108,7 @@ The patient object (from `GET /api/patients/:id`, which also adds `signals`, `ad
   carePlan: { fluidLimitL, sodiumMg },   // drives the personalised discharge instructions (companion)
   followUp: { with, at },                // follow-up appointment
   sdoh?: { flags: string[], answers },   // flags so far: 'transportation', 'medication_cost' (from refill barriers); full screen P2-10
-  lessons?: { score, completed: [] },    // coming: P2-9
+  lessons?: { sent: [id], queue: [id], answers: { [id]: { attempts, correct, firstCorrect, answeredAt } }, score }, // score = first-try correct share
   source: 'seed' | 'demo' | 'fhir' | 'manual',
 }
 ```
@@ -117,7 +117,7 @@ Other collections:
 |---|---|
 | `messages` | `{ id, ts, patientId, direction: 'in'\|'out', from?, to: 'patient'\|'caregiver'\|'nurse', text, textEn?, buttons?, channel? }` |
 | `alerts` (nurse worklist) | `{ id, ts, patientId, kind, tier: 'RED'\|'YELLOW'\|'INFO', title, reasons[], status, dueBy, assignee, outcome, note?, history: [{ ts, status, by }], source?, priority?, reporter?: 'patient'\|'caregiver', med?, barrier? }`. AI-review alerts (`source: 'ai_review'`, YELLOW, only ever on a GREEN rules day) carry `nurseSummary`, `suggestedActions[]`, `readmissionRisk`, `model`; reasons quote the patient's words as evidence. Question tasks (discharge companion) carry `question` (original text) and `dosing` (true = medication-change question, YELLOW). Unreachable tasks (outreach ladder, YELLOW) carry `silentDays`. Refill tasks carry `med` + `barrier` (`transport\|cost\|other\|no_response`) |
-| `audit` | `{ id, ts, type, patientId, data }`. Types include `triage`, `escalation`, `nurse_action`, `enroll`, `device_reading`, `photo_received`, `checkin_sent`, `checkin_abandoned`, `med_reminder`, `med_response`, `refill_nudge`, `refill_barrier`, `refill_picked_up`, `outreach` (`data.event`/`data.rung`), `outreach_recovered` (`data.afterRung`: the patient replied after the ladder fired, a recovery metric), `nurse_message`, `nurse_ack_notice`, `digest`, `ai_review` (`data.rulesTier/aiTier/finalTier/escalate/readmissionRisk/model`), `companion` (`data.kind`: answer\|nurse\|dosing, `data.via`: llm\|keywords, `data.sectionIds`), `job_failed`. `outreach_recovered.data.via` is `patient` or `caregiver` |
+| `audit` | `{ id, ts, type, patientId, data }`. Types include `triage`, `escalation`, `nurse_action`, `enroll`, `device_reading`, `photo_received`, `checkin_sent`, `checkin_abandoned`, `med_reminder`, `med_response`, `refill_nudge`, `refill_barrier`, `refill_picked_up`, `outreach` (`data.event`/`data.rung`), `outreach_recovered` (`data.afterRung`: the patient replied after the ladder fired, a recovery metric), `nurse_message`, `nurse_ack_notice`, `digest`, `ai_review` (`data.rulesTier/aiTier/finalTier/escalate/readmissionRisk/model`), `lesson_sent`, `lesson_answer` (`data.lesson/correct/attempt`), `companion` (`data.kind`: answer\|nurse\|dosing, `data.via`: llm\|keywords, `data.sectionIds`), `job_failed`. `outreach_recovered.data.via` is `patient` or `caregiver` |
 | `readings` | `{ id, ts, patientId, type: 'weight'\|'spo2'\|'hr', value, source: 'self'\|'device'\|'caregiver', device? }` |
 | custom | `store.collection('<name>')` for lane-owned data (e.g. Maharshi's `cohort`). Call `store.persist()` after mutating |
 

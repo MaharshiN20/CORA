@@ -108,6 +108,10 @@ const STRINGS = {
     companion_dosing: "Only your care team can change how you take your medicines, so I've sent your question to your nurse. Until they reply, please keep taking them as prescribed. 💊",
     companion_other: 'I can help with questions about your heart, medicines, food and daily care. For anything else, please ask your family or care team. 💙',
     companion_symptom_intro: "Thanks for telling me. Let's do a quick check-in so your nurse has the details.",
+    // --- teach-back lessons (core/lessons.js) ---
+    lesson_intro: "📚 Today's 1-minute heart tip",
+    lesson_right: "✅ That's right!",
+    lesson_wrong: "Not quite, and that's okay. 💙",
   },
   es: {
     greeting: '¡Buenos días {name}! 💙 Es hora de su chequeo diario del corazón. Toma como un minuto.',
@@ -207,6 +211,9 @@ const STRINGS = {
     companion_dosing: 'Solo su equipo médico puede cambiar cómo toma sus medicinas, así que envié su pregunta a su enfermera. Mientras le responden, siga tomándolas como se las recetaron. 💊',
     companion_other: 'Puedo ayudarle con preguntas sobre su corazón, medicinas, comida y cuidado diario. Para otras cosas, pregunte a su familia o a su equipo médico. 💙',
     companion_symptom_intro: 'Gracias por decírmelo. Hagamos un chequeo rápido para que su enfermera tenga los detalles.',
+    lesson_intro: '📚 Consejo del corazón de hoy (1 minuto)',
+    lesson_right: '✅ ¡Correcto!',
+    lesson_wrong: 'No exactamente, y está bien. 💙',
   },
 };
 
