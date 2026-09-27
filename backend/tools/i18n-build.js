@@ -4,7 +4,7 @@
 //   npm run i18n:build -- --langs vi,hi  # specific languages
 //   npm run i18n:build -- --force        # re-translate keys that already exist
 //
-// Uses the LLM chain (Claude -> Ollama -> LM Studio). Output goes to
+// Uses the LLM chain (Claude -> Gemini -> Ollama -> LM Studio). Output goes to
 // src/core/i18n-generated/<lang>.json, marked needsReview: a bilingual reviewer should
 // check it before real patients see it. Placeholders ({name}, {med}...) are validated;
 // a key whose translation drops or invents one is retried once, then left out (English fallback).
@@ -16,22 +16,39 @@ export function placeholdersMatch(en, tr, placeholdersOf) {
   return JSON.stringify(placeholdersOf(en)) === JSON.stringify(placeholdersOf(tr));
 }
 
+// A translation is never several times longer than its source. Small local models given a
+// short input ("✅ Yes") sometimes invent a whole message instead, so reject runaway output.
+export function plausibleLength(en, tr) {
+  return tr.length <= en.length * 4 + 40;
+}
+
+// Models sometimes echo the delimiters back.
+const unwrap = (s) =>
+  s
+    .replace(/^\s*<text>\s*/i, '')
+    .replace(/\s*<\/text>\s*$/i, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1') // Markdown bold: messages are sent as plain text
+    .trim();
+
 // Pure-ish core: translate `keys` for one language with an injected `complete` (tests mock it).
 // onProgress(strings, missing) runs after every key so long runs are saved and can resume.
 export async function buildLanguage({ lang, languageName, keys, enTemplate, placeholdersOf, complete, existing = {}, force = false, log = () => {}, onProgress = () => {} }) {
   const strings = { ...(force ? {} : existing) };
   const missing = [];
+  // No example tokens in the prompt: small models parrot them into short strings.
   const system =
-    `Translate this message template from a heart-health app into ${languageName} for an elderly patient. ` +
-    'Keep it simple and warm. Keep every placeholder in curly braces EXACTLY as written, e.g. {name}, {med} (do not translate or remove them). ' +
-    'Keep emojis, numbers, line breaks, "911", "HeartBridge", "JOIN", "Medicare" and slash commands like /checkin unchanged. Output only the translation.';
+    `You are a professional medical translator. Translate the text inside <text></text> into ${languageName} ` +
+    'for an elderly patient, simply and warmly. Translate ONLY that text: never add sentences, greetings, links or hashtags. ' +
+    'Words in curly braces are placeholders: copy them unchanged. Keep emojis, numbers, line breaks, brand names and ' +
+    'anything starting with "/" unchanged. A short button label stays a short label. Output only the translation, without the tags.';
   for (const key of keys) {
     if (strings[key]) continue;
     const en = enTemplate(key);
     let tr = null;
     for (let attempt = 0; attempt < 2 && !tr; attempt++) {
-      const out = (await complete(system, en, 600))?.trim();
-      if (out && placeholdersMatch(en, out, placeholdersOf)) tr = out;
+      const raw = (await complete(system, `<text>${en}</text>`, 600))?.trim();
+      const out = raw ? unwrap(raw) : null;
+      if (out && placeholdersMatch(en, out, placeholdersOf) && plausibleLength(en, out)) tr = out;
     }
     if (tr) strings[key] = tr;
     else missing.push(key);
@@ -61,7 +78,10 @@ async function main() {
   fs.mkdirSync(i18n.generatedDir(), { recursive: true });
   for (const lang of langs) {
     const file = path.join(i18n.generatedDir(), `${lang}.json`);
-    const existing = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')).strings : {};
+    const prior = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : { strings: {}, meta: {} };
+    const existing = prior.strings;
+    // Human work survives rebuilds: reviewed keys (drop the bilingual safety labels) and hand fixes.
+    const keep = { ...(prior.meta?.reviewed && { reviewed: prior.meta.reviewed }), ...(prior.meta?.humanEdited && { humanEdited: prior.meta.humanEdited }) };
     console.log(`\n${lang} (${i18n.languageName(lang)})`);
     const started = Date.now();
     const write = (strings, missing) => {
@@ -75,6 +95,7 @@ async function main() {
         total: i18n.templateKeys().length,
         translated: Object.keys(strings).length,
         missing,
+        ...keep,
       };
       fs.writeFileSync(file, JSON.stringify({ meta, strings }, null, 2) + '\n');
       return meta;

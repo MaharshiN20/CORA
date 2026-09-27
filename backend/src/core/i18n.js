@@ -305,12 +305,20 @@ export const hasNative = (lang) => lang in STRINGS;
 
 // Rebuild English text from generated templates. Whole text first, then line by line
 // (digests, advice lists, lessons join several templates). -> { text, complete }
+// Red-flag buttons are where a mistranslation hurts most (an early Hindi build turned
+// "Hard even resting" into "pain even at rest"). Until a bilingual reviewer lists a key in
+// meta.reviewed, machine-translated labels for these show the English too.
+export const SAFETY_LABELS = new Set(['breath_rest', 'rf_chest', 'rf_dizzy', 'rf_confused', 'rf_fainted', 'rf_none']);
+
 function fromGenerated(lang, text) {
   const strings = generated[lang]?.strings;
   if (!strings) return null;
+  const reviewed = new Set(generated[lang]?.meta?.reviewed ?? []);
   const one = (s) => {
     const hit = filledIndex.get(s);
-    return hit && strings[hit.key] ? fill(strings[hit.key], hit.vars) : null;
+    if (!hit || !strings[hit.key]) return null;
+    const tr = fill(strings[hit.key], hit.vars);
+    return SAFETY_LABELS.has(hit.key) && !reviewed.has(hit.key) ? `${tr} (${s.replace(/^\p{Extended_Pictographic}\S*\s*/u, '')})` : tr;
   };
   const whole = one(text);
   if (whole) return { text: whole, complete: true };

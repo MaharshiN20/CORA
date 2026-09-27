@@ -74,7 +74,8 @@ test('placeholder helpers', () => {
 
 test('buildLanguage: translates all keys, retries bad placeholders once, reports missing', async () => {
   const calls = {};
-  const complete = async (_sys, en) => {
+  const complete = async (_sys, wrapped) => {
+    const en = wrapped.replace(/<\/?text>/g, ''); // the build sends <text>…</text>
     calls[en] = (calls[en] ?? 0) + 1;
     if (en.includes('{name}') && en.startsWith('Good morning')) return calls[en] === 1 ? 'Chào bạn!' : 'Chào {name}!'; // fixed on retry
     if (en.includes('{med}')) return 'broken'; // never keeps {med}
@@ -90,9 +91,21 @@ test('buildLanguage: translates all keys, retries bad placeholders once, reports
   assert.equal(calls[i18n.enTemplate('ask_diuretic')], 2);
 });
 
+test('buildLanguage rejects invented messages and unwraps echoed delimiters', async () => {
+  const runaway = 'नमस्ते {name}! कृपया अपनी दवा समय पर लें। 911 पर कॉल करें। JOIN HeartBridge ... '.repeat(3);
+  const complete = async (_s, u) => (u.includes('✅ Yes') ? runaway : `<text>OK:${u.replace(/<\/?text>/g, '')}</text>`);
+  const { strings, missing } = await build.buildLanguage({
+    lang: 'hi', languageName: 'Hindi', keys: ['yes', 'no'], enTemplate: i18n.enTemplate, placeholdersOf: i18n.placeholdersOf, complete,
+  });
+  assert.deepEqual(missing, ['yes']); // invented a whole message: rejected, English fallback
+  assert.equal(strings.no, 'OK:❌ No'); // tags echoed back: stripped
+  assert.ok(build.plausibleLength('✅ Yes', '✅ हाँ'));
+  assert.ok(!build.plausibleLength('✅ Yes', runaway));
+});
+
 test('buildLanguage keeps existing translations unless --force', async () => {
   let n = 0;
-  const complete = async (_s, en) => { n++; return `NEW:${en}`; };
+  const complete = async (_s, wrapped) => { n++; return `NEW:${wrapped.replace(/<\/?text>/g, '')}`; };
   const args = { lang: 'vi', languageName: 'Vietnamese', keys: ['yes', 'no'], enTemplate: i18n.enTemplate, placeholdersOf: i18n.placeholdersOf, complete };
   const kept = await build.buildLanguage({ ...args, existing: { yes: 'Có' } });
   assert.equal(kept.strings.yes, 'Có');
@@ -113,4 +126,25 @@ test('committed generated files (if any) are well-formed and keep every placehol
       assert.ok(build.placeholdersMatch(i18n.enTemplate(key), tr, i18n.placeholdersOf), `${f}: ${key} placeholders changed`);
     }
   }
+});
+
+test('red-flag button labels from machine translation show the English too, unless reviewed', async () => {
+  i18n._setGenerated('xx', { meta: { needsReview: true }, strings: { rf_confused: '🌀 XX-confused', rf_chest: '💔 XX-chest', yes: '✅ XX-yes' } });
+  assert.equal(await i18n.localize('xx', i18n.t('xx', 'rf_confused')), '🌀 XX-confused (Confused)');
+  assert.equal(await i18n.localize('xx', i18n.t('xx', 'yes')), '✅ XX-yes'); // not safety-critical
+  i18n._setGenerated('xx', { meta: { needsReview: true, reviewed: ['rf_chest'] }, strings: { rf_chest: '💔 XX-chest' } });
+  assert.equal(await i18n.localize('xx', i18n.t('xx', 'rf_chest')), '💔 XX-chest');
+});
+
+test('committed Hindi/Vietnamese red-flag labels mean what they say (spot checks)', async () => {
+  const fs = await import('node:fs');
+  const load = (l) => JSON.parse(fs.readFileSync(path.join(i18n.generatedDir(), `${l}.json`), 'utf8')).strings;
+  if (!fs.existsSync(path.join(i18n.generatedDir(), 'hi.json'))) return;
+  const hi = load('hi');
+  assert.match(hi.breath_rest, /सांस/); // "breath", not "pain" (earlier machine output said pain)
+  assert.doesNotMatch(hi.breath_rest, /दर्द/);
+  assert.match(hi.rf_chest, /छाती/); // chest
+  const vi = load('vi');
+  assert.ok(vi.rf_confused.length < 40, 'vi rf_confused is a label, not a paragraph');
+  for (const s of [...Object.values(hi), ...Object.values(vi)]) assert.doesNotMatch(s, /\*\*/, 'no Markdown in plain-text messages');
 });

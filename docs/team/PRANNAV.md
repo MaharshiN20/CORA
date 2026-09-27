@@ -51,7 +51,7 @@
   - Guardrail tests: it refuses dosing changes, emergencies go to triage, and out-of-scope questions go to the nurse.
 - [x] **P2-9 Teach-back lessons** `core/lessons.js`: 8–10 micro-lessons (daily weights, salt, fluid, when to call, meds) with `lesson:<id>:<choice>` quiz buttons, a `lesson_due` job, and `patient.lessons.score`. Test: scoring and no repeats.
 - [x] **P2-10 SDOH screen** `core/sdoh.js`: a day-2 `sdoh_screen` job asks about a ride to follow-up, medication cost, food access and help at home using `sdoh:*` buttons → `patient.sdoh.flags` + resources (211, pharmacy assistance) + `addTask` kind `sdoh`. Test: the flags → tasks mapping.
-- [ ] **P2-11 Language quality**: a generated template cache `i18n/generated/<lang>.json` (built via the LLM, marked `needsReview`), `localize()` checks the cache first, and a `npm run i18n:build` script. Test: the cache hit avoids an LLM call.
+- [x] **P2-11 Language quality**: a generated template cache `i18n/generated/<lang>.json` (built via the LLM, marked `needsReview`), `localize()` checks the cache first, and a `npm run i18n:build` script. Test: the cache hit avoids an LLM call.
 
 ## P3: Platform
 - [ ] **P3-12 Condition packs**: move CHF steps, prompts, rules and advice to `conditions/chf/`. Keep `core/triage.js` as a re-export so the existing tests pass unchanged. Add `conditions/copd/` (SpO2, inhaler use, sputum colour, breathlessness scale) with its own triage tests, and `patient.condition` selects the pack.
