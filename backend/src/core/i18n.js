@@ -42,6 +42,7 @@ const STRINGS = {
     advice_stand_slowly: 'Stand up slowly and sit down if you feel dizzy.',
     advice_missed_dose: "You missed your water pill. Take today's dose now, but don't double up.",
     photo_received: 'Thanks for the photo! 📷 I saved it for your care team.',
+    photo_failed: "Sorry, I couldn't get that photo. Could you send it again?",
     // --- channel-level strings (used by channels/*) ---
     welcome_patient: "Hi {name}! 💙 I'm HeartBridge, your heart-health helper from the hospital. I'll check in with you every day. It only takes a minute. You can answer with the buttons, by typing, or with a voice note.",
     welcome_caregiver: "Hi! 💙 You're now connected as a caregiver for {name}. You'll get an alert here if something needs attention, plus a weekly summary.",
@@ -138,6 +139,7 @@ const STRINGS = {
     advice_stand_slowly: 'Levántese despacio y siéntese si se marea.',
     advice_missed_dose: 'Olvidó su pastilla para el agua. Tome la dosis de hoy ahora, pero no doble la dosis.',
     photo_received: '¡Gracias por la foto! 📷 La guardé para su equipo médico.',
+    photo_failed: 'Perdón, no pude recibir esa foto. ¿Podría enviarla otra vez?',
     welcome_patient: '¡Hola {name}! 💙 Soy HeartBridge, su asistente de salud del corazón del hospital. La contactaré cada día; solo toma un minuto. Puede responder con los botones, escribiendo o con una nota de voz.',
     welcome_caregiver: '¡Hola! 💙 Ahora está conectado como cuidador de {name}. Recibirá una alerta aquí si algo necesita atención, y un resumen semanal.',
     unknown_code: 'Bienvenido a HeartBridge 💙 Por favor abra el enlace que le dio su equipo médico (o envíe /start SUCODIGO).',
