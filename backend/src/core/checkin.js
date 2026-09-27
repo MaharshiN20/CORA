@@ -4,7 +4,7 @@
 // Free text is parsed at every step, so "176, ankles more swollen" fills two steps at once.
 // Red-flag phrases short-circuit the whole flow to an immediate RED.
 import * as store from '../store.js';
-import { t } from './i18n.js';
+import { t, hasNative } from './i18n.js';
 import { scoreRisk } from './risk.js';
 import { triage, consecutiveMissedDiureticDays } from './triage.js';
 import { escalate } from './escalation.js';
@@ -140,6 +140,15 @@ async function applyText(a, text, step) {
   return { understood: JSON.stringify(a) !== before, textEn };
 }
 
+// Only the fields the emergency rule reads; anything else the LLM returns is ignored here.
+const pickEmergencyFields = (c) => ({
+  ...(c.chestPain === true && { chestPain: true }),
+  ...(c.confusion === true && { confusion: true }),
+  ...(c.fainting === true && { fainting: true }),
+  ...(c.breath === 'rest' && { breath: 'rest' }),
+  ...(typeof c.spo2 === 'number' && { spo2: c.spo2 }),
+});
+
 const isEmergency = (a) => a.chestPain || a.breath === 'rest' || a.confusion || a.fainting || (a.spo2 != null && a.spo2 < 90);
 
 // ---------- public API ----------
@@ -254,8 +263,19 @@ async function finish(patient, a) {
 
 // Emergency phrase outside a check-in ("my chest hurts"): triage + escalate right away.
 // A caregiver can report one too ("mom has chest pain"): same triage, reply addressed to them.
+// Languages without hand-written red-flag patterns (vi, hi, zh...): if the rules find
+// nothing, the LLM *parses* the message and the same isEmergency rule decides (the LLM
+// never picks the tier). en/es stay rules-only: the eval gate shows the rules catch them all.
 export async function handleUrgentFreeText(patient, text, { reporter = 'patient', lang } = {}) {
-  const extra = parser.parseFreeText(text);
+  let extra = parser.parseFreeText(text);
+  const msgLang = lang ?? patient.language;
+  if (!isEmergency(extra) && !hasNative(msgLang) && llm.enabled()) {
+    const c = await parser.parseWithLLM(text);
+    if (c) {
+      extra = { ...extra, ...pickEmergencyFields(c) };
+      if (isEmergency(extra)) store.audit('llm_parse', patient.id, { purpose: 'unprompted_emergency', lang: msgLang, flags: pickEmergencyFields(c) });
+    }
+  }
   if (!isEmergency(extra)) return null;
   const result = triage({ weights: patient.weights, answers: extra });
   store.updatePatient(patient.id, { lastTier: result.tier });
