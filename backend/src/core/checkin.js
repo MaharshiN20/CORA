@@ -29,15 +29,20 @@ const firstName = (p) => p.name.split(' ')[0];
 const diureticName = (p) => p.meds.find((m) => m.diuretic)?.name ?? 'water pill';
 const btn = (lang, key, data) => ({ label: t(lang, key), data });
 
+// A check-in is answered either by the patient or, as a proxy, by their caregiver
+// (P1-7). A proxy check-in speaks the caregiver's language and says "Maria" instead of "you".
+const langOf = (p) => p.checkin?.lang ?? p.language;
+
 // Reply with an English twin so the dashboard can always show what was sent.
-function reply(p, key, vars = {}, buttons) {
-  const out = { text: t(p.language, key, vars), textEn: t('en', key, vars) };
+function replyIn(lang, key, vars = {}, buttons) {
+  const out = { text: t(lang, key, vars), textEn: t('en', key, vars) };
   if (buttons) out.buttons = buttons;
   return out;
 }
+const reply = (p, key, vars, buttons) => replyIn(langOf(p), key, vars, buttons);
 
 function prompt(p, stepId) {
-  const L = p.language;
+  const L = langOf(p);
   switch (stepId) {
     case 'weight':
       return reply(p, 'ask_weight');
@@ -147,12 +152,18 @@ export function currentPrompt(patient) {
   return isActive(patient) ? prompt(patient, patient.checkin.state) : null;
 }
 
-export function start(patient) {
+// reporter: 'patient' (default) or 'caregiver' (proxy check-in, lang = caregiver's language).
+export function start(patient, { reporter = 'patient', lang } = {}) {
   const { plan } = scoreRisk(patient);
   const steps = STEPS.filter((s) => !s.enabled || s.enabled(plan));
-  store.updatePatient(patient.id, { checkin: { state: steps[0].id, answers: {}, startedAt: clock.nowISO() } });
-  return [reply(patient, 'greeting', { name: firstName(patient) }), prompt(patient, steps[0].id)];
+  const checkin = { state: steps[0].id, answers: {}, startedAt: clock.nowISO(), reporter };
+  if (reporter === 'caregiver') checkin.lang = lang ?? patient.caregiver?.language ?? 'en';
+  store.updatePatient(patient.id, { checkin });
+  const greeting = reporter === 'caregiver' ? 'proxy_greeting' : 'greeting';
+  return [reply(patient, greeting, { name: firstName(patient) }), prompt(patient, steps[0].id)];
 }
+
+export const reporterOf = (patient) => (isActive(patient) ? patient.checkin.reporter ?? 'patient' : null);
 
 // Returns { replies, textEn } where textEn is an English translation of the inbound text, if we made one.
 export async function handle(patient, { text, buttonData }) {
@@ -191,8 +202,13 @@ async function finish(patient, a) {
   // The water-pill answer merges into today's reminder dose instead of duplicating it.
   const doses = a.diureticTaken != null ? applyDiureticAnswer(patient, a.diureticTaken, now) : [...(patient.doses ?? [])];
 
+  // Captured before the check-in state is reset below.
+  const lang = langOf(patient);
+  const reporter = patient.checkin?.reporter ?? 'patient';
+  const proxy = reporter === 'caregiver';
+
   const result = triage({ weights, answers: a, missedDiureticDays: consecutiveMissedDiureticDays(doses) });
-  const record = { ts: now, answers: a, tier: result.tier, flags: result.flags, weight: result.weight };
+  const record = { ts: now, answers: a, tier: result.tier, flags: result.flags, weight: result.weight, reporter };
 
   store.updatePatient(patient.id, {
     weights,
@@ -203,20 +219,22 @@ async function finish(patient, a) {
     lastCheckinAt: now,
   });
   const fresh = store.getPatient(patient.id);
-  await escalate(fresh, result);
+  await escalate(fresh, result, { reporter });
 
   const name = firstName(patient);
   const replies = [];
   if (result.tier === 'RED') {
-    replies.push({ ...reply(patient, 'red_911', { name, caregiver: patient.caregiver?.name?.split(' ')[0] ?? 'your family' }), urgent: true });
+    const key = proxy ? 'proxy_red_911' : 'red_911';
+    replies.push({ ...replyIn(lang, key, { name, caregiver: patient.caregiver?.name?.split(' ')[0] ?? 'your family' }), urgent: true });
     return replies;
   }
-  replies.push(reply(patient, result.tier === 'YELLOW' ? 'thanks_yellow' : 'thanks_green', { name }));
+  const thanks = result.tier === 'YELLOW' ? 'thanks_yellow' : 'thanks_green';
+  replies.push(replyIn(lang, proxy ? `proxy_${thanks}` : thanks, { name }));
   if (result.advice.length) {
-    const lines = result.advice.map((code) => `• ${t(patient.language, `advice_${code}`)}`);
+    const lines = result.advice.map((code) => `• ${t(lang, `advice_${code}`)}`);
     const linesEn = result.advice.map((code) => `• ${t('en', `advice_${code}`)}`);
     replies.push({
-      text: `${t(patient.language, 'advice_header')}\n${lines.join('\n')}`,
+      text: `${t(lang, 'advice_header')}\n${lines.join('\n')}`,
       textEn: `${t('en', 'advice_header')}\n${linesEn.join('\n')}`,
     });
   }
@@ -224,11 +242,14 @@ async function finish(patient, a) {
 }
 
 // Emergency phrase outside a check-in ("my chest hurts"): triage + escalate right away.
-export async function handleUrgentFreeText(patient, text) {
+// A caregiver can report one too ("mom has chest pain"): same triage, reply addressed to them.
+export async function handleUrgentFreeText(patient, text, { reporter = 'patient', lang } = {}) {
   const extra = parser.parseFreeText(text);
   if (!isEmergency(extra)) return null;
   const result = triage({ weights: patient.weights, answers: extra });
   store.updatePatient(patient.id, { lastTier: result.tier });
-  await escalate(store.getPatient(patient.id), result, { source: 'unprompted message' });
-  return [{ ...reply(patient, 'red_interrupt'), urgent: true }];
+  const proxy = reporter === 'caregiver';
+  await escalate(store.getPatient(patient.id), result, { source: proxy ? 'caregiver message' : 'unprompted message', reporter });
+  const key = proxy ? 'proxy_red_911' : 'red_interrupt';
+  return [{ ...replyIn(lang ?? patient.language, key, { name: firstName(patient) }), urgent: true }];
 }

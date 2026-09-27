@@ -10,6 +10,7 @@ import { adherence } from '../core/meds.js';
 import { markPickedUp } from '../core/pharmacy.js';
 import { startLadder } from '../core/outreach.js';
 import { sendNurseMessage, notifyAck } from '../core/nurse.js';
+import { buildDigest, sendDigest } from '../core/digest.js';
 import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
 
@@ -78,6 +79,24 @@ api.patch('/alerts/:id', async (req, res) => {
 api.post('/patients/:id/message', async (req, res) => {
   try {
     res.json(await sendNurseMessage(req.params.id, req.body ?? {}));
+  } catch (err) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+});
+
+// ---- caregiver digest ----
+
+// GET /api/patients/:id/digest?lang= -> { text } preview (no sending)
+api.get('/patients/:id/digest', (req, res) => {
+  const p = store.getPatient(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not found' });
+  res.json({ text: buildDigest(p, req.query.lang || p.caregiver?.language || 'en') });
+});
+
+// POST /api/patients/:id/digest -> send the weekly digest to the caregiver now (demo button)
+api.post('/patients/:id/digest', async (req, res) => {
+  try {
+    res.json(await sendDigest(req.params.id));
   } catch (err) {
     res.status(err.status ?? 500).json({ error: err.message });
   }

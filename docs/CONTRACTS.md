@@ -27,7 +27,10 @@ Button = { label, data }                     // data ≤ 64 bytes, returned as b
 - `urgent: true` → emergency styling (bold, 🚨, pinned if possible).
 - `voice: true` → also send a TTS voice note of `text` (the patient enabled voice mode).
 - Button data prefixes the core emits: `ci:*` (check-in), `cmd:checkin`, `med:*` (medication confirmations, work any time), `rx:*` (refill barriers), `cmd:proxy` (caregiver answers for the patient, sent to caregivers), and later `sdoh:*`, `lesson:*`, `lang:*`. Pass every one through untouched.
-- Caregiver messages: call `handleInbound({ role: 'caregiver', patientId })` with the *patient's* id (proxy check-in, coming: P1-7).
+- Caregiver messages: call `handleInbound({ role: 'caregiver', patientId })` with the *patient's* id. The core handles:
+  `cmd:proxy` button or "check in"/"chequeo" → proxy check-in (questions in the caregiver's language, answers tagged `reporter: 'caregiver'`);
+  `ci:*` taps during that proxy check-in; emergency phrases ("he has chest pain") → RED escalation + 911 reply to the caregiver; anything else → acknowledgement.
+  Replies go back to the caregiver chat, in `caregiver.language`.
 
 ### Outbound: `channels/index.js` (Krish owns the implementation, core calls it)
 ```js
@@ -98,7 +101,7 @@ The patient object (from `GET /api/patients/:id`, which also adds `signals`, `ad
                                          // taken=null = unanswered reminder (never counted as missed)
   meds: [{ name, dose, times, diuretic? }],
   prescriptions: [{ med, expectedPickup, pickedUpAt, barrier?: 'transport'|'cost'|'other', barrierAt?, nudges?: [iso], escalatedAt? }],
-  checkin: { state, answers }, checkins: [{ ts, answers, tier, flags, weight }],
+  checkin: { state, answers, startedAt, reporter: 'patient'|'caregiver', lang? }, checkins: [{ ts, answers, tier, flags, weight, reporter }],
   caregiver: { name, relation, language, chatId },
   dischargeInstructions,                 // coming: P2-8
   sdoh?: { flags: string[], answers },   // flags so far: 'transportation', 'medication_cost' (from refill barriers); full screen P2-10
@@ -110,8 +113,8 @@ Other collections:
 | Collection | Shape |
 |---|---|
 | `messages` | `{ id, ts, patientId, direction: 'in'\|'out', from?, to: 'patient'\|'caregiver'\|'nurse', text, textEn?, buttons?, channel? }` |
-| `alerts` (nurse worklist) | `{ id, ts, patientId, kind, tier: 'RED'\|'YELLOW'\|'INFO', title, reasons[], status, dueBy, assignee, outcome, note?, history: [{ ts, status, by }], source?, priority?, med?, barrier? }`. Unreachable tasks (outreach ladder, YELLOW) carry `silentDays`. Refill tasks carry `med` + `barrier` (`transport\|cost\|other\|no_response`) |
-| `audit` | `{ id, ts, type, patientId, data }`. Types include `triage`, `escalation`, `nurse_action`, `enroll`, `device_reading`, `photo_received`, `checkin_sent`, `checkin_abandoned`, `med_reminder`, `med_response`, `refill_nudge`, `refill_barrier`, `refill_picked_up`, `outreach` (`data.event`/`data.rung`), `outreach_recovered` (`data.afterRung`: the patient replied after the ladder fired, a recovery metric), `nurse_message`, `nurse_ack_notice`, `job_failed` |
+| `alerts` (nurse worklist) | `{ id, ts, patientId, kind, tier: 'RED'\|'YELLOW'\|'INFO', title, reasons[], status, dueBy, assignee, outcome, note?, history: [{ ts, status, by }], source?, priority?, reporter?: 'patient'\|'caregiver', med?, barrier? }`. Unreachable tasks (outreach ladder, YELLOW) carry `silentDays`. Refill tasks carry `med` + `barrier` (`transport\|cost\|other\|no_response`) |
+| `audit` | `{ id, ts, type, patientId, data }`. Types include `triage`, `escalation`, `nurse_action`, `enroll`, `device_reading`, `photo_received`, `checkin_sent`, `checkin_abandoned`, `med_reminder`, `med_response`, `refill_nudge`, `refill_barrier`, `refill_picked_up`, `outreach` (`data.event`/`data.rung`), `outreach_recovered` (`data.afterRung`: the patient replied after the ladder fired, a recovery metric), `nurse_message`, `nurse_ack_notice`, `digest`, `job_failed`. `outreach_recovered.data.via` is `patient` or `caregiver` |
 | `readings` | `{ id, ts, patientId, type: 'weight'\|'spo2'\|'hr', value, source: 'self'\|'device'\|'caregiver', device? }` |
 | custom | `store.collection('<name>')` for lane-owned data (e.g. Maharshi's `cohort`). Call `store.persist()` after mutating |
 
@@ -135,6 +138,7 @@ Other collections:
 | `POST /api/patients/:id/checkin` | P | start a check-in (sends via channel) |
 | `POST /api/patients/:id/simulate` | P | `{ text?, buttonData?, role?, photo? }` → `Reply[]` (dashboard phone simulator) |
 | `POST /api/patients/:id/message` | P | nurse → patient: `{ text, from? }` or `{ template: 'call_scheduled', time, from? }` → `{ delivered, text, textEn }`. Translated to the patient's language (English body kept if no LLM); 400 on empty/unknown template/missing time |
+| `GET /api/patients/:id/digest?lang=` · `POST /api/patients/:id/digest` | P | weekly caregiver digest: preview `{ text }` / send now → `{ sent, delivered?, text?, textEn?, reason? }` (auto-sent Sundays 18:00) |
 | `POST /api/patients/:id/prescriptions/:med/picked-up` | P | `{ by? }` → updated prescription; resolves open refill tasks (pharmacy-feed stand-in / dashboard button) |
 | `GET /api/alerts` | P | worklist, newest first |
 | `PATCH /api/alerts/:id` | P | `{ status?, outcome?, assignee?, note?, by? }`. First `acknowledged` on a RED/YELLOW triage/unreachable/device/question alert sends the patient "<nurse> saw your update" and sets `patientNotifiedAt` |

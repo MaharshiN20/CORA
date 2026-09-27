@@ -18,6 +18,7 @@ import { occurrences, isMonitored, allPlanners } from './planning.js';
 // Feature modules register their job kinds + planners on import.
 import './meds.js';
 import './pharmacy.js';
+import './digest.js';
 import { startLadder } from './outreach.js';
 
 const HORIZON_MS = 48 * clock.HOUR;

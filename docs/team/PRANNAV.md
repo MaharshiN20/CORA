@@ -35,7 +35,7 @@
   - A "call scheduled" template, and alert-ack notifications to the patient ("Nurse Kim saw your update and will call you").
   - Wire M1 `recordRisk` after each check-in once it exists (see REQUESTS).
   - **Test:** the message is delivered and logged, and ack triggers the patient notice.
-- [ ] **P1-7 Caregiver loop**:
+- [x] **P1-7 Caregiver loop**:
   - Proxy check-in: `role: 'caregiver'` + `cmd:proxy` runs the check-in flow on the patient's record, with answers tagged `reporter: 'caregiver'` and replies to the caregiver in their language.
   - `caregiverConsent` gate.
   - `core/digest.js` weekly digest (weight trend, adherence, alerts, refills) via a `digest_weekly` job and `POST /api/patients/:id/digest`.

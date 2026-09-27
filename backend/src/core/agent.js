@@ -26,7 +26,9 @@ import * as pharmacy from './pharmacy.js';
 import * as outreach from './outreach.js';
 import { t, localize, toEnglish, hasNative } from './i18n.js';
 
-const START_WORDS = /^\/?(check-?in|start|chequeo|empezar|hola|hi|hello)\b/i;
+const START_WORDS = /^\/?(check[- ]?in|start|chequeo|empezar|hola|hi|hello)\b/i;
+// Caregivers must ask explicitly (or tap the button): a "hi" shouldn't start a proxy check-in.
+const PROXY_WORDS = /^\/?(check[- ]?in|chequeo)\b/i;
 
 export async function handleInbound({ patientId, role = 'patient', channel, text, buttonData, voiceTranscript, photo }) {
   const patient = store.getPatient(patientId);
@@ -43,8 +45,7 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
   if (role === 'patient') outreach.onPatientReply(patient);
 
   if (role === 'caregiver') {
-    // TODO(core P1-7): proxy check-in for the patient. Until then, acknowledge.
-    replies = [caregiverAck(patient)];
+    ({ replies, textEn } = await handleCaregiver(patient, { input, buttonData }));
   } else if (photo) {
     // TODO(core P3-13): med-bottle photo reconciliation via llm.completeVision.
     store.audit('photo_received', patientId, { mime: photo.mime, bytes: Math.round((photo.base64?.length ?? 0) * 0.75) });
@@ -66,13 +67,16 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
     replies = offerCheckin(patient);
   }
 
-  // English copy of what the patient said, for the dashboard.
-  if (input && patient.language !== 'en') {
-    textEn ??= await toEnglish(patient.language, input);
+  // Replies (and the sender's text) are in the sender's language: caregiver or patient.
+  const lang = role === 'caregiver' ? patient.caregiver?.language ?? 'en' : patient.language;
+
+  // English copy of what they said, for the dashboard.
+  if (input && lang !== 'en') {
+    textEn ??= await toEnglish(lang, input);
     if (textEn) store.updateMessage(inbound.id, { textEn });
   }
 
-  replies = await Promise.all(replies.map((r) => localizeReply(patient, r)));
+  replies = await Promise.all(replies.map((r) => localizeReply(lang, r)));
   if (patient.voiceMode && role === 'patient') replies = replies.map((r) => ({ ...r, voice: true }));
   const to = role === 'caregiver' ? 'caregiver' : 'patient';
   for (const r of replies) store.addMessage({ patientId, direction: 'out', to, text: r.text, textEn: r.textEn, buttons: r.buttons, channel });
@@ -85,12 +89,36 @@ function caregiverAck(patient) {
   return { text, textEn: text };
 }
 
+// Caregiver messages (P1-7): answer the check-in for the patient (proxy), report an
+// emergency on their behalf, or just get acknowledged.
+async function handleCaregiver(patient, { input, buttonData }) {
+  const cgLang = patient.caregiver?.language ?? 'en';
+  const name = patient.name.split(' ')[0];
+  const wantsProxy = buttonData === 'cmd:proxy' || (input && PROXY_WORDS.test(input.trim()));
+
+  if (wantsProxy) {
+    if (patient.caregiverConsent === false) {
+      return { replies: [{ text: t(cgLang, 'proxy_not_enabled', { name }), textEn: t('en', 'proxy_not_enabled', { name }) }] };
+    }
+    outreach.onPatientReply(patient, { via: 'caregiver' }); // someone answered: stop the ladder
+    return { replies: checkin.start(patient, { reporter: 'caregiver', lang: cgLang }) };
+  }
+  if (checkin.reporterOf(patient) === 'caregiver' && (input || buttonData?.startsWith('ci:'))) {
+    return checkin.handle(patient, { text: input, buttonData });
+  }
+  if (input) {
+    const urgent = await checkin.handleUrgentFreeText(patient, input, { reporter: 'caregiver', lang: cgLang });
+    if (urgent) return { replies: urgent };
+  }
+  return { replies: [caregiverAck(patient)] };
+}
+
 // Called by the scheduler / dashboard to start a check-in proactively.
 // Returns the first prompt(s); the caller sends them via channels.sendToPatient().
 export async function startCheckin(patientId) {
   const patient = store.getPatient(patientId);
   if (!patient) return [];
-  return Promise.all(checkin.start(patient).map((r) => localizeReply(patient, r)));
+  return Promise.all(checkin.start(patient).map((r) => localizeReply(patient.language, r)));
 }
 
 // Show what the patient tapped ("😊 Normal") rather than the raw callback data.
@@ -114,11 +142,11 @@ function offerCheckin(patient) {
 }
 
 // Languages without built-in strings (vi, hi, ...) get translated by the LLM chain; en/es pass through.
-async function localizeReply(patient, r) {
-  if (hasNative(patient.language)) return r;
-  const text = await localize(patient.language, r.text);
+async function localizeReply(lang, r) {
+  if (hasNative(lang)) return r;
+  const text = await localize(lang, r.text);
   const buttons = r.buttons
-    ? await Promise.all(r.buttons.map((row) => Promise.all(row.map(async (b) => ({ ...b, label: await localize(patient.language, b.label) })))))
+    ? await Promise.all(r.buttons.map((row) => Promise.all(row.map(async (b) => ({ ...b, label: await localize(lang, b.label) })))))
     : undefined;
   return { ...r, text, textEn: r.textEn ?? r.text, ...(buttons && { buttons }) };
 }

@@ -42,14 +42,15 @@ export function startLadder(patient, startedAtIso = clock.nowISO()) {
   store.audit('outreach', patient.id, { event: 'ladder_started', ladderStart: startedAtIso });
 }
 
-// Called for every inbound patient message: cancel pending rungs, record a recovery.
-export function onPatientReply(patient) {
+// Called for every inbound patient message (and when a caregiver answers for them):
+// cancel pending rungs, record a recovery. via: 'patient' | 'caregiver'.
+export function onPatientReply(patient, { via = 'patient' } = {}) {
   const fired = scheduler.listJobs({ kind: 'outreach_step', patientId: patient.id, status: 'done' }).filter(
     (j) => j.result?.fired && Date.parse(j.payload.ladderStart) > Date.parse(patient.lastRecoveryCheck ?? 0),
   );
   const cancelled = scheduler.cancel({ kind: 'outreach_step', patientId: patient.id });
   if (fired.length) {
-    store.audit('outreach_recovered', patient.id, { afterRung: Math.max(...fired.map((j) => j.payload.rung)), rungsFired: fired.length });
+    store.audit('outreach_recovered', patient.id, { afterRung: Math.max(...fired.map((j) => j.payload.rung)), rungsFired: fired.length, via });
   }
   store.updatePatient(patient.id, { lastReplyAt: clock.nowISO(), lastRecoveryCheck: clock.nowISO() });
   return { cancelled, recovered: fired.length > 0 };
