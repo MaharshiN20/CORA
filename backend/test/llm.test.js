@@ -151,6 +151,7 @@ test('reasoning models: /no_think for qwen3, <think> stripped, retry when budget
   await llm.detect({ force: true });
   assert.equal(await llm.complete('Translate', 'weight?', 100), 'Cân nặng của bạn?');
   assert.match(calls[0].messages[0].content, /\/no_think$/);
+  assert.equal(calls[0].reasoning_effort, 'none'); // qwen3.5 ignores /no_think; this is what LM Studio honours
   assert.equal(calls[1].max_tokens, 400);
 });
 

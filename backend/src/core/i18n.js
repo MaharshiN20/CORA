@@ -1,5 +1,9 @@
-// Patient-facing strings. English + Spanish are built in (work offline).
-// Any other language is translated by the LLM chain (Claude/Ollama/LM Studio) at send time, falling back to English.
+// Patient-facing strings. English + Spanish are hand-written (work offline).
+// Other languages: machine-translated templates from `npm run i18n:build` (src/core/i18n-generated,
+// offline, flagged needsReview) first, then the LLM chain at send time, then English.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as llm from './llm.js';
 
 const STRINGS = {
@@ -112,6 +116,26 @@ const STRINGS = {
     lesson_intro: "📚 Today's 1-minute heart tip",
     lesson_right: "✅ That's right!",
     lesson_wrong: "Not quite, and that's okay. 💙",
+    // --- social-needs screen (core/sdoh.js) ---
+    sdoh_intro: "💙 A few quick questions so we can make sure you have what you need at home. Just tap an answer.",
+    sdoh_q_ride: 'Do you have a ride to your follow-up visit on {date}?',
+    sdoh_ride_yes: '✅ Yes, I have a ride',
+    sdoh_ride_no: '🚗 No, I need help',
+    sdoh_q_cost: 'In the last month, have you skipped or cut back on medicines because of cost?',
+    sdoh_cost_yes: '💲 Yes',
+    sdoh_cost_no: '✅ No',
+    sdoh_q_food: 'Is it hard to get healthy, low-salt food?',
+    sdoh_food_yes: "🥫 Yes, it's hard",
+    sdoh_food_no: '✅ No',
+    sdoh_q_help: 'Is there someone who can help you at home if you feel sick?',
+    sdoh_help_yes: '✅ Yes',
+    sdoh_help_no: "🏠 No, I'm on my own",
+    sdoh_done_none: "Thank you! It's great that you have support at home. 💙",
+    sdoh_done_needs: "Thank you for telling me. Here's some help, and I've let your care team know:",
+    sdoh_res_ride: 'Rides: many Medicare and Medicaid plans cover free rides to appointments. Call the number on your insurance card, or dial 211.',
+    sdoh_res_cost: "Medicine costs: ask your pharmacist about generics or discount programs; Medicare 'Extra Help' can lower costs. Never skip doses, and your nurse will help.",
+    sdoh_res_food: 'Food: Meals on Wheels and local food banks can deliver healthy meals. Dial 211 to find one near you.',
+    sdoh_res_help: "Support at home: we'll check in with you often, and your care team can connect you with a community health worker.",
   },
   es: {
     greeting: '¡Buenos días {name}! 💙 Es hora de su chequeo diario del corazón. Toma como un minuto.',
@@ -214,26 +238,105 @@ const STRINGS = {
     lesson_intro: '📚 Consejo del corazón de hoy (1 minuto)',
     lesson_right: '✅ ¡Correcto!',
     lesson_wrong: 'No exactamente, y está bien. 💙',
+    sdoh_intro: '💙 Unas preguntas rápidas para asegurarnos de que tenga lo que necesita en casa. Solo toque una respuesta.',
+    sdoh_q_ride: '¿Tiene transporte para su cita de seguimiento el {date}?',
+    sdoh_ride_yes: '✅ Sí, tengo transporte',
+    sdoh_ride_no: '🚗 No, necesito ayuda',
+    sdoh_q_cost: 'En el último mes, ¿ha dejado o reducido sus medicinas por el costo?',
+    sdoh_cost_yes: '💲 Sí',
+    sdoh_cost_no: '✅ No',
+    sdoh_q_food: '¿Le cuesta conseguir comida saludable y baja en sal?',
+    sdoh_food_yes: '🥫 Sí, me cuesta',
+    sdoh_food_no: '✅ No',
+    sdoh_q_help: '¿Hay alguien que pueda ayudarle en casa si se siente mal?',
+    sdoh_help_yes: '✅ Sí',
+    sdoh_help_no: '🏠 No, estoy solo/a',
+    sdoh_done_none: '¡Gracias! Qué bueno que tiene apoyo en casa. 💙',
+    sdoh_done_needs: 'Gracias por decírmelo. Aquí tiene algo de ayuda, y ya le avisé a su equipo médico:',
+    sdoh_res_ride: 'Transporte: muchos planes de Medicare y Medicaid cubren transporte gratis a las citas. Llame al número de su tarjeta de seguro, o marque 211.',
+    sdoh_res_cost: "Costo de medicinas: pregunte a su farmacéutico por genéricos o programas de descuento; la 'Ayuda Adicional' de Medicare puede bajar el costo. Nunca deje sus dosis; su enfermera le ayudará.",
+    sdoh_res_food: 'Comida: Meals on Wheels y los bancos de comida locales pueden llevarle comidas saludables. Marque 211 para encontrar uno cerca.',
+    sdoh_res_help: 'Apoyo en casa: le contactaremos seguido, y su equipo médico puede conectarle con un trabajador de salud comunitario.',
   },
 };
 
 const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
 
+// ---------- generated template translations (P2-11) ----------
+// `npm run i18n:build` translates every English template once through the LLM chain
+// into src/core/i18n-generated/<lang>.json ({ meta: { needsReview, model, ... }, strings }).
+// localize() uses them first, so those languages work offline, instantly and
+// consistently; anything not covered still goes through the live LLM.
+const GENERATED_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n-generated');
+const generated = {};
+try {
+  for (const f of fs.readdirSync(GENERATED_DIR).filter((x) => x.endsWith('.json'))) {
+    generated[f.slice(0, -5)] = JSON.parse(fs.readFileSync(path.join(GENERATED_DIR, f), 'utf8'));
+  }
+} catch {
+  /* no generated translations yet */
+}
+export const generatedDir = () => GENERATED_DIR;
+export const generatedInfo = (lang) => generated[lang]?.meta ?? null;
+export const _setGenerated = (lang, data) => (data ? (generated[lang] = data) : delete generated[lang]); // test hook
+
+// English text produced by t() -> the template + values it came from, so localize()
+// can rebuild the same message from a translated template. Bounded memory.
+const FILLED_MAX = 5000;
+const filledIndex = new Map();
+function remember(text, key, vars) {
+  if (filledIndex.size >= FILLED_MAX) filledIndex.delete(filledIndex.keys().next().value);
+  filledIndex.set(text, { key, vars });
+}
+
+export const templateKeys = () => Object.keys(STRINGS.en);
+export const enTemplate = (key) => STRINGS.en[key];
+export const placeholdersOf = (s) => (String(s).match(/\{\w+\}/g) ?? []).sort();
+
 // Synchronous lookup: en/es natively, everything else gets English (translated later by localize()).
 export function t(lang, key, vars = {}) {
   const table = STRINGS[lang] ?? STRINGS.en;
-  return fill(table[key] ?? STRINGS.en[key] ?? key, vars);
+  const text = fill(table[key] ?? STRINGS.en[key] ?? key, vars);
+  if (!(lang in STRINGS) || lang === 'en') remember(text, key, vars);
+  return text;
 }
 
 export const hasNative = (lang) => lang in STRINGS;
 
+// Rebuild English text from generated templates. Whole text first, then line by line
+// (digests, advice lists, lessons join several templates). -> { text, complete }
+function fromGenerated(lang, text) {
+  const strings = generated[lang]?.strings;
+  if (!strings) return null;
+  const one = (s) => {
+    const hit = filledIndex.get(s);
+    return hit && strings[hit.key] ? fill(strings[hit.key], hit.vars) : null;
+  };
+  const whole = one(text);
+  if (whole) return { text: whole, complete: true };
+  let complete = true;
+  const lines = text.split('\n').map((line) => {
+    if (!line.trim()) return line;
+    const bullet = line.startsWith('• ') ? '• ' : '';
+    const tr = one(line.slice(bullet.length));
+    if (!tr) complete = false;
+    return tr ? bullet + tr : line;
+  });
+  return { text: lines.join('\n'), complete };
+}
+
 const LANG_NAMES = { vi: 'Vietnamese', hi: 'Hindi', zh: 'Simplified Chinese', ko: 'Korean', fr: 'French', ar: 'Arabic', ht: 'Haitian Creole', pt: 'Portuguese', ru: 'Russian', tl: 'Tagalog' };
+export const languageName = (lang) => LANG_NAMES[lang] ?? (lang === 'es' ? 'Spanish' : lang);
 const cache = new Map();
 
-// Translate an English string into the patient's language with the LLM chain (cached).
-// Returns the original text if the language is native or no LLM is available.
+// Translate an English string into the patient's language: generated templates first
+// (offline), then the LLM chain (cached). Returns the original text if the language
+// is native or nothing can translate it.
 export async function localize(lang, text) {
-  if (hasNative(lang) || !llm.enabled() || !text) return text;
+  if (hasNative(lang) || !text) return text;
+  const gen = fromGenerated(lang, text);
+  if (gen?.complete) return gen.text;
+  if (!llm.enabled()) return gen?.text ?? text; // offline: best effort (translated lines + English rest)
   const key = `${lang}:${text}`;
   if (cache.has(key)) return cache.get(key);
   const out = await llm.complete(

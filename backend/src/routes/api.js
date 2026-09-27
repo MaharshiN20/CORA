@@ -11,6 +11,7 @@ import { markPickedUp } from '../core/pharmacy.js';
 import { startLadder } from '../core/outreach.js';
 import { sendNurseMessage, notifyAck } from '../core/nurse.js';
 import { buildDigest, sendDigest } from '../core/digest.js';
+import { startScreen } from '../core/sdoh.js';
 import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
 
@@ -97,6 +98,20 @@ api.get('/patients/:id/digest', (req, res) => {
 api.post('/patients/:id/digest', async (req, res) => {
   try {
     res.json(await sendDigest(req.params.id));
+  } catch (err) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+});
+
+// ---- social-needs screen ----
+
+// POST /api/patients/:id/sdoh/start -> send the 4-question social-needs screen now (demo button)
+api.post('/patients/:id/sdoh/start', async (req, res) => {
+  try {
+    const p = store.getPatient(req.params.id);
+    const replies = await startScreen(req.params.id);
+    for (const r of replies) await channels.sendToPatient(store.getPatient(p.id), r);
+    res.json({ sent: replies.length });
   } catch (err) {
     res.status(err.status ?? 500).json({ error: err.message });
   }

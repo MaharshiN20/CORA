@@ -26,6 +26,7 @@ import * as pharmacy from './pharmacy.js';
 import * as outreach from './outreach.js';
 import * as companion from './companion.js';
 import * as lessons from './lessons.js';
+import * as sdoh from './sdoh.js';
 import * as parser from './parser.js';
 import * as llm from './llm/index.js';
 import { t, localize, toEnglish, hasNative } from './i18n.js';
@@ -61,6 +62,8 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
     replies = pharmacy.handleButton(patient, buttonData);
   } else if (buttonData?.startsWith('lesson:')) {
     replies = lessons.handleButton(patient, buttonData);
+  } else if (buttonData?.startsWith('sdoh:')) {
+    replies = await sdoh.handleButton(patient, buttonData);
   } else if (buttonData === 'cmd:checkin') {
     replies = checkin.start(patient);
   } else if (checkin.isActive(patient)) {
