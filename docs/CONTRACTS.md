@@ -86,6 +86,7 @@ reviewPatient(patient, { rules, messages, now }) → null | {
 ```
 `null` means no data yet, never zero. `scoreRisk(patient)` without signals must keep working (seed, tests).
 The core calls `scoreRisk(patient)` today. Once Risk v2 lands, the core will call `scoreRisk(patient, getSignals(patient))`.
+`core/aireview.js` already calls `risk.recordRisk(patient)` after every check-in **if that export exists**, and runs `reviewPatient` in the background only on GREEN days when the shared LLM chain has a provider.
 
 ---
 
@@ -113,8 +114,8 @@ Other collections:
 | Collection | Shape |
 |---|---|
 | `messages` | `{ id, ts, patientId, direction: 'in'\|'out', from?, to: 'patient'\|'caregiver'\|'nurse', text, textEn?, buttons?, channel? }` |
-| `alerts` (nurse worklist) | `{ id, ts, patientId, kind, tier: 'RED'\|'YELLOW'\|'INFO', title, reasons[], status, dueBy, assignee, outcome, note?, history: [{ ts, status, by }], source?, priority?, reporter?: 'patient'\|'caregiver', med?, barrier? }`. Unreachable tasks (outreach ladder, YELLOW) carry `silentDays`. Refill tasks carry `med` + `barrier` (`transport\|cost\|other\|no_response`) |
-| `audit` | `{ id, ts, type, patientId, data }`. Types include `triage`, `escalation`, `nurse_action`, `enroll`, `device_reading`, `photo_received`, `checkin_sent`, `checkin_abandoned`, `med_reminder`, `med_response`, `refill_nudge`, `refill_barrier`, `refill_picked_up`, `outreach` (`data.event`/`data.rung`), `outreach_recovered` (`data.afterRung`: the patient replied after the ladder fired, a recovery metric), `nurse_message`, `nurse_ack_notice`, `digest`, `job_failed`. `outreach_recovered.data.via` is `patient` or `caregiver` |
+| `alerts` (nurse worklist) | `{ id, ts, patientId, kind, tier: 'RED'\|'YELLOW'\|'INFO', title, reasons[], status, dueBy, assignee, outcome, note?, history: [{ ts, status, by }], source?, priority?, reporter?: 'patient'\|'caregiver', med?, barrier? }`. AI-review alerts (`source: 'ai_review'`, YELLOW, only ever on a GREEN rules day) carry `nurseSummary`, `suggestedActions[]`, `readmissionRisk`, `model`; reasons quote the patient's words as evidence. Unreachable tasks (outreach ladder, YELLOW) carry `silentDays`. Refill tasks carry `med` + `barrier` (`transport\|cost\|other\|no_response`) |
+| `audit` | `{ id, ts, type, patientId, data }`. Types include `triage`, `escalation`, `nurse_action`, `enroll`, `device_reading`, `photo_received`, `checkin_sent`, `checkin_abandoned`, `med_reminder`, `med_response`, `refill_nudge`, `refill_barrier`, `refill_picked_up`, `outreach` (`data.event`/`data.rung`), `outreach_recovered` (`data.afterRung`: the patient replied after the ladder fired, a recovery metric), `nurse_message`, `nurse_ack_notice`, `digest`, `ai_review` (`data.rulesTier/aiTier/finalTier/escalate/readmissionRisk/model`), `job_failed`. `outreach_recovered.data.via` is `patient` or `caregiver` |
 | `readings` | `{ id, ts, patientId, type: 'weight'\|'spo2'\|'hr', value, source: 'self'\|'device'\|'caregiver', device? }` |
 | custom | `store.collection('<name>')` for lane-owned data (e.g. Maharshi's `cohort`). Call `store.persist()` after mutating |
 

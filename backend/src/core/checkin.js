@@ -13,6 +13,7 @@ import * as llm from './llm.js';
 import * as clock from './clock.js';
 import { applyDiureticAnswer } from './meds.js';
 import { localDayKey } from './planning.js';
+import { queueReview } from './aireview.js';
 
 // Order matters. `enabled(plan)` lets risk tier decide how deep the check-in goes.
 const STEPS = [
@@ -220,6 +221,8 @@ async function finish(patient, a) {
   });
   const fresh = store.getPatient(patient.id);
   await escalate(fresh, result, { reporter });
+  // AI second look + risk history, in the background (never delays the reply).
+  queueReview(patient.id, result);
 
   const name = firstName(patient);
   const replies = [];
