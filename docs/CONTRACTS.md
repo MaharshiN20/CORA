@@ -167,3 +167,6 @@ llm.completeJSON(system, user) → Promise<object | null>
 llm.completeVision(system, prompt, { base64, mime }) → Promise<string | null>   // coming: P3-13
 ```
 Always handle `null`. That's the no-LLM path, and it must work.
+
+## 6. Languages
+`t(lang, key, vars)` is sync (en/es hand-written). `localize(lang, text)` translates English produced by `t()` using `src/core/i18n-generated/<lang>.json` templates first (offline), then the LLM chain, then returns English. `translateFromEnglish(lang, text)` is for free text (e.g. nurse messages). New patient-facing keys need en + es in `core/i18n.js`. Run `npm --prefix backend run i18n:build -- --langs <codes>` to refresh generated languages.

@@ -1,5 +1,9 @@
-// Patient-facing strings. English + Spanish are built in (work offline).
-// Any other language is translated by the LLM chain (Claude/Ollama/LM Studio) at send time, falling back to English.
+// Patient-facing strings. English + Spanish are hand-written (work offline).
+// Other languages: machine-translated templates from `npm run i18n:build` (src/core/i18n-generated,
+// offline, flagged needsReview) first, then the LLM chain at send time, then English.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as llm from './llm.js';
 
 const STRINGS = {
@@ -258,21 +262,81 @@ const STRINGS = {
 
 const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
 
+// ---------- generated template translations (P2-11) ----------
+// `npm run i18n:build` translates every English template once through the LLM chain
+// into src/core/i18n-generated/<lang>.json ({ meta: { needsReview, model, ... }, strings }).
+// localize() uses them first, so those languages work offline, instantly and
+// consistently; anything not covered still goes through the live LLM.
+const GENERATED_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n-generated');
+const generated = {};
+try {
+  for (const f of fs.readdirSync(GENERATED_DIR).filter((x) => x.endsWith('.json'))) {
+    generated[f.slice(0, -5)] = JSON.parse(fs.readFileSync(path.join(GENERATED_DIR, f), 'utf8'));
+  }
+} catch {
+  /* no generated translations yet */
+}
+export const generatedDir = () => GENERATED_DIR;
+export const generatedInfo = (lang) => generated[lang]?.meta ?? null;
+export const _setGenerated = (lang, data) => (data ? (generated[lang] = data) : delete generated[lang]); // test hook
+
+// English text produced by t() -> the template + values it came from, so localize()
+// can rebuild the same message from a translated template. Bounded memory.
+const FILLED_MAX = 5000;
+const filledIndex = new Map();
+function remember(text, key, vars) {
+  if (filledIndex.size >= FILLED_MAX) filledIndex.delete(filledIndex.keys().next().value);
+  filledIndex.set(text, { key, vars });
+}
+
+export const templateKeys = () => Object.keys(STRINGS.en);
+export const enTemplate = (key) => STRINGS.en[key];
+export const placeholdersOf = (s) => (String(s).match(/\{\w+\}/g) ?? []).sort();
+
 // Synchronous lookup: en/es natively, everything else gets English (translated later by localize()).
 export function t(lang, key, vars = {}) {
   const table = STRINGS[lang] ?? STRINGS.en;
-  return fill(table[key] ?? STRINGS.en[key] ?? key, vars);
+  const text = fill(table[key] ?? STRINGS.en[key] ?? key, vars);
+  if (!(lang in STRINGS) || lang === 'en') remember(text, key, vars);
+  return text;
 }
 
 export const hasNative = (lang) => lang in STRINGS;
 
+// Rebuild English text from generated templates. Whole text first, then line by line
+// (digests, advice lists, lessons join several templates). -> { text, complete }
+function fromGenerated(lang, text) {
+  const strings = generated[lang]?.strings;
+  if (!strings) return null;
+  const one = (s) => {
+    const hit = filledIndex.get(s);
+    return hit && strings[hit.key] ? fill(strings[hit.key], hit.vars) : null;
+  };
+  const whole = one(text);
+  if (whole) return { text: whole, complete: true };
+  let complete = true;
+  const lines = text.split('\n').map((line) => {
+    if (!line.trim()) return line;
+    const bullet = line.startsWith('• ') ? '• ' : '';
+    const tr = one(line.slice(bullet.length));
+    if (!tr) complete = false;
+    return tr ? bullet + tr : line;
+  });
+  return { text: lines.join('\n'), complete };
+}
+
 const LANG_NAMES = { vi: 'Vietnamese', hi: 'Hindi', zh: 'Simplified Chinese', ko: 'Korean', fr: 'French', ar: 'Arabic', ht: 'Haitian Creole', pt: 'Portuguese', ru: 'Russian', tl: 'Tagalog' };
+export const languageName = (lang) => LANG_NAMES[lang] ?? (lang === 'es' ? 'Spanish' : lang);
 const cache = new Map();
 
-// Translate an English string into the patient's language with the LLM chain (cached).
-// Returns the original text if the language is native or no LLM is available.
+// Translate an English string into the patient's language: generated templates first
+// (offline), then the LLM chain (cached). Returns the original text if the language
+// is native or nothing can translate it.
 export async function localize(lang, text) {
-  if (hasNative(lang) || !llm.enabled() || !text) return text;
+  if (hasNative(lang) || !text) return text;
+  const gen = fromGenerated(lang, text);
+  if (gen?.complete) return gen.text;
+  if (!llm.enabled()) return gen?.text ?? text; // offline: best effort (translated lines + English rest)
   const key = `${lang}:${text}`;
   if (cache.has(key)) return cache.get(key);
   const out = await llm.complete(

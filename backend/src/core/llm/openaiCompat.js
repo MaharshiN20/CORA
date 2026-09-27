@@ -46,6 +46,9 @@ function makeProvider(name, baseUrl, model) {
         model,
         max_tokens: maxTokens,
         temperature: 0.2,
+        // Turn off "thinking" on reasoning models (qwen3.5 ignores /no_think; LM Studio honours
+        // this and answers in ~1s instead of burning the whole budget). Ignored by other models.
+        reasoning_effort: 'none',
         messages: [
           { role: 'system', content: NO_THINK.test(model) ? `${system}\n/no_think` : system },
           { role: 'user', content: user },
