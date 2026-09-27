@@ -22,7 +22,7 @@
   - Prannav's lane wires `reviewPatient()` into check-in completion (P1-9) and turns `escalate: true` into a YELLOW alert with `source: 'ai_review'` and your `concerns` as reasons. Your returned shape is the contract for that; it's documented in CONTRACTS.md §2.
   - **Accept:** your existing riskllm/lexicon tests stay green, plus new tests showing it runs through a mocked chain and returns `null` when no provider is available.
 
-- [ ] **M1. Risk v2: static + dynamic, explainable**
+- [x] **M1. Risk v2: static + dynamic, explainable**
   - Keep the current additive baseline (rename its factors' section to "baseline").
   - Add a dynamic component from `getSignals(patient)`: missed check-ins, adherence under 80%, weight trend, open RED/YELLOW alerts, SDOH flags, low lesson score. Each gives points with a human label ("Missed 2 check-ins this week +2").
   - Tier comes from baseline + dynamic. `plan` is still derived from tier. Return `dynamic: { score, factors, trend }`.

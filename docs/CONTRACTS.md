@@ -63,12 +63,17 @@ tts(text, language) → Promise<{ url } | { buffer, mime } | null>
 ## 2. Risk (Maharshi ⇄ Prannav)
 ```js
 // core/risk.js (Maharshi)
-scoreRisk(patient, signals?) → {
+scoreRisk(patient, signals?, { previousScore? }) → {
   score: number, tier: 'Low' | 'Med' | 'High',
-  factors: [{ label, points }],          // human-readable, shown on dashboard
+  factors: [{ label, points }],          // baseline + dynamic, human-readable, shown on dashboard
   plan: { checkinsPerDay, askSpo2, askOrthopnea },   // drives check-in depth (core relies on these keys)
-  dynamic?: { score, factors, trend: 'up' | 'down' | 'flat' },  // behaviour-based component
+  baseline: { score, factors },          // discharge-time factors (never change)
+  dynamic?: { score, factors, trend: 'up' | 'down' | 'flat' },  // only when signals given; trend vs previousScore (default patient.riskScore)
 }
+// insights/riskHistory.js (Maharshi): risk over time. The core calls recordRisk after each check-in.
+recordRisk(patient, signals = getSignals(patient)) → { ts, patientId, score, tier }   // appends to store.collection('riskHistory')
+currentRisk(patient, signals?) → scoreRisk result, trend vs the last riskHistory row
+riskHistory(patientId) → rows oldest → newest;  lastRisk(patientId) → row | null
 // core/signals.js (Prannav)
 getSignals(patient) → {
   daysSinceDischarge, checkinsCompleted7d, missedCheckins7d,
