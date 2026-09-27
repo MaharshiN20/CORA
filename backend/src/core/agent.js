@@ -24,6 +24,10 @@ import * as checkin from './checkin.js';
 import * as meds from './meds.js';
 import * as pharmacy from './pharmacy.js';
 import * as outreach from './outreach.js';
+import * as companion from './companion.js';
+import * as lessons from './lessons.js';
+import * as parser from './parser.js';
+import * as llm from './llm/index.js';
 import { t, localize, toEnglish, hasNative } from './i18n.js';
 
 const START_WORDS = /^\/?(check[- ]?in|start|chequeo|empezar|hola|hi|hello)\b/i;
@@ -55,14 +59,14 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
     replies = meds.handleButton(patient, buttonData);
   } else if (buttonData?.startsWith('rx:')) {
     replies = pharmacy.handleButton(patient, buttonData);
+  } else if (buttonData?.startsWith('lesson:')) {
+    replies = lessons.handleButton(patient, buttonData);
   } else if (buttonData === 'cmd:checkin') {
     replies = checkin.start(patient);
   } else if (checkin.isActive(patient)) {
     ({ replies, textEn } = await checkin.handle(patient, { text: input, buttonData }));
   } else if (input) {
-    replies =
-      (await checkin.handleUrgentFreeText(patient, input)) ??
-      (START_WORDS.test(input.trim()) ? checkin.start(patient) : offerCheckin(patient));
+    ({ replies, textEn } = await handleFreeText(patient, input));
   } else {
     replies = offerCheckin(patient);
   }
@@ -81,6 +85,24 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
   const to = role === 'caregiver' ? 'caregiver' : 'patient';
   for (const r of replies) store.addMessage({ patientId, direction: 'out', to, text: r.text, textEn: r.textEn, buttons: r.buttons, channel });
   return replies;
+}
+
+// Patient free text outside a check-in, in safety order:
+// emergency -> start words -> medication-change question -> volunteered symptom
+// (pre-filled check-in) -> question (discharge companion) -> offer a check-in.
+async function handleFreeText(patient, input) {
+  const urgent = await checkin.handleUrgentFreeText(patient, input);
+  if (urgent) return { replies: urgent };
+  if (START_WORDS.test(input.trim())) return { replies: checkin.start(patient) };
+  if (companion.DOSING_CHANGE.test(input)) return { replies: (await companion.answer(patient, input)).replies };
+  if (Object.keys(parser.parseFreeText(input)).length) return checkin.startWith(patient, input);
+  if (companion.looksLikeQuestion(input) || llm.enabled()) {
+    const res = await companion.answer(patient, input);
+    if (res.kind === 'symptom') return checkin.startWith(patient, input);
+    if (res.kind === 'other' && !companion.looksLikeQuestion(input)) return { replies: offerCheckin(patient) }; // "thanks!"
+    return { replies: res.replies };
+  }
+  return { replies: offerCheckin(patient) };
 }
 
 function caregiverAck(patient) {
@@ -143,6 +165,11 @@ function offerCheckin(patient) {
 
 // Languages without built-in strings (vi, hi, ...) get translated by the LLM chain; en/es pass through.
 async function localizeReply(lang, r) {
+  if (r.localized) {
+    // Already written in the patient's language (e.g. a companion answer from the LLM).
+    const { localized, ...rest } = r;
+    return rest;
+  }
   if (hasNative(lang)) return r;
   const text = await localize(lang, r.text);
   const buttons = r.buttons

@@ -164,6 +164,14 @@ export function start(patient, { reporter = 'patient', lang } = {}) {
   return [reply(patient, greeting, { name: firstName(patient) }), prompt(patient, steps[0].id)];
 }
 
+// The patient volunteered a symptom outside a check-in ("my ankles are more swollen"):
+// start a check-in and apply what they said, so they're only asked what's missing.
+export async function startWith(patient, text) {
+  start(patient);
+  const { replies, textEn } = await handle(store.getPatient(patient.id), { text });
+  return { replies: [reply(patient, 'companion_symptom_intro'), ...replies], textEn };
+}
+
 export const reporterOf = (patient) => (isActive(patient) ? patient.checkin.reporter ?? 'patient' : null);
 
 // Returns { replies, textEn } where textEn is an English translation of the inbound text, if we made one.

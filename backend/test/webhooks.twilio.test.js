@@ -188,6 +188,22 @@ test('an MMS / WhatsApp image is downloaded with Twilio auth and handed to the c
   assert.equal(audit.data.mime, 'image/jpeg');
 });
 
+test('a failed image download tells the patient instead of reaching the core', async () => {
+  await sms('JOIN GARCIA1');
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (url, init) => (String(url).startsWith('https://media.example/') ? new Response('gone', { status: 404 }) : inner(url, init));
+  const err = console.error;
+  console.error = () => {};
+  let res;
+  try {
+    res = await sms('', { NumMedia: '1', MediaUrl0: 'https://media.example/img2', MediaContentType0: 'image/jpeg' });
+  } finally {
+    console.error = err;
+  }
+  assert.deepEqual(messagesIn(res.body).map(unescape), [i18n.t('es', 'photo_failed')]);
+  assert.ok(!store.listAudit('p1').some((e) => e.type === 'photo_received'));
+});
+
 test('a voice note with no transcription key asks the patient to type', async () => {
   await sms('JOIN GARCIA1');
   const res = await sms('', { NumMedia: '1', MediaUrl0: 'https://media.example/a1', MediaContentType0: 'audio/ogg' });

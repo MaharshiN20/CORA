@@ -16,8 +16,8 @@ export const BOT_INFO = {
 let updateId = 0;
 let messageId = 100;
 
-export function makeBot({ results = {} } = {}) {
-  const bot = buildBot('test:token', { botInfo: BOT_INFO });
+export function makeBot({ results = {}, botOptions = {} } = {}) {
+  const bot = buildBot('test:token', { botInfo: BOT_INFO, ...botOptions });
   const calls = [];
   bot.api.config.use(async (_prev, method, payload) => {
     calls.push({ method, payload });

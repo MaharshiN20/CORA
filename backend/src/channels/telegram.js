@@ -19,6 +19,10 @@ import { languages, isSupportedLanguage, enrollDemoPatient } from '../core/enrol
 import { joinLinksText } from '../routes/join.js';
 import { t, localize } from '../core/i18n.js';
 import { transcribe, tts } from '../integrations/speech.js';
+import * as llm from '../core/llm/index.js';
+import * as clock from '../core/clock.js';
+import * as twilio from './twilio.js';
+import { createRateLimiter, retryTransformer, describePollingError } from './resilience.js';
 
 let bot = null;
 
@@ -192,9 +196,46 @@ async function lockTappedMessage(ctx) {
     .catch(() => {}); // message too old / unchanged: harmless
 }
 
-export function buildBot(token, { botInfo } = {}) {
+// For the nurse group's /status: is everything the demo needs actually up?
+export function statusText() {
+  const ai = llm.status();
+  const patients = store.listPatients();
+  const linked = patients.filter((p) => p.chatId || p.phone).length;
+  const up = Math.round(process.uptime());
+  const uptime = `${Math.floor(up / 3600)}h ${Math.floor((up % 3600) / 60)}m`;
+  const on = (x) => (x ? '✅' : '—');
+  return [
+    '🩺 HeartBridge status',
+    `Uptime: ${uptime}`,
+    `LLM: ${ai.provider}${ai.model ? ` (${ai.model})` : ''}${ai.available === false ? ' (unavailable)' : ''}`,
+    `Linked patients: ${linked} of ${patients.length}`,
+    `Channels: Telegram ${on(true)} · SMS ${on(twilio.sms.isEnabled())} · WhatsApp ${on(twilio.whatsapp.isEnabled())}`,
+    `Demo clock: ${clock.nowISO()}`,
+  ].join('\n');
+}
+
+// rateLimit: { limit, windowMs } per private chat, or false to disable.
+export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60_000 } } = {}) {
   const b = new Bot(token, botInfo ? { botInfo } : undefined);
+  b.api.config.use(retryTransformer());
   const seenGroups = new Set();
+  const limiter = rateLimit ? createRateLimiter(rateLimit) : null;
+  const throttled = new Set();
+
+  // A stuck key or a spammer shouldn't flood the core (or the LLM bill). Over the limit the
+  // update is dropped; taps are still answered so the button stops spinning.
+  b.use(async (ctx, next) => {
+    if (!limiter || ctx.chat?.type !== 'private') return next();
+    if (limiter.hit(ctx.chat.id)) {
+      throttled.delete(ctx.chat.id);
+      return next();
+    }
+    if (!throttled.has(ctx.chat.id)) {
+      throttled.add(ctx.chat.id);
+      console.warn(`[telegram] chat ${ctx.chat.id} is over ${rateLimit.limit} messages/${rateLimit.windowMs / 1000}s, dropping until it slows down`);
+    }
+    if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => {});
+  });
 
   // Group chats: log the id once so people can find NURSE_CHAT_ID.
   b.use(async (ctx, next) => {
@@ -213,6 +254,11 @@ export function buildBot(token, { botInfo } = {}) {
   group.command('demo', async (ctx) => {
     if (!isNurseGroup(ctx)) return;
     await ctx.reply(joinLinksText(), { link_preview_options: { is_disabled: true } });
+  });
+
+  group.command('status', async (ctx) => {
+    if (!isNurseGroup(ctx)) return;
+    await ctx.reply(statusText());
   });
 
   const dm = b.chatType('private');
@@ -331,8 +377,7 @@ export function buildBot(token, { botInfo } = {}) {
       } catch (err) {
         if (err instanceof FileTooLargeError) return ctx.reply(await say(lang, 'file_too_large'));
         console.error('[telegram] photo download failed:', err.message);
-        if (t(lang, 'photo_failed') !== 'photo_failed') await ctx.reply(await say(lang, 'photo_failed'));
-        return;
+        return ctx.reply(await say(lang, 'photo_failed'));
       }
       const photo = { base64: buffer.toString('base64'), mime };
       const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', photo });
@@ -380,7 +425,7 @@ export async function start() {
   }
   bot
     .start({ onStart: (me) => console.log(`[telegram] @${me.username} polling`) })
-    .catch((err) => console.error('[telegram] polling stopped:', err.message));
+    .catch((err) => console.error(describePollingError(err)));
 }
 
 export async function stop() {
