@@ -7,7 +7,7 @@ import { reviewPatient, normalizeReview, parseJSON } from '../src/riskllm/index.
 import { buildCase } from '../src/riskllm/features.js';
 
 const realFetch = globalThis.fetch;
-const ENV_KEYS = ['LLM_PROVIDER', 'ANTHROPIC_API_KEY', 'OLLAMA_URL', 'OLLAMA_MODEL', 'LMSTUDIO_URL', 'LMSTUDIO_MODEL', 'RISK_LLM'];
+const ENV_KEYS = ['LLM_PROVIDER', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_BASE_URL', 'OLLAMA_URL', 'OLLAMA_MODEL', 'LMSTUDIO_URL', 'LMSTUDIO_MODEL', 'RISK_LLM'];
 let savedEnv;
 let chatCalls;
 

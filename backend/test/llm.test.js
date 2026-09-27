@@ -5,7 +5,8 @@ import * as llm from '../src/core/llm/index.js';
 import { pickModel } from '../src/core/llm/openaiCompat.js';
 
 const realFetch = globalThis.fetch;
-const ENV_KEYS = ['LLM_PROVIDER', 'ANTHROPIC_API_KEY', 'OLLAMA_URL', 'OLLAMA_MODEL', 'LMSTUDIO_URL', 'LMSTUDIO_MODEL'];
+process.env.LLM_RETRY_DELAY_MS = '1'; // keep retry tests fast
+const ENV_KEYS = ['LLM_PROVIDER', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_BASE_URL', 'OLLAMA_URL', 'OLLAMA_MODEL', 'LMSTUDIO_URL', 'LMSTUDIO_MODEL'];
 let savedEnv;
 
 // routes: { 'GET http://localhost:11434/api/tags': () => body | throws, 'POST ...': (reqBody) => body }
@@ -159,4 +160,129 @@ test('pickModel skips embedding models and prefers known instruct families', () 
   assert.equal(pickModel(['nomic-embed-text', 'phi3', 'llama3.2:3b']), 'llama3.2:3b');
   assert.equal(pickModel(['text-embedding-nomic', 'some-custom-model']), 'some-custom-model');
   assert.equal(pickModel(['nomic-embed-text']), null);
+});
+
+// ---------- Gemini + per-call options ----------
+const GEMINI_CHAT = 'POST https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+
+test('Gemini key set -> Gemini after Claude, before local providers; no network probe needed', async () => {
+  process.env.GEMINI_API_KEY = 'g-test';
+  mockFetch({ [OLLAMA_TAGS]: () => ({ models: [{ name: 'qwen2.5:7b' }] }) });
+  await llm.detect({ force: true });
+  assert.deepEqual(llm.status(), { provider: 'gemini', model: 'gemini-flash-latest', available: ['gemini', 'ollama'] });
+  process.env.ANTHROPIC_API_KEY = 'sk-test';
+  await llm.detect({ force: true });
+  assert.deepEqual(llm.status().available, ['claude', 'gemini', 'ollama']);
+});
+
+test('Gemini request: OpenAI-compatible endpoint, Bearer key, JSON mode, thinking off', async () => {
+  process.env.GEMINI_API_KEY = 'g-test';
+  process.env.GEMINI_MODEL = 'gemini-3.8-flash';
+  let sent;
+  let auth;
+  globalThis.fetch = async (url, opts) => {
+    assert.equal(`${opts.method} ${url}`, GEMINI_CHAT);
+    auth = opts.headers.Authorization;
+    sent = JSON.parse(opts.body);
+    return new Response(JSON.stringify({ choices: [{ message: { content: '{"weightLb":177}' } }] }));
+  };
+  await llm.detect({ force: true });
+  assert.deepEqual(await llm.completeJSON('extract', '177 lb'), { weightLb: 177 });
+  assert.equal(auth, 'Bearer g-test');
+  assert.equal(sent.model, 'gemini-3.8-flash');
+  assert.equal(sent.reasoning_effort, 'none');
+  assert.deepEqual(sent.response_format, { type: 'json_object' });
+});
+
+test('Gemini failure falls through to the next provider', async () => {
+  process.env.GEMINI_API_KEY = 'g-test';
+  mockFetch({
+    [GEMINI_CHAT]: () => new Response('{"error":{"code":429}}', { status: 429 }),
+    [LMS_MODELS]: () => ({ data: [{ id: 'llama-3-8b' }] }),
+    [LMS_CHAT]: () => chatReply('fallback ok'),
+  });
+  await llm.detect({ force: true });
+  assert.equal(await llm.complete('s', 'u'), 'fallback ok');
+});
+
+test('per-call options: maxTokens, schema, timeoutMs reach the provider', async () => {
+  let sent;
+  mockFetch({
+    [LMS_MODELS]: () => ({ data: [{ id: 'llama-3-8b' }] }),
+    [LMS_CHAT]: (body) => {
+      sent = body;
+      return chatReply('{"tier":"GREEN"}');
+    },
+  });
+  await llm.detect({ force: true });
+  const schema = { type: 'object', properties: { tier: { type: 'string' } } };
+  assert.deepEqual(await llm.completeJSON('s', 'u', { maxTokens: 1500, schema }), { tier: 'GREEN' });
+  assert.equal(sent.max_tokens, 1500);
+  assert.deepEqual(sent.response_format, { type: 'json_schema', json_schema: { name: 'response', schema } });
+});
+
+test('per-call model override is used only by a provider that has that model', async () => {
+  process.env.GEMINI_API_KEY = 'g-test';
+  const models = [];
+  mockFetch({
+    [GEMINI_CHAT]: (body) => {
+      models.push(['gemini', body.model]);
+      return new Response('x', { status: 500 }); // force fall-through
+    },
+    [LMS_MODELS]: () => ({ data: [{ id: 'llama-3-8b' }, { id: 'qwen2.5-7b-instruct' }] }),
+    [LMS_CHAT]: (body) => {
+      models.push(['lmstudio', body.model]);
+      return chatReply('ok');
+    },
+  });
+  await llm.detect({ force: true });
+  await llm.complete('s', 'u', 200, { model: 'qwen2.5-7b-instruct' });
+  assert.deepEqual(models, [['gemini', 'gemini-flash-latest'], ['lmstudio', 'qwen2.5-7b-instruct']]);
+});
+
+test('per-call timeout aborts a hung provider and falls through', async () => {
+  process.env.GEMINI_API_KEY = 'g-test';
+  mockFetch({
+    [GEMINI_CHAT]: () => new Promise(() => {}), // never answers
+    [LMS_MODELS]: () => ({ data: [{ id: 'llama-3-8b' }] }),
+    [LMS_CHAT]: () => chatReply('lm studio answered'),
+  });
+  // mockFetch ignores AbortSignal; wrap it so the hung call rejects on abort like real fetch.
+  const inner = globalThis.fetch;
+  globalThis.fetch = (url, opts) =>
+    new Promise((resolve, reject) => {
+      opts?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      inner(url, opts).then(resolve, reject);
+    });
+  await llm.detect({ force: true });
+  // AbortSignal.timeout's timer is unref'd; with only a hung fake request pending the event loop
+  // would drain and node:test would cancel the test (a real server always has other handles).
+  const keepAlive = setTimeout(() => {}, 5000);
+  const t0 = Date.now();
+  try {
+    assert.equal(await llm.complete('s', 'u', 100, { timeoutMs: 50 }), 'lm studio answered');
+    assert.ok(Date.now() - t0 < 2000);
+  } finally {
+    clearTimeout(keepAlive);
+  }
+});
+
+test('a 503 "high demand" spike is retried once on the same provider before falling through', async () => {
+  process.env.GEMINI_API_KEY = 'g-test';
+  let n = 0;
+  mockFetch({
+    [GEMINI_CHAT]: () => (++n === 1 ? new Response('{"error":{"code":503}}', { status: 503 }) : chatReply('second try ok')),
+  });
+  await llm.detect({ force: true });
+  assert.equal(await llm.complete('s', 'u'), 'second try ok');
+  assert.equal(n, 2);
+});
+
+test('a 400 is not retried', async () => {
+  process.env.GEMINI_API_KEY = 'g-test';
+  let n = 0;
+  mockFetch({ [GEMINI_CHAT]: () => (n++, new Response('bad', { status: 400 })) });
+  await llm.detect({ force: true });
+  assert.equal(await llm.complete('s', 'u'), null);
+  assert.equal(n, 1);
 });

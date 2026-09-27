@@ -169,8 +169,10 @@ Other collections:
 ```js
 import * as llm from '../core/llm/index.js';
 llm.enabled() → boolean; llm.status() → { provider, model, available }
-llm.complete(system, user, maxTokens?) → Promise<string | null>
-llm.completeJSON(system, user) → Promise<object | null>
+llm.complete(system, user, maxTokens?, { json?, schema?, model?, timeoutMs? }) → Promise<string | null>
+llm.completeJSON(system, user, { maxTokens?, schema?, model?, timeoutMs? }) → Promise<object | null>
+// chain: Claude -> Gemini -> Ollama -> LM Studio; `model` is used only by a provider that has it;
+// 503/429 are retried once per provider, then the next provider is tried
 llm.completeVision(system, prompt, { base64, mime }) → Promise<string | null>   // coming: P3-13
 ```
 Always handle `null`. That's the no-LLM path, and it must work.

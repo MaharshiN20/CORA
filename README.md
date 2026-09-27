@@ -33,11 +33,12 @@ npm run e2e                            # rehearse the whole demo story over HTTP
 No keys needed to start. Without a Telegram token you can still chat as a patient from the dashboard's "Simulate a patient reply" box.
 
 ### AI (optional, auto-detected)
-The backend picks the first available provider: **Claude → Ollama → LM Studio → rules only**. The dashboard shows which one is in use.
+The backend picks the first available provider: **Claude → Gemini → Ollama → LM Studio → rules only**. The dashboard shows which one is in use.
 - **Claude**: set `ANTHROPIC_API_KEY` in `backend/.env`.
+- **Gemini**: set `GEMINI_API_KEY` in `backend/.env` (default model `gemini-flash-latest`; set `GEMINI_MODEL` to change it). Note that a system-wide `GEMINI_API_KEY` takes precedence over `.env`.
 - **Ollama**: `ollama pull qwen2.5:7b-instruct` and leave Ollama running.
 - **LM Studio**: load a model, then Developer → Start Server (or `lms server start && lms load qwen/qwen3-4b`).
-- Pin one with `LLM_PROVIDER=claude|ollama|lmstudio|none`. New providers are picked up within 60s without a restart.
+- Pin one with `LLM_PROVIDER=claude|gemini|ollama|lmstudio|none`. New providers are picked up within 60s without a restart.
 - Multilingual instruct models work best (Qwen 2.5/3, Llama 3.x). Tiny models (≤4B) translate noticeably worse; use 7–9B+ for demos.
 - `npm --prefix backend run i18n:build -- --langs vi,hi` pre-translates every patient message template (placeholders validated) into `backend/src/core/i18n-generated/`. Those languages then work **offline** and consistently. The files are marked `needsReview` until a bilingual reviewer checks them.
 

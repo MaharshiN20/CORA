@@ -1,9 +1,9 @@
-// Local models through the OpenAI-compatible /v1/chat/completions endpoint.
-// Both Ollama and LM Studio speak it, so one adapter covers both; they differ
-// only in how we discover which models are available.
+// Providers that speak the OpenAI-compatible /chat/completions API: Ollama and LM Studio
+// (local, discovered by probing) and Gemini (gemini.js). One adapter covers them all.
 
 const PROBE_TIMEOUT_MS = 1500;
 const CALL_TIMEOUT_MS = 60_000; // local models on a laptop can be slow
+const RETRY_DELAY_MS = Number(process.env.LLM_RETRY_DELAY_MS ?? 800);
 
 // Prefer instruct models that handle JSON + multilingual text well.
 const PREFERRED = [/qwen/i, /llama-?3/i, /gemma/i, /mistral/i, /phi/i];
@@ -36,36 +36,56 @@ const JSON_FORMAT = {
   lmstudio: { type: 'json_schema', json_schema: { name: 'response', schema: { type: 'object' } } },
 };
 
-function makeProvider(name, baseUrl, model) {
-  async function call({ system, user, maxTokens, json }) {
-    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+// JSON output: a caller-supplied schema is enforced where the server supports it.
+function responseFormat(name, schema) {
+  if (schema) return { type: 'json_schema', json_schema: { name: 'response', schema } };
+  return JSON_FORMAT[name] ?? { type: 'json_object' };
+}
+
+// One OpenAI-compatible provider (Ollama, LM Studio, Gemini...).
+//   chatUrl: full /chat/completions URL; headers: e.g. auth; models: known model ids
+//   (a per-call `model` override is honoured only if this provider has that model).
+export function makeProvider(name, chatUrl, model, { headers = {}, models = [model], accepts } = {}) {
+  const canUse = accepts ?? ((m) => models.includes(m));
+
+  async function call({ system, user, maxTokens, json, schema, model: wanted, timeoutMs }) {
+    const useModel = wanted && canUse(wanted) ? wanted : model;
+    const res = await fetch(chatUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+      headers: { 'Content-Type': 'application/json', ...headers },
+      signal: AbortSignal.timeout(timeoutMs ?? CALL_TIMEOUT_MS),
       body: JSON.stringify({
-        model,
+        model: useModel,
         max_tokens: maxTokens,
         temperature: 0.2,
-        // Turn off "thinking" on reasoning models (qwen3.5 ignores /no_think; LM Studio honours
-        // this and answers in ~1s instead of burning the whole budget). Ignored by other models.
+        // Turn off "thinking" on reasoning models (qwen3.5 ignores /no_think; LM Studio and
+        // Gemini honour this and answer in ~1-5s instead of burning the budget). Ignored elsewhere.
         reasoning_effort: 'none',
         messages: [
-          { role: 'system', content: NO_THINK.test(model) ? `${system}\n/no_think` : system },
+          { role: 'system', content: NO_THINK.test(useModel) ? `${system}\n/no_think` : system },
           { role: 'user', content: user },
         ],
-        ...(json && { response_format: JSON_FORMAT[name] }),
+        ...((json || schema) && { response_format: responseFormat(name, schema) }),
       }),
     });
-    if (!res.ok) throw new Error(`${name} ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const choice = (await res.json()).choices?.[0];
+    if (!res.ok) throw Object.assign(new Error(`${name} ${res.status}: ${(await res.text()).slice(0, 200)}`), { status: res.status });
+    const body = await res.json();
+    const choice = (Array.isArray(body) ? body[0] : body).choices?.[0];
     return { text: stripThinking(choice?.message?.content ?? ''), truncated: choice?.finish_reason === 'length' };
   }
 
   return {
     name,
     model,
+    accepts: canUse,
     async chat(opts) {
-      const first = await call(opts);
+      // Hosted APIs (Gemini) return brief 503 "high demand" / 429 spikes: retry once, then
+      // let the chain fall through to the next provider.
+      const first = await call(opts).catch(async (err) => {
+        if (err.status !== 503 && err.status !== 429) throw err;
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        return call(opts);
+      });
       if (first.text || !first.truncated) return first.text;
       return (await call({ ...opts, maxTokens: opts.maxTokens * 4 })).text;
     },
@@ -77,8 +97,9 @@ export async function detectOllama() {
   const base = (process.env.OLLAMA_URL || 'http://localhost:11434').replace(/\/$/, '');
   try {
     const { models = [] } = await getJSON(`${base}/api/tags`);
-    const model = process.env.OLLAMA_MODEL || pickModel(models.map((m) => m.name));
-    return model ? makeProvider('ollama', base, model) : null;
+    const ids = models.map((m) => m.name);
+    const model = process.env.OLLAMA_MODEL || pickModel(ids);
+    return model ? makeProvider('ollama', `${base}/v1/chat/completions`, model, { models: [model, ...ids] }) : null;
   } catch {
     return null;
   }
@@ -89,8 +110,9 @@ export async function detectLmStudio() {
   const base = (process.env.LMSTUDIO_URL || 'http://localhost:1234').replace(/\/$/, '');
   try {
     const { data = [] } = await getJSON(`${base}/v1/models`);
-    const model = process.env.LMSTUDIO_MODEL || pickModel(data.map((m) => m.id));
-    return model ? makeProvider('lmstudio', base, model) : null;
+    const ids = data.map((m) => m.id);
+    const model = process.env.LMSTUDIO_MODEL || pickModel(ids);
+    return model ? makeProvider('lmstudio', `${base}/v1/chat/completions`, model, { models: [model, ...ids] }) : null;
   } catch {
     return null;
   }

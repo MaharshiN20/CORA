@@ -1,20 +1,22 @@
-// LLM provider chain: Claude -> Ollama -> LM Studio -> none.
+// LLM provider chain: Claude -> Gemini -> Ollama -> LM Studio -> none.
 //
 // Everything that calls this MUST have a non-LLM fallback: when no provider is
 // available (or every provider fails), complete()/completeJSON() return null and
 // callers carry on with rules. Clinical decisions never go through here.
 //
 // LLM_PROVIDER=auto (default) picks the first available in chain order.
-// LLM_PROVIDER=claude|ollama|lmstudio pins one; LLM_PROVIDER=none disables.
+// LLM_PROVIDER=claude|gemini|ollama|lmstudio pins one; LLM_PROVIDER=none disables.
 import * as anthropic from './anthropic.js';
+import * as gemini from './gemini.js';
 import { detectOllama, detectLmStudio } from './openaiCompat.js';
 
 const DETECTORS = {
   claude: async () => anthropic.detect(),
+  gemini: async () => gemini.detect(),
   ollama: detectOllama,
   lmstudio: detectLmStudio,
 };
-const CHAIN = ['claude', 'ollama', 'lmstudio'];
+const CHAIN = ['claude', 'gemini', 'ollama', 'lmstudio'];
 const REPROBE_MS = 60_000;
 
 let providers = []; // available providers, in priority order
@@ -70,13 +72,17 @@ async function run(opts) {
   return null;
 }
 
-export function complete(system, user, maxTokens = 400) {
-  return run({ system, user, maxTokens });
+// opts (all optional, per call): { json, schema, model, timeoutMs }
+//   schema    -> enforced as JSON schema where the provider supports it (Gemini, LM Studio, Ollama)
+//   model     -> preferred model, used only by a provider that has it (else its default)
+//   timeoutMs -> per-call timeout (default 60s; CPU-only local reviews can need more)
+export function complete(system, user, maxTokens = 400, opts = {}) {
+  return run({ system, user, maxTokens, ...opts });
 }
 
-// Returns parsed JSON or null.
-export async function completeJSON(system, user) {
-  const text = await run({ system: `${system}\nRespond with ONLY a JSON object, no prose.`, user, maxTokens: 400, json: true });
+// Returns parsed JSON or null. opts: { maxTokens = 400, schema, model, timeoutMs }
+export async function completeJSON(system, user, { maxTokens = 400, ...opts } = {}) {
+  const text = await run({ system: `${system}\nRespond with ONLY a JSON object, no prose.`, user, maxTokens, json: true, ...opts });
   if (!text) return null;
   try {
     return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
