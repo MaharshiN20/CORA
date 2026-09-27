@@ -54,7 +54,7 @@
   - `routes/webhooks.js`: `POST /webhooks/twilio/sms` and `/whatsapp` (form-encoded `From`, `Body`). `JOIN <CODE>` links a phone (`store.updatePatient(id, { phone, channel })`). Otherwise route to `handleInbound`, reply via the REST API, and respond with empty TwiML. Validate the `X-Twilio-Signature` when the auth token is set.
   - **Accept:** tests for numbered-option mapping, JOIN linking, inbound → reply, signature validation on and off, adapter fallback, and a disabled channel doesn't throw. Document the Twilio trial/sandbox setup in `docs/TELEGRAM_SETUP.md` (a new "SMS & WhatsApp" section).
 
-- [ ] **K6. Virtual devices**
+- [x] **K6. Virtual devices**
   - `tools/virtual-scale.js` and `tools/virtual-oximeter.js`: CLI scripts that post to `POST /api/devices/readings`. For example `node tools/virtual-scale.js --patient p1 --lb 177.4`, or `--trend +0.8/day --days 5` which advances the demo clock between posts (`POST /api/demo/advance`).
   - `integrations/devices.js`: a small helper both CLIs share (validation, retries) and a stub for Withings OAuth (stretch goal, documented only).
   - **Accept:** tests for argument parsing and the request payloads (mock `fetch`). A manual check posts to a running backend, and the reading appears in `GET /api/patients/p1`.
