@@ -87,7 +87,8 @@ test('vi/hi/zh unprompted emergency: the LLM parses, the rule decides, nurse ale
   process.env.HEARTBRIDGE_DB = path.join(os.tmpdir(), `heartbridge-redflag-llm-${process.pid}.json`);
   process.env.LLM_PROVIDER = 'lmstudio';
   const realFetch = globalThis.fetch;
-  let parsed = { confusion: true, textEn: 'My mother seems confused' };
+  // Evidence-quoted extraction (parser.validateExtraction): each value cites the message.
+  let parsed = { fields: { confusion: { value: true, evidence: 'lú lẫn' } }, textEn: 'My mother seems confused' };
   globalThis.fetch = async (url, opts) => {
     const u = String(url);
     if (u.endsWith('/v1/models')) return new Response(JSON.stringify({ data: [{ id: 'qwen2.5-7b-instruct' }] }));
@@ -112,7 +113,7 @@ test('vi/hi/zh unprompted emergency: the LLM parses, the rule decides, nurse ale
 
     // LLM says nothing alarming -> no escalation (the rule decides, not the model's tone)
     store.reset();
-    parsed = { swelling: 'mild', textEn: 'ankles a bit puffy' };
+    parsed = { fields: { swelling: { value: 'mild', evidence: 'hơi sưng' } }, textEn: 'ankles a bit puffy' };
     const calm = await agent.handleInbound({ patientId: 'p3', text: 'mắt cá chân hơi sưng' });
     assert.notEqual(calm[0]?.urgent, true);
     assert.equal(store.listAlerts().filter((a) => a.tier === 'RED').length, 0);

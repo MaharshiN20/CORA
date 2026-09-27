@@ -77,7 +77,21 @@ function coolDownIfNeeded(p, err) {
   console.error(`[llm] ${p.name} ${reason === 'quota' ? 'quota exhausted' : 'key rejected'}: skipping it for ${COOLDOWN_MS[reason] / 60000} min`);
 }
 
+// deadlineMs caps the WHOLE chain (every provider + retries), for calls a patient is
+// waiting on: past it we return null and the caller falls back to rules. The slow provider
+// call is left to finish in the background; its answer is ignored.
 async function run(opts) {
+  if (!opts.deadlineMs) return runChain(opts);
+  let timer;
+  const expired = new Promise((resolve) => (timer = setTimeout(() => resolve(null), opts.deadlineMs)));
+  try {
+    return await Promise.race([runChain(opts).catch(() => null), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function runChain(opts) {
   for (const p of await detect()) {
     if ((coolingUntil.get(p.name) ?? 0) > Date.now()) continue;
     try {
@@ -91,7 +105,8 @@ async function run(opts) {
   return null;
 }
 
-// opts (all optional, per call): { json, schema, model, timeoutMs }
+// opts (all optional, per call): { json, schema, model, timeoutMs, deadlineMs }
+//   deadlineMs -> hard cap on the whole provider chain (null when it expires)
 //   schema    -> enforced as JSON schema where the provider supports it (Gemini, LM Studio, Ollama)
 //   model     -> preferred model, used only by a provider that has it (else its default)
 //   timeoutMs -> per-call timeout (default 60s; CPU-only local reviews can need more)

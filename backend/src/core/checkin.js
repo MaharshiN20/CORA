@@ -146,8 +146,12 @@ function applyButton(a, data) {
   }
 }
 
-async function applyText(a, text, step) {
+// -> { understood, textEn, trace } where trace is what the Judge debug drawer shows:
+// the raw message, what the rules read, what the LLM extracted (+ evidence it quoted, and
+// anything the validator dropped), and the answers after both.
+async function applyText(a, text, step, lang) {
   const before = JSON.stringify(a);
+  const snapshot = { ...a };
 
   // Step-specific parsing first (numbers and yes/no only make sense in context).
   if (step === 'weight') {
@@ -177,28 +181,44 @@ async function applyText(a, text, step) {
   const extra = parser.parseFreeText(text);
   for (const [k, v] of Object.entries(extra)) if (a[k] == null) a[k] = v;
   if (extra.chestPain || extra.confusion || extra.fainting) a.redflagsAsked = true;
+  const rules = diff(snapshot, a);
 
-  // Let the LLM read anything richer than a bare answer ("152", "yes"): keyword lists
-  // only cover en/es, so "152, mắt cá chân sưng hơn" must still yield the swelling.
-  // It only fills fields the rules left empty; it never overrides them.
+  // The LLM reads what the rules couldn't: anything in en/es the rules understood nothing of,
+  // and anything richer than a bare answer in other languages (keyword lists only cover en/es,
+  // so "152, mắt cá chân sưng hơn" must still yield the swelling). When the rules already
+  // understood an en/es message the patient doesn't wait on a model (latency was the #1 demo
+  // complaint). It only fills fields the rules left empty; it never overrides them.
+  // Hard 4 s deadline (parser.PARSE_DEADLINE_MS): past it the patient gets the rules' reading
+  // and the buttons, never a frozen chat.
   let textEn = null;
+  let llmTrace = null;
   const bareAnswer = /^\s*([\d.,]+\s*(lb|lbs|pounds|libras|kg|%)?|y|yes|no|n|si|sí|ok)\s*$/i.test(text);
-  if ((JSON.stringify(a) === before || !bareAnswer) && llm.enabled()) {
-    const c = await parser.parseWithLLM(text);
+  if ((JSON.stringify(a) === before || (!hasNative(lang) && !bareAnswer)) && llm.enabled()) {
+    const traced = await parser.parseWithLLMTraced(text, { step });
+    const c = traced.result;
+    llmTrace = { fields: traced.raw?.fields ?? null, dropped: traced.dropped, unverified: traced.unverified, timedOut: traced.timedOut, ms: traced.ms };
     if (c) {
       textEn = c.textEn ?? null;
       if (c.weightLb && a.weightLb == null && step === 'weight') {
         a.weightLb = c.weightLb;
         delete a.weightPending; // a newly typed weight replaces the one awaiting confirmation
       }
-      for (const k of ['breath', 'orthopnea', 'swelling', 'chestPain', 'dizzy', 'confusion', 'fainting', 'diureticTaken']) {
+      for (const k of ['breath', 'orthopnea', 'pnd', 'swelling', 'chestPain', 'dizzy', 'confusion', 'fainting']) {
         if (c[k] != null && a[k] == null) a[k] = c[k];
       }
-      if (c.spo2) { a.spo2 = c.spo2; a.spo2Asked = true; }
+      // "Not yet" already answered the pill question; the model can't turn it into a miss.
+      if (c.diureticTaken != null && a.diureticTaken == null && !a.diureticAsked) a.diureticTaken = c.diureticTaken;
+      if (c.spo2 != null && a.spo2 == null) { a.spo2 = c.spo2; a.spo2Asked = true; }
       if (c.chestPain || c.confusion || c.fainting) a.redflagsAsked = true;
     }
   }
-  return { understood: JSON.stringify(a) !== before, textEn };
+  const trace = { text, step, rules, llm: llmTrace, answers: { ...a } };
+  return { understood: JSON.stringify(a) !== before, textEn, trace };
+}
+
+// Fields that changed between two answer snapshots (what one parser contributed).
+function diff(from, to) {
+  return Object.fromEntries(Object.entries(to).filter(([k, v]) => JSON.stringify(from[k]) !== JSON.stringify(v)));
 }
 
 const NONE_OF_THESE = /\b(none|nothing|neither|all good|ninguno|ninguna|nada)\b/i;
@@ -263,11 +283,15 @@ export async function handle(patient, { text, buttonData }) {
   const a = state.answers;
   let understood = true;
   let textEn = null;
+  let trace = null;
   const replies = [];
 
-  if (buttonData?.startsWith('ci:')) applyButton(a, buttonData);
-  else if (text) {
-    ({ understood, textEn } = await applyText(a, text, state.state));
+  if (buttonData?.startsWith('ci:')) {
+    const snapshot = { ...a };
+    applyButton(a, buttonData);
+    trace = { button: buttonData, step: state.state, rules: diff(snapshot, a), llm: null, answers: { ...a } };
+  } else if (text) {
+    ({ understood, textEn, trace } = await applyText(a, text, state.state, langOf(patient)));
     // "Can I skip my water pill?" mid-check-in: the nurse gets it (never answered here),
     // then the check-in carries on.
     if (companion.DOSING_CHANGE.test(text)) {
@@ -276,12 +300,13 @@ export async function handle(patient, { text, buttonData }) {
     }
   }
   holdImplausibleWeight(patient, a);
+  const traced = trace && store.audit('parse_trace', patient.id, { ...trace, reporter: state.reporter ?? 'patient' });
 
   // Emergencies never wait for a weight confirmation.
-  if (isEmergency(a)) return { replies: await finish(patient, a), textEn };
+  if (isEmergency(a)) return { replies: await finish(patient, a, traced), textEn };
 
   const next = steps.find((s) => !s.done(a));
-  if (!next) return { replies: [...replies, ...(await finish(patient, a))], textEn };
+  if (!next) return { replies: [...replies, ...(await finish(patient, a, traced))], textEn };
 
   store.updatePatient(patient.id, { checkin: { ...state, state: next.id, answers: a } });
   const sameStep = next.id === state.state;
@@ -295,7 +320,7 @@ export async function handle(patient, { text, buttonData }) {
   return { replies, textEn };
 }
 
-async function finish(patient, a) {
+async function finish(patient, a, traced = null) {
   const now = clock.nowISO();
   const today = localDayKey(clock.now());
   const dayOf = (w) => localDayKey(Date.parse(w.ts));
@@ -314,6 +339,11 @@ async function finish(patient, a) {
   const proxy = reporter === 'caregiver';
 
   const result = triage({ weights, answers: a, missedDiureticDays: consecutiveMissedDiureticDays(doses) });
+  if (traced) {
+    // The debug drawer's third pane: which deterministic rules fired on the final answers.
+    traced.data.outcome = { tier: result.tier, flags: result.flags.map((x) => ({ code: x.code, tier: x.tier, text: x.text })) };
+    store.persist('audit', traced);
+  }
   const record = { ts: now, answers: a, tier: result.tier, flags: result.flags, weight: result.weight, reporter };
 
   store.updatePatient(patient.id, {
