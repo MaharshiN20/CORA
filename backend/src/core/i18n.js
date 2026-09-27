@@ -78,6 +78,10 @@ const STRINGS = {
     outreach_reminder: 'Hi {name}, just checking on you 💙 When you have a minute, please answer today’s heart check-in. It helps your care team keep you well at home.',
     outreach_caregiver: "💙 HeartBridge: {name} hasn't answered today's heart check-in yet. Could you check on {name}? If you're with {name}, you can answer the questions here for them.",
     outreach_proxy_btn: '📋 Answer for {name}',
+    // --- nurse workflow ---
+    nurse_says: '👩‍⚕️ {nurse} (your care team): {text}',
+    nurse_call_scheduled: '👩‍⚕️ {nurse} from your care team will call you at {time}. Please keep your phone nearby. 💙',
+    nurse_ack: '💙 {nurse} from your care team saw your update and will contact you soon. If you feel worse before then, call 911.',
   },
   es: {
     greeting: '¡Buenos días {name}! 💙 Es hora de su chequeo diario del corazón. Toma como un minuto.',
@@ -150,6 +154,9 @@ const STRINGS = {
     outreach_reminder: 'Hola {name}, solo quería saber de usted 💙 Cuando tenga un minuto, por favor conteste el chequeo del corazón de hoy. Ayuda a su equipo médico a cuidarle en casa.',
     outreach_caregiver: '💙 HeartBridge: {name} todavía no ha contestado el chequeo del corazón de hoy. ¿Podría ver cómo está {name}? Si está con {name}, puede contestar las preguntas aquí por él o ella.',
     outreach_proxy_btn: '📋 Contestar por {name}',
+    nurse_says: '👩‍⚕️ {nurse} (su equipo médico): {text}',
+    nurse_call_scheduled: '👩‍⚕️ {nurse} de su equipo médico le llamará a las {time}. Por favor tenga su teléfono cerca. 💙',
+    nurse_ack: '💙 {nurse} de su equipo médico vio su mensaje y se comunicará pronto. Si se siente peor antes, llame al 911.',
   },
 };
 
@@ -180,6 +187,23 @@ export async function localize(lang, text) {
   const result = out || text;
   cache.set(key, result);
   return result;
+}
+
+// Translate free text written in English (e.g. a nurse's message) into ANY patient
+// language, including es (templates can't cover free text). Returns
+// { text, translated } and falls back to the English original without an LLM.
+export async function translateFromEnglish(lang, text) {
+  if (lang === 'en' || !text) return { text, translated: false };
+  const key = `free:${lang}:${text}`;
+  if (cache.has(key)) return { text: cache.get(key), translated: true };
+  const out = await llm.complete(
+    `Translate the message from a nurse into ${LANG_NAMES[lang] ?? (lang === 'es' ? 'Spanish' : lang)} for an elderly heart-failure patient. ` +
+      'Keep names, times, numbers, emojis and "911" unchanged. Output only the translation.',
+    text,
+  );
+  if (!out) return { text, translated: false };
+  cache.set(key, out);
+  return { text: out, translated: true };
 }
 
 // Translate patient text into English for the care-team dashboard.

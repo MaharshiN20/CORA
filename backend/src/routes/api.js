@@ -9,6 +9,7 @@ import { getSignals } from '../core/signals.js';
 import { adherence } from '../core/meds.js';
 import { markPickedUp } from '../core/pharmacy.js';
 import { startLadder } from '../core/outreach.js';
+import { sendNurseMessage, notifyAck } from '../core/nurse.js';
 import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
 
@@ -59,7 +60,8 @@ const STATUSES = ['open', 'acknowledged', 'contacted', 'resolved'];
 const OUTCOMES = ['true_positive', 'false_positive', 'ed_avoided', 'readmitted', 'other'];
 
 // PATCH /api/alerts/:id { status?, outcome?, assignee?, note?, by? }
-api.patch('/alerts/:id', (req, res) => {
+// Acknowledging a patient-facing alert tells the patient a nurse has seen it (once).
+api.patch('/alerts/:id', async (req, res) => {
   const { status, outcome, assignee, note, by } = req.body ?? {};
   if (status && !STATUSES.includes(status)) return res.status(400).json({ error: `status must be one of ${STATUSES}` });
   if (outcome && !OUTCOMES.includes(outcome)) return res.status(400).json({ error: `outcome must be one of ${OUTCOMES}` });
@@ -67,7 +69,18 @@ api.patch('/alerts/:id', (req, res) => {
   const a = store.updateAlert(req.params.id, patch);
   if (!a) return res.status(404).json({ error: 'not found' });
   store.audit('nurse_action', a.patientId, { alertId: a.id, ...patch });
-  res.json(a);
+  if (status === 'acknowledged') await notifyAck(a, by ?? assignee);
+  res.json(store.getAlert(a.id));
+});
+
+// POST /api/patients/:id/message { text } | { template: 'call_scheduled', time } (+ from?)
+// Nurse -> patient via their channel, translated to the patient's language.
+api.post('/patients/:id/message', async (req, res) => {
+  try {
+    res.json(await sendNurseMessage(req.params.id, req.body ?? {}));
+  } catch (err) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
 });
 
 // ---- pharmacy ----

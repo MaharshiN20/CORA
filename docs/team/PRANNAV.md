@@ -30,7 +30,7 @@
   - No reply to a check-in: +2h reminder, +6h caregiver ping with a "check in for her" button (`cmd:proxy`), +24h `addTask` kind `unreachable` (tier YELLOW).
   - Any reply cancels the ladder, and every step is audited (`outreach`).
   - **Test:** each rung fires at the right time via clock advance, and a reply mid-ladder cancels the rest.
-- [ ] **P1-6 Nurse workflow**:
+- [x] **P1-6 Nurse workflow**:
   - `POST /api/patients/:id/message { text, from }` → the patient via channels, logged `from: nurse`.
   - A "call scheduled" template, and alert-ack notifications to the patient ("Nurse Kim saw your update and will call you").
   - Wire M1 `recordRisk` after each check-in once it exists (see REQUESTS).
@@ -40,7 +40,7 @@
   - `caregiverConsent` gate.
   - `core/digest.js` weekly digest (weight trend, adherence, alerts, refills) via a `digest_weekly` job and `POST /api/patients/:id/digest`.
   - **Test:** a caregiver completes a check-in → an alert with `reporter: caregiver`; the digest content snapshot.
-- [ ] **P1-9 Wire the risk-LLM reviewer** (Maharshi's `riskllm/reviewPatient`): after each check-in `finish`, run it **asynchronously**, so the patient reply is never delayed. Pass the rules result + recent English messages. If `escalate`, add a YELLOW alert (`source: 'ai_review'`, reasons = concerns with evidence, `nurseSummary`) and audit `ai_review` either way. A `null` result means rules stand silently. **Test:** mocked reviewer escalate → alert; null → no alert; RED from rules is never touched.
+- [ ] **P1-9 Wire the risk-LLM reviewer + risk history** (also call Maharshi's `recordRisk(patient)` after each check-in once M1 lands; moved here from P1-6) (Maharshi's `riskllm/reviewPatient`): after each check-in `finish`, run it **asynchronously**, so the patient reply is never delayed. Pass the rules result + recent English messages. If `escalate`, add a YELLOW alert (`source: 'ai_review'`, reasons = concerns with evidence, `nurseSummary`) and audit `ai_review` either way. A `null` result means rules stand silently. **Test:** mocked reviewer escalate → alert; null → no alert; RED from rules is never touched.
 - [ ] **P1-8 E2E harness** `backend/tools/e2e-demo.js` (`npm run e2e`): boots the app on a temp DB and drives the Maria story over HTTP (check-in → YELLOW → worklist → ack → message), asserting each step. It grows with every later feature.
 
 ## P2: Intelligence & equity
