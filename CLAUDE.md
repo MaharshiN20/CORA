@@ -49,6 +49,7 @@ npm run setup      # install root + backend + frontend
 npm run dev        # backend :3001 + dashboard :5173
 npm test           # backend tests
 npm run check      # tests + frontend build (run before every push)
+npm run e2e        # full demo story over HTTP with a readable step log (also runs inside npm test)
 npm run seed       # reset demo data
 ```
 Optional AI: the chain is Claude → Ollama → LM Studio → rules, picked automatically (`backend/src/core/llm/`). See the README for setup.
