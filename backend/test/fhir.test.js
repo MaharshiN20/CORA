@@ -185,7 +185,11 @@ test('POST /api/fhir/import creates a FHIR patient with meds, comorbidities, wei
 });
 
 test('import with no birth date: age stays unknown and the risk score has no invented age factor', async () => {
-  const res = await post('/api/fhir/import', { fhirPatientId: 'hb-ahmed-2' });
+  // No heart-failure diagnosis: blocked until the nurse confirms (override).
+  const blocked = await post('/api/fhir/import', { fhirPatientId: 'hb-ahmed-2' });
+  assert.equal(blocked.status, 422);
+  assert.equal((await blocked.json()).needsOverride, true);
+  const res = await post('/api/fhir/import', { fhirPatientId: 'hb-ahmed-2', override: true });
   assert.equal(res.status, 201);
   const { patient, summary } = await res.json();
   assert.equal(patient.age, null);
@@ -233,4 +237,30 @@ test('optional resources failing does not block the import', async () => {
   assert.deepEqual(patient.meds, []);
   assert.ok(summary.warnings.includes('No active medications in the EHR'));
   assert.ok(fhirCalls.some((c) => c.startsWith('Observation?subject=Patient%2Fhb-rosa-1&code=http%3A%2F%2Floinc.org%7C29463-7')));
+});
+
+// ---------- export (write-back preview) ----------
+test('GET /api/fhir/export/:id: weights, SpO2, BP, Flag and open Tasks as a FHIR R4 Bundle', async () => {
+  const p = store.getPatient('p1');
+  store.updatePatient('p1', {
+    vitals: [{ ts: new Date().toISOString(), sbp: 118, dbp: 72 }],
+    checkins: [...p.checkins, { ts: new Date().toISOString(), answers: { spo2: 94 }, tier: 'YELLOW', flags: [{ code: 'weight_24h', tier: 'YELLOW', text: 'Weight up 2.7 lb in 24h' }] }],
+  });
+  store.addAlert({ patientId: 'p1', tier: 'YELLOW', reasons: ['Weight up 2.7 lb in 24h'], title: 'Nurse call today' });
+  const res = await fetch(`${base}/api/fhir/export/p1`);
+  assert.equal(res.status, 200);
+  const bundle = await res.json();
+  assert.equal(bundle.resourceType, 'Bundle');
+  assert.equal(bundle.type, 'collection');
+  const of = (t) => bundle.entry.map((e) => e.resource).filter((r) => r.resourceType === t);
+  const obs = of('Observation');
+  const weights = obs.filter((o) => o.code.coding[0].code === '29463-7');
+  assert.ok(weights.length >= 5);
+  assert.equal(weights[0].valueQuantity.code, '[lb_av]');
+  assert.equal(obs.find((o) => o.code.coding[0].code === '59408-5').valueQuantity.value, 94);
+  assert.equal(obs.find((o) => o.code.coding[0].code === '85354-9').component[0].valueQuantity.value, 118);
+  assert.match(of('Flag')[0].code.text, /YELLOW: Weight up/);
+  assert.equal(of('Task')[0].priority, 'urgent');
+  assert.equal(of('Patient')[0].communication[0].language.coding[0].code, 'es');
+  assert.equal((await fetch(`${base}/api/fhir/export/nope`)).status, 404);
 });

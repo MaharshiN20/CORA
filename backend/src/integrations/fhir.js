@@ -225,6 +225,110 @@ export function toPatientData(record, { supported = [], now = clock.now() } = {}
   };
 }
 
+// ---------- export: HeartBridge -> EHR (preview) ----------
+// The other half of the loop: what HeartBridge would write back to the EHR after home
+// monitoring. A FHIR R4 collection Bundle; nothing is sent (the dashboard shows it).
+const LOINC = 'http://loinc.org';
+const UCUM = 'http://unitsofmeasure.org';
+const TASK_STATUS = { open: 'requested', acknowledged: 'accepted', contacted: 'in-progress', resolved: 'completed' };
+const TASK_PRIORITY = { RED: 'stat', YELLOW: 'urgent', INFO: 'routine' };
+const vitalSigns = [{ coding: [{ system: 'http://terminology.hl7.org/CodeSystem/observation-category', code: 'vital-signs', display: 'Vital Signs' }] }];
+
+export function toFhirBundle(patient, { alerts = [], now = clock.now() } = {}) {
+  const pid = patient.fhirId ?? patient.id;
+  const subject = { reference: `Patient/${pid}`, display: patient.name };
+  const resources = [];
+  const add = (r) => resources.push(r);
+
+  add({
+    resourceType: 'Patient',
+    id: pid,
+    identifier: [{ system: 'urn:heartbridge:link-code', value: patient.linkCode }],
+    name: [{ text: patient.name }],
+    communication: [{ language: { coding: [{ system: 'urn:ietf:bcp:47', code: patient.language }] }, preferred: true }],
+  });
+
+  // Home weights of the last 7 days (LOINC 29463-7 body weight).
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+  for (const w of (patient.weights ?? []).filter((x) => Date.parse(x.ts) >= weekAgo)) {
+    add({
+      resourceType: 'Observation',
+      status: 'final',
+      category: vitalSigns,
+      code: { coding: [{ system: LOINC, code: '29463-7', display: 'Body weight' }], text: 'Body weight (home scale, patient-reported)' },
+      subject,
+      effectiveDateTime: w.ts,
+      valueQuantity: { value: w.lb, unit: 'lb', system: UCUM, code: '[lb_av]' },
+    });
+  }
+
+  // Latest self-reported SpO2 (LOINC 59408-5) and blood pressure (85354-9 panel).
+  const spo2 = [...(patient.checkins ?? [])].reverse().find((c) => typeof c.answers?.spo2 === 'number');
+  if (spo2) {
+    add({
+      resourceType: 'Observation',
+      status: 'final',
+      category: vitalSigns,
+      code: { coding: [{ system: LOINC, code: '59408-5', display: 'Oxygen saturation in Arterial blood by Pulse oximetry' }] },
+      subject,
+      effectiveDateTime: spo2.ts,
+      valueQuantity: { value: spo2.answers.spo2, unit: '%', system: UCUM, code: '%' },
+    });
+  }
+  const bp = (patient.vitals ?? []).filter((v) => v.sbp).at(-1);
+  if (bp) {
+    add({
+      resourceType: 'Observation',
+      status: 'final',
+      category: vitalSigns,
+      code: { coding: [{ system: LOINC, code: '85354-9', display: 'Blood pressure panel' }] },
+      subject,
+      effectiveDateTime: bp.ts,
+      component: [
+        { code: { coding: [{ system: LOINC, code: '8480-6', display: 'Systolic blood pressure' }] }, valueQuantity: { value: bp.sbp, unit: 'mmHg', system: UCUM, code: 'mm[Hg]' } },
+        { code: { coding: [{ system: LOINC, code: '8462-4', display: 'Diastolic blood pressure' }] }, valueQuantity: { value: bp.dbp, unit: 'mmHg', system: UCUM, code: 'mm[Hg]' } },
+      ],
+    });
+  }
+
+  // The latest non-GREEN check-in as a clinical Flag (what the care team should know on chart open).
+  const last = (patient.checkins ?? []).at(-1);
+  if (last && last.tier !== 'GREEN') {
+    add({
+      resourceType: 'Flag',
+      status: 'active',
+      category: [{ coding: [{ system: 'http://terminology.hl7.org/CodeSystem/flag-category', code: 'clinical', display: 'Clinical' }] }],
+      code: { text: `HeartBridge home triage ${last.tier}: ${(last.flags ?? []).map((f) => f.text).join('; ')}` },
+      subject,
+      period: { start: last.ts },
+    });
+  }
+
+  // Every open worklist item as a Task (who owes the patient what, by when).
+  for (const a of alerts.filter((x) => x.patientId === patient.id && x.status !== 'resolved')) {
+    add({
+      resourceType: 'Task',
+      status: TASK_STATUS[a.status] ?? 'requested',
+      intent: 'order',
+      priority: TASK_PRIORITY[a.tier] ?? 'routine',
+      code: { text: a.kind ?? 'triage' },
+      description: a.title,
+      for: subject,
+      authoredOn: a.ts,
+      restriction: { period: { end: a.dueBy } },
+      note: (a.reasons ?? []).map((text) => ({ text })),
+    });
+  }
+
+  return {
+    resourceType: 'Bundle',
+    type: 'collection',
+    timestamp: new Date(now).toISOString(),
+    meta: { tag: [{ system: 'urn:heartbridge', code: 'preview', display: 'Preview only: not sent to an EHR' }] },
+    entry: resources.map((resource, i) => ({ fullUrl: `urn:uuid:heartbridge-${pid}-${i}`, resource })),
+  };
+}
+
 // ---------- network ----------
 
 export async function searchPatients(name, { supported = [], now = clock.now(), count = 10 } = {}) {
