@@ -389,6 +389,26 @@ async function finish(patient, a, traced = null) {
   return replies;
 }
 
+// A photo while we're waiting for the weight: read the scale (vision model) and ALWAYS ask
+// the patient to confirm the reading. Returns replies, or null when a photo isn't expected
+// here (the caller then treats it as a regular photo for the care team).
+export async function handlePhoto(patient, photo) {
+  if (!isActive(patient) || patient.checkin.state !== 'weight') return null;
+  const read = await parser.readScalePhoto(photo);
+  store.audit('scale_photo', patient.id, read ? { lb: read.lb, display: read.display, unit: read.unit } : { readable: false });
+  if (!read) return [reply(patient, 'scale_unreadable')];
+  const a = { ...patient.checkin.answers, weightPending: read.lb };
+  delete a.weightLb;
+  store.updatePatient(patient.id, { checkin: { ...patient.checkin, answers: a } });
+  const L = langOf(patient);
+  return [
+    reply(patient, 'scale_read', { lb: read.lb }, [
+      [{ label: t(L, 'weight_confirm_yes', { lb: read.lb }), data: 'ci:wconf:yes' }],
+      [{ label: t(L, 'weight_confirm_no'), data: 'ci:wconf:no' }],
+    ]),
+  ];
+}
+
 // Emergency phrase outside a check-in ("my chest hurts"): triage + escalate right away.
 // A caregiver can report one too ("mom has chest pain"): same triage, reply addressed to them.
 // Languages without hand-written red-flag patterns (vi, hi, zh...): if the rules find

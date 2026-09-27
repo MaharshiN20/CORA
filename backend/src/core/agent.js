@@ -72,9 +72,13 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
   } else if (role === 'caregiver') {
     ({ replies, textEn } = await handleCaregiver(patient, { input, buttonData, injection }));
   } else if (photo) {
-    // TODO(core P3-13): med-bottle photo reconciliation via llm.completeVision.
-    store.audit('photo_received', patientId, { mime: photo.mime, bytes: Math.round((photo.base64?.length ?? 0) * 0.75) });
-    replies = [{ text: t(patient.language, 'photo_received'), textEn: t('en', 'photo_received') }];
+    // Waiting for the weight: read the scale (confirmed by the patient). Otherwise it's a
+    // photo for the care team. TODO(core P3-13): med-bottle reconciliation.
+    replies = await checkin.handlePhoto(patient, photo);
+    if (!replies) {
+      store.audit('photo_received', patientId, { mime: photo.mime, bytes: Math.round((photo.base64?.length ?? 0) * 0.75) });
+      replies = [{ text: t(patient.language, 'photo_received'), textEn: t('en', 'photo_received') }];
+    }
   } else if (buttonData?.startsWith('med:')) {
     // Medication confirmations work any time, even in the middle of a check-in.
     replies = meds.handleButton(patient, buttonData);

@@ -94,6 +94,7 @@ async function run(opts) {
 async function runChain(opts) {
   for (const p of await detect()) {
     if ((coolingUntil.get(p.name) ?? 0) > Date.now()) continue;
+    if (opts.image && !p.vision) continue; // a text-only model can't read the photo
     try {
       const text = (await p.chat(opts))?.trim();
       if (text) return text;
@@ -123,6 +124,17 @@ export async function completeJSON(system, user, { maxTokens = 400, ...opts } = 
   } catch {
     return null;
   }
+}
+
+// True when some available provider can read images (scale photos, pill bottles).
+export function visionEnabled() {
+  enabled();
+  return providers.some((p) => p.vision);
+}
+
+// A JSON answer about an image ({ base64, mime }). Only vision-capable providers are tried.
+export function completeVisionJSON(system, user, image, opts = {}) {
+  return completeJSON(system, user, { ...opts, image });
 }
 
 // Test hook

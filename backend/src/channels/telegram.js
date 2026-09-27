@@ -105,6 +105,14 @@ export const MAX_FILE_BYTES = 8 * 1024 * 1024;
 
 export class FileTooLargeError extends Error {}
 
+// 'HeartBridge is typing…' while the core (and maybe an AI call) works on the reply, so the
+// chat never looks frozen. Fire-and-forget: it must not delay or break the reply.
+function typing(ctx) {
+  Promise.resolve()
+    .then(() => ctx.replyWithChatAction('typing'))
+    .catch(() => {});
+}
+
 // Download an incoming file (voice note, photo) into a Buffer.
 async function downloadFile(ctx, declaredSize) {
   if (declaredSize > MAX_FILE_BYTES) throw new FileTooLargeError();
@@ -340,6 +348,7 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
   dm.on(
     'message:text',
     linked(async (ctx, link) => {
+      typing(ctx);
       const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', text: ctx.message.text });
       await replyAll(ctx, link, replies);
     }),
@@ -361,6 +370,7 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
       }
       if (!transcript) return ctx.reply(await say(lang, 'voice_unavailable'));
       await ctx.reply(t(lang, 'heard', { text: transcript }));
+      typing(ctx);
       const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', voiceTranscript: transcript });
       await replyAll(ctx, link, replies);
     }),
@@ -380,6 +390,7 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
         return ctx.reply(await say(lang, 'photo_failed'));
       }
       const photo = { base64: buffer.toString('base64'), mime };
+      typing(ctx);
       const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', photo });
       await replyAll(ctx, link, replies);
     });

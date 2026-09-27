@@ -130,7 +130,7 @@ test('voice mode: every reply is sent as text first, then as audio', async () =>
   const before = calls.length;
   await bot.handleUpdate(h.textUpdate(CHAT, '176'));
   const after = calls.slice(before).map((c) => c.method);
-  assert.deepEqual(after, ['sendMessage', 'sendAudio']);
+  assert.deepEqual(after, ['sendChatAction', 'sendMessage', 'sendAudio']); // 'typing…' first
   const audio = calls.at(-1).payload.audio;
   assert.equal(typeof audio, 'string');
   assert.equal(new URL(audio).searchParams.get('tl'), 'es');

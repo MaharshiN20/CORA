@@ -345,3 +345,23 @@ export async function parseWithLLMTraced(text, { step = null, deadlineMs = PARSE
 export async function parseWithLLM(text, opts) {
   return (await parseWithLLMTraced(text, opts)).result;
 }
+
+// ---------- scale photo (vision) ----------
+// The model reads the digits on a bathroom-scale display; code checks the number against the
+// digits it says it saw and the plausible range. The result is always confirmed by the patient
+// before it counts, so a misread is a question, never a wrong weight.
+const SCALE_PROMPT = `You read bathroom-scale displays for a heart-failure home-monitoring app. You are a data-extraction function, not a chatbot.
+Look at the photo. If it clearly shows a scale's digital display, copy the digits exactly as shown and the unit if one is visible.
+Return JSON only: {"display": "<digits exactly as shown, e.g. 176.4>", "unit": "lb"|"kg"|null, "readable": true|false}.
+If there is no scale display, or the digits are blurry, cut off or ambiguous, return {"display": null, "unit": null, "readable": false}. Never guess a digit.`;
+
+// -> { lb, display, unit } or null
+export async function readScalePhoto(photo, { deadlineMs = 8000 } = {}) {
+  if (!photo?.base64 || !llm.visionEnabled()) return null;
+  const out = await llm.completeVisionJSON(SCALE_PROMPT, 'Read the weight on this scale.', { base64: photo.base64, mime: photo.mime || 'image/jpeg' }, { maxTokens: 120, timeoutMs: deadlineMs, deadlineMs });
+  if (!out?.readable || typeof out.display !== 'string') return null;
+  const m = out.display.replace(',', '.').match(/^\s*(\d{2,3}(?:\.\d)?)\s*$/);
+  if (!m) return null;
+  const lb = toLb(parseFloat(m[1]), out.unit === 'kg' ? 'kg' : null);
+  return inRange(lb) ? { lb, display: m[1], unit: out.unit ?? null } : null;
+}

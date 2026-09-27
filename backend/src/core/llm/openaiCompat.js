@@ -45,10 +45,13 @@ function responseFormat(name, schema) {
 // One OpenAI-compatible provider (Ollama, LM Studio, Gemini...).
 //   chatUrl: full /chat/completions URL; headers: e.g. auth; models: known model ids
 //   (a per-call `model` override is honoured only if this provider has that model).
-export function makeProvider(name, chatUrl, model, { headers = {}, models = [model], accepts } = {}) {
+// Local models that can read images (Qwen-VL, LLaVA, Gemma 3, Llama 3.2 Vision, ...).
+export const VISION_MODEL = /\bvl\b|-vl|vision|llava|gemma-?3|pixtral|minicpm-v|moondream/i;
+
+export function makeProvider(name, chatUrl, model, { headers = {}, models = [model], accepts, vision = VISION_MODEL.test(model) } = {}) {
   const canUse = accepts ?? ((m) => models.includes(m));
 
-  async function call({ system, user, maxTokens, json, schema, model: wanted, timeoutMs }) {
+  async function call({ system, user, maxTokens, json, schema, model: wanted, timeoutMs, image }) {
     const useModel = wanted && canUse(wanted) ? wanted : model;
     const res = await fetch(chatUrl, {
       method: 'POST',
@@ -63,7 +66,8 @@ export function makeProvider(name, chatUrl, model, { headers = {}, models = [mod
         reasoning_effort: 'none',
         messages: [
           { role: 'system', content: NO_THINK.test(useModel) ? `${system}\n/no_think` : system },
-          { role: 'user', content: user },
+          // An image (vision calls) goes as an OpenAI-style data URI next to the text.
+          { role: 'user', content: image ? [{ type: 'text', text: user }, { type: 'image_url', image_url: { url: `data:${image.mime};base64,${image.base64}` } }] : user },
         ],
         ...((json || schema) && { response_format: responseFormat(name, schema) }),
       }),
@@ -78,6 +82,7 @@ export function makeProvider(name, chatUrl, model, { headers = {}, models = [mod
     name,
     model,
     accepts: canUse,
+    vision,
     async chat(opts) {
       // Hosted APIs (Gemini) return brief 503 "high demand" / 429 spikes: retry once, then
       // let the chain fall through to the next provider.

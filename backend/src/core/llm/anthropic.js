@@ -12,14 +12,20 @@ export function detect() {
     name: 'claude',
     model,
     accepts,
+    vision: true,
     // json/schema are enforced by the prompt + JSON extraction in llm/index.js.
-    async chat({ system, user, maxTokens, model: wanted, timeoutMs }) {
+    async chat({ system, user, maxTokens, model: wanted, timeoutMs, image }) {
       const res = await client.messages.create(
         {
           model: wanted && accepts(wanted) ? wanted : model,
           max_tokens: maxTokens,
           system,
-          messages: [{ role: 'user', content: user }],
+          messages: [
+            {
+              role: 'user',
+              content: image ? [{ type: 'image', source: { type: 'base64', media_type: image.mime, data: image.base64 } }, { type: 'text', text: user }] : user,
+            },
+          ],
         },
         timeoutMs ? { timeout: timeoutMs } : undefined,
       );

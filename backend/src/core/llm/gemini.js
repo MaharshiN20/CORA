@@ -14,5 +14,6 @@ export function detect() {
   return makeProvider('gemini', `${base}/chat/completions`, model, {
     headers: { Authorization: `Bearer ${key}` },
     accepts: (m) => /^gemini/i.test(m), // a per-call override like RISK_MODEL=qwen... never reaches Gemini
+    vision: true, // Gemini models read images
   });
 }
