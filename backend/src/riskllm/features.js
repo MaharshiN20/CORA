@@ -1,4 +1,4 @@
-// Deterministic features for the risk LLM. Pure: no I/O, no LLM, clock passed in.
+// Deterministic features for the risk LLM. Pure: no I/O, no LLM; time defaults to the demo clock.
 // We compute the numbers here so the LLM reasons about facts instead of doing math.
 //
 // Patient shape (same as the seed data):
@@ -7,6 +7,7 @@
 //     prescriptions: [{ med, expectedPickup, pickedUpAt }], caregiver: {...},
 //     checkins: [{ ts, tier, answers }] }
 
+import * as clock from '../core/clock.js';
 import { matchCues } from './lexicon.js';
 
 const HOUR = 60 * 60 * 1000;
@@ -112,7 +113,7 @@ function pickAnswers(a = {}) {
 
 // Everything the LLM sees about the patient, minus their free-text messages.
 // `rules` is today's deterministic triage result ({ tier, flags }) if there is one.
-export function buildCase(patient, { rules = null, now = Date.now() } = {}) {
+export function buildCase(patient, { rules = null, now = clock.now() } = {}) {
   const weights = patient.weights ?? [];
   const latest = weights.at(-1);
   const doses7d = (patient.doses ?? []).filter((d) => d.diuretic && now - Date.parse(d.ts) <= 7 * DAY);

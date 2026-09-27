@@ -1,7 +1,8 @@
 // ============================================================================
-// Risk LLM: a local model (Ollama) reviews a heart-failure patient's whole picture and catches
-// what fixed-threshold rules miss. Runs free and offline. Self-contained: no store, no channels, no
-// side effects. Caller passes data in, gets a review back, decides what to do.
+// Risk LLM: a model from the shared chain (Claude, or free/offline Ollama / LM Studio)
+// reviews a heart-failure patient's whole picture and catches what fixed-threshold rules
+// miss. No store, no channels, no side effects: caller passes data in, gets a review back,
+// decides what to do (the core turns escalate:true into a YELLOW 'ai_review' alert).
 //
 // Hybrid contract:
 //   rules  -> the floor. Deterministic, always run, own 911.
@@ -11,24 +12,27 @@
 //   reviewPatient(patient, {
 //     rules?,      // today's rules result: { tier: 'GREEN'|'YELLOW'|'RED', flags: [{ text }] }
 //     messages?,   // recent patient free text, oldest -> newest: [{ ts, text }] (English if possible)
-//     now?,        // ms timestamp, for tests
-//   }, { call? })  // injectable LLM call, for tests
-//   -> null if the LLM is off / unreachable / failed (caller keeps the rules result), else {
+//     now?,        // ms timestamp, defaults to the demo clock
+//   }, { call? })  // injectable LLM call (prompt -> object), for tests
+//   -> null if RISK_LLM=off / no provider / failed / unusable output (caller keeps the rules result), else {
 //        rulesTier, aiTier, finalTier, escalate,   // escalate = AI raised the tier
 //        urgent, readmissionRisk: 'low'|'moderate'|'high',
 //        concerns: [{ category, text, evidence }],
 //        nurseSummary, suggestedActions: [string], model, ts
 //      }
 // ============================================================================
+import * as llm from '../core/llm/index.js';
+import * as clock from '../core/clock.js';
 import { buildCase, detectSignals } from './features.js';
 import { normalize } from './lexicon.js';
 
 export { buildCase } from './features.js';
 
-// Local Ollama server. `ollama pull qwen2.5:7b` once; set RISK_LLM=off to disable.
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const MODEL = process.env.RISK_MODEL || 'qwen2.5:7b';
+// RISK_LLM=off disables the reviewer. RISK_MODEL is a per-call model preference (applies
+// once the chain accepts a model option; until then the chain's own model is used).
+const MODEL = process.env.RISK_MODEL || null;
 const TIMEOUT_MS = Number(process.env.RISK_TIMEOUT_MS) || 180_000; // CPU inference is slow
+const MAX_TOKENS = 1500;
 const TIERS = ['GREEN', 'YELLOW', 'RED'];
 
 export const enabled = () => process.env.RISK_LLM !== 'off';
@@ -48,7 +52,7 @@ A deterministic rules engine has already triaged today's check-in (weight gain >
 - Medications: skipped, stopped, or rationed doses; cost or side-effect complaints; confusion about the regimen; unfilled prescriptions (a diuretic that was never picked up matters most).
 - Context: living alone, caregiver away, low mood or disengagement, answers getting shorter or sloppier over time.
 
-detected_signals lists what code already found (weight trend, refills, key phrases). Confirm each one that matters and fold it into your concerns, then read every patient message for anything else. Translate everyday words into clinical signs, one concern per sign:
+detected_signals lists what code already found (weight trend, refills, key phrases). They are shown to the nurse automatically, so do NOT repeat them as concerns; use them to decide the tier and to write the summary. Your concerns are only what the signals missed: read every patient message and translate everyday words into clinical signs, one concern per sign:
 - "recliner", "sleeping sitting up", "extra pillows", "wake up coughing or gasping" -> orthopnea / PND (congestion)
 - "shoes tight", "socks leave marks", "rings tight", "belly swollen" -> worsening edema (congestion)
 - "full fast", "not hungry", "bloated" -> abdominal congestion (congestion)
@@ -61,7 +65,7 @@ Set tier to YELLOW when a nurse should call today, even if every individual answ
 
 readmissionRisk is your overall estimate of 30-day readmission risk, given the baseline factors plus the recent trajectory.
 
-Each concern needs specific evidence (numbers, dates, or a short quote), never a generic statement. nurseSummary is 2-4 plain sentences in English for a busy nurse (what is going on and why it matters), with no greeting. suggestedActions lists concrete next steps for the nurse, each tied to a concern you found. Return an empty concerns list when there are none.
+Be brief: every token costs time on a laptop model. Each concern: text up to 12 words, evidence up to 15 words (numbers, dates, or a short quote), never generic. nurseSummary: at most 2 plain English sentences for a busy nurse covering the whole picture (including detected_signals), no greeting. suggestedActions: at most 3, each a short concrete step. Return an empty concerns list when the signals already cover everything.
 
 Refer to the patient as "the patient" and the caregiver by their relation ("his wife" only if sex is given, otherwise "their caregiver"); never guess gender.
 
@@ -96,8 +100,9 @@ export const SCHEMA = {
 export function buildPrompt(caseData, messages = [], signals = []) {
   const lines = messages.map((m) => `[${String(m.ts ?? '').slice(0, 16).replace('T', ' ')}] ${m.text}`);
   return (
-    `<case>\n${JSON.stringify(caseData, null, 2)}\n</case>\n\n` +
-    `<detected_signals>\n${JSON.stringify(signals, null, 2)}\n</detected_signals>\n\n` +
+    // Compact JSON: fewer tokens for a CPU model to read before it can start answering.
+    `<case>\n${JSON.stringify(caseData)}\n</case>\n\n` +
+    `<detected_signals>\n${JSON.stringify(signals)}\n</detected_signals>\n\n` +
     `<patient_messages>\n${lines.join('\n') || '(none)'}\n</patient_messages>`
   );
 }
@@ -118,43 +123,72 @@ export function mergeConcerns(aiConcerns = [], signals = []) {
   return [...aiConcerns, ...signals.filter((s) => !covered(s))].map(({ phrase, ...c }) => c);
 }
 
-// Ollama's /api/chat with `format` set to our JSON schema constrains decoding,
-// so even a small local model returns valid, schema-shaped JSON.
-async function callOllama(prompt) {
-  const res = await fetch(`${OLLAMA_URL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-    body: JSON.stringify({
-      model: MODEL,
-      stream: false,
-      format: SCHEMA,
-      keep_alive: '30m', // keep the model in RAM between check-ins
-      options: { temperature: 0.2, num_ctx: 8192 },
-      messages: [
-        { role: 'system', content: SYSTEM },
-        { role: 'user', content: prompt },
-      ],
-    }),
-  });
-  if (!res.ok) throw new Error(`ollama ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json();
-  const text = data.message?.content;
-  return text ? { ...JSON.parse(text), model: data.model ?? MODEL } : null;
+// Pull the first {...} out of model text (models sometimes wrap JSON in prose or fences).
+export function parseJSON(text) {
+  if (typeof text !== 'string') return null;
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
 }
 
-export async function reviewPatient(patient, { rules = null, messages = [], now = Date.now() } = {}, { call } = {}) {
-  if (!call && !enabled()) return null;
+// Free-form output isn't schema-constrained, so coerce it to the contract shape and
+// reject anything without a usable tier. Unknown categories become 'other'.
+const CATEGORIES = SCHEMA.properties.concerns.items.properties.category.enum;
+const RISKS = SCHEMA.properties.readmissionRisk.enum;
+const str = (v) => (typeof v === 'string' ? v : '');
+
+export function normalizeReview(o) {
+  if (!o || typeof o !== 'object' || !TIERS.includes(o.tier)) return null;
+  return {
+    tier: o.tier,
+    urgent: o.urgent === true,
+    readmissionRisk: RISKS.includes(o.readmissionRisk) ? o.readmissionRisk : null,
+    concerns: (Array.isArray(o.concerns) ? o.concerns : [])
+      .filter((c) => c && str(c.text))
+      .map((c) => ({ category: CATEGORIES.includes(c.category) ? c.category : 'other', text: c.text, evidence: str(c.evidence) })),
+    nurseSummary: str(o.nurseSummary),
+    suggestedActions: (Array.isArray(o.suggestedActions) ? o.suggestedActions : []).filter((a) => str(a)),
+    model: str(o.model) || null,
+  };
+}
+
+// Goes through the team's shared provider chain (Claude -> Ollama -> LM Studio), so the
+// reviewer works on whatever is available. complete() rather than completeJSON(): the
+// review is longer than completeJSON's 400-token cap. The extra options (schema, model,
+// timeoutMs) are requested in docs/team/REQUESTS.md and ignored by the chain until then.
+const FORMAT = `Respond with ONLY a JSON object (no prose, no code fences) matching this JSON Schema:\n${JSON.stringify(SCHEMA)}`;
+
+async function callChain(prompt) {
+  const text = await llm.complete(`${SYSTEM}\n\n${FORMAT}`, prompt, MAX_TOKENS, {
+    json: true,
+    schema: SCHEMA,
+    model: MODEL,
+    timeoutMs: TIMEOUT_MS,
+  });
+  const obj = parseJSON(text);
+  return obj && { ...obj, model: obj.model ?? llm.status().model };
+}
+
+const withTimeout = (promise, ms) =>
+  Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms).unref())]);
+
+export async function reviewPatient(patient, { rules = null, messages = [], now = clock.now() } = {}, { call, timeoutMs = TIMEOUT_MS } = {}) {
+  if (!enabled()) return null;
   const caseData = buildCase(patient, { rules, now });
   const signals = detectSignals(caseData, messages);
   let ai;
   try {
-    ai = await (call ?? callOllama)(buildPrompt(caseData, messages, signals));
+    ai = normalizeReview(await withTimeout((call ?? callChain)(buildPrompt(caseData, messages, signals)), timeoutMs));
   } catch (err) {
-    console.error('[riskllm] call failed, rules result stands:', err.message);
+    console.error('[riskllm] review failed, rules result stands:', err.message);
     return null;
   }
-  if (!ai || !TIERS.includes(ai.tier)) return null;
+  if (!ai) return null;
 
   const rulesTier = rules?.tier ?? 'GREEN';
   const finalTier = mergeTier(rulesTier, ai.tier);
@@ -163,12 +197,12 @@ export async function reviewPatient(patient, { rules = null, messages = [], now 
     aiTier: ai.tier,
     finalTier,
     escalate: finalTier !== rulesTier,
-    urgent: !!ai.urgent,
+    urgent: ai.urgent,
     readmissionRisk: ai.readmissionRisk,
     concerns: mergeConcerns(ai.concerns, signals),
-    nurseSummary: ai.nurseSummary ?? '',
-    suggestedActions: ai.suggestedActions ?? [],
-    model: ai.model ?? MODEL,
+    nurseSummary: ai.nurseSummary,
+    suggestedActions: ai.suggestedActions,
+    model: ai.model ?? MODEL ?? 'unknown',
     ts: new Date(now).toISOString(),
   };
 }

@@ -15,7 +15,7 @@
 
 ## Tasks (in order; tick each box when it's pushed)
 
-- [ ] **M0. Put `riskllm` on the shared rails** (small, do first)
+- [x] **M0. Put `riskllm` on the shared rails** (small, do first)
   - Route model calls through the shared chain (`core/llm/index.js`: `completeJSON`, which tries Claude → Ollama → LM Studio) instead of calling Ollama's `/api/chat` directly, so the reviewer also works with LM Studio or Claude. Keep your injectable `call` for tests. If you need JSON-schema-constrained output, request a `completeJSON(system, user, { schema })` option from @prannav in REQUESTS.md rather than bypassing the chain.
   - Use `core/clock.js` `now()` as the default for `now`, so demo clock advances affect weight slopes.
   - Keep `RISK_LLM=off` working. Update `backend/.env.example` (your section) with `RISK_LLM`, `RISK_MODEL`, `RISK_TIMEOUT_MS`.

@@ -1,10 +1,12 @@
-// Try the risk LLM (local Ollama) on a patient the rules call GREEN.
-//   ollama pull qwen2.5:7b   (once)
-//   cd backend && node src/riskllm/demo.js
+// Try the risk LLM on a patient the rules call GREEN. Uses the shared provider chain:
+// Claude (ANTHROPIC_API_KEY) -> Ollama -> LM Studio. Free/offline: `ollama pull qwen2.5:7b`.
+//   cd backend && node --env-file-if-exists=.env src/riskllm/demo.js
 import { reviewPatient, enabled } from './index.js';
+import * as llm from '../core/llm/index.js';
+import * as clock from '../core/clock.js';
 
 const DAY = 24 * 60 * 60 * 1000;
-const iso = (daysAgo) => new Date(Date.now() - daysAgo * DAY).toISOString();
+const iso = (daysAgo) => new Date(clock.now() - daysAgo * DAY).toISOString();
 const log = (lbs) => lbs.map((lb, i) => ({ ts: iso(lbs.length - 1 - i), lb }));
 
 // Robert: every check-in "fine", no single-day jump >= 2 lb, but weight creeping,
@@ -41,7 +43,12 @@ if (!enabled()) {
   console.error('Risk LLM is off (RISK_LLM=off).');
   process.exit(1);
 }
-console.error("Reviewing with local model... (can take ~30-90s on CPU)");
+await llm.detect();
+if (!llm.enabled()) {
+  console.error("No LLM provider available (set ANTHROPIC_API_KEY, or start Ollama / LM Studio).");
+  process.exit(1);
+}
+console.error(`Reviewing with ${llm.status().provider} (${llm.status().model})... local CPU models can take 1-2 min`);
 const t0 = Date.now();
 const review = await reviewPatient(patient, { rules: { tier: 'GREEN', flags: [] }, messages });
 console.log(JSON.stringify(review, null, 2));
