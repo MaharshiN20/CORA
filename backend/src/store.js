@@ -53,6 +53,23 @@ export function reset() {
   emit('reset', null);
 }
 
+// Put one seeded patient back to their seed state (scripted demo scenarios replay cleanly)
+// without touching anyone else. Their messages, alerts, audit and readings go too. Chat/phone
+// links are kept so a judge's phone stays connected. -> the fresh patient, or null.
+export function resetPatient(id) {
+  const fresh = buildSeed().patients.find((p) => p.id === id);
+  const i = db.patients.findIndex((p) => p.id === id);
+  if (!fresh || i < 0) return null;
+  const cur = db.patients[i];
+  fresh.chatId = cur.chatId ?? null;
+  if (cur.phone) Object.assign(fresh, { phone: cur.phone, channel: cur.channel });
+  fresh.caregiver = { ...fresh.caregiver, chatId: cur.caregiver?.chatId ?? null, ...(cur.caregiver?.phone && { phone: cur.caregiver.phone, channel: cur.caregiver.channel }) };
+  db.patients[i] = fresh;
+  for (const c of ['messages', 'alerts', 'audit', 'readings']) db[c] = db[c].filter((x) => x.patientId !== id);
+  emit('patient', fresh);
+  return fresh;
+}
+
 const newId = () => crypto.randomUUID();
 
 // ---------- patients ----------

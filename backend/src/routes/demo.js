@@ -5,6 +5,7 @@ import * as clock from '../core/clock.js';
 import * as store from '../store.js';
 import * as scheduler from '../core/scheduler.js';
 import * as jobs from '../core/jobs.js';
+import * as scenarios from '../core/scenarios.js';
 
 export const demo = Router();
 
@@ -38,8 +39,17 @@ demo.post('/reset', (_req, res) => {
   res.json({ ok: true, now: clock.nowISO() });
 });
 
-// GET /api/demo/scenarios -> [{ name, title, description }]  (empty until P4-15 lands;
-// the Demo console should render whatever this returns)
-demo.get('/scenarios', (_req, res) => res.json([]));
+// GET /api/demo/scenarios -> [{ name, title, description, tier, patientId, steps }]
+demo.get('/scenarios', (_req, res) => res.json(scenarios.list()));
 
-// TODO(core P4-15): POST /api/demo/scenario/:name
+// POST /api/demo/scenario/:name -> { name, patientId, steps, delayMs }
+// Plays in the background at a human pace (the dashboard updates live over socket.io).
+// ?fast=1 plays instantly and answers when done (tests, e2e).
+demo.post('/scenario/:name', async (req, res) => {
+  const fast = req.query.fast === '1' || req.body?.fast === true;
+  try {
+    res.json(await scenarios.run(req.params.name, fast ? { delayMs: 0, wait: true } : {}));
+  } catch (err) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+});

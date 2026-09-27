@@ -155,7 +155,9 @@ test('http: device readings validate and store', async () => {
   assert.equal(store.listReadings('p1', 'spo2')[0].source, 'device');
   assert.equal((await send('POST', '/api/devices/readings', { patientId: 'p1', type: 'spo2', value: 150 })).status, 400);
   assert.equal((await send('POST', '/api/devices/readings', { patientId: 'nope', type: 'hr', value: 70 })).status, 404);
-  assert.deepEqual(await get('/api/demo/scenarios'), []);
+  // scenarios (P4-15): { name, title, description, tier, patientId, steps }
+  const sc = await get('/api/demo/scenarios');
+  assert.ok(sc.length >= 4 && sc.every((s) => s.name && s.title && s.patientId && typeof s.steps === 'number'));
 });
 
 test('http: lane stubs are mounted', async () => {

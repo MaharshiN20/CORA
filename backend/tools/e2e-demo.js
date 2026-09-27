@@ -174,6 +174,54 @@ export async function runE2E({ log = console.log } = {}) {
       const d = await get('/api/patients/p1/digest');
       expect(/Weekly HeartBridge update for Maria/.test(d.text) && /Care-team alerts/.test(d.text), 'digest content');
     });
+
+    // ---------- scripted demo scenarios (P4-15): the pitch's fallback path ----------
+    const triageFor = async (id) => (await alertsFor(id)).filter((a) => (a.kind ?? 'triage') === 'triage' && a.status !== 'resolved');
+    await step('Scenarios are listed for the Demo console', async () => {
+      const list = await get('/api/demo/scenarios');
+      expect(['dorothy', 'maria', 'thanh', 'anil'].every((n) => list.some((s) => s.name === n)), `got ${list.map((s) => s.name)}`);
+    });
+
+    await step('Scenario dorothy: stable day -> GREEN, no alert', async () => {
+      await post('/api/demo/scenario/dorothy?fast=1');
+      const p = await get('/api/patients/p5');
+      expect(p.lastTier === 'GREEN' && p.checkin.state === 'idle', `tier ${p.lastTier}, state ${p.checkin.state}`);
+      expect((await triageFor('p5')).length === 0, 'unexpected alert');
+    });
+
+    await step('Scenario maria: Spanish free text -> YELLOW with weight + swelling, daughter told', async () => {
+      await post('/api/demo/scenario/maria?fast=1');
+      const [a] = await triageFor('p1');
+      expect(a?.tier === 'YELLOW', `no YELLOW alert (${a?.tier})`);
+      expect(a.reasons.some((r) => /Weight up/.test(r)) && a.reasons.some((r) => /swelling/.test(r)), a.reasons.join(' | '));
+      const p = await get('/api/patients/p1');
+      expect(p.messages.some((m) => m.to === 'caregiver'), 'caregiver not messaged');
+      return a.reasons.length + ' reasons';
+    });
+
+    await step('Scenario thanh: fainted -> RED + caregiver, then the RED lock repeats 911', async () => {
+      await post('/api/demo/scenario/thanh?fast=1');
+      const [a] = await triageFor('p3');
+      expect(a?.tier === 'RED', 'no RED alert');
+      expect(a.reasons.some((r) => /messaged again/.test(r)), 'follow-up not on the RED alert');
+      const p = await get('/api/patients/p3');
+      const lastOut = p.messages.filter((m) => m.direction === 'out' && m.to === 'patient').at(-1);
+      expect(/911/.test(lastOut.textEn ?? lastOut.text), 'lock reply lacks 911');
+      expect(p.messages.some((m) => m.to === 'caregiver' && /911/.test(m.text)), 'caregiver not alerted');
+    });
+
+    await step('Scenario anil: silence -> reminder (+2h) -> caregiver asked (+6h)', async () => {
+      await post('/api/demo/scenario/anil?fast=1');
+      const p = await get('/api/patients/p4');
+      const rungs = p.audit.filter((e) => e.type === 'outreach' && e.data.rung).map((e) => e.data.rung);
+      expect(rungs.includes(1) && rungs.includes(2), `rungs fired: ${rungs}`);
+      expect(p.messages.some((m) => m.to === 'caregiver'), 'Priya not asked');
+    });
+
+    await step('A scenario replays cleanly (patient reset each run)', async () => {
+      await post('/api/demo/scenario/maria?fast=1');
+      expect((await triageFor('p1')).length === 1, 'duplicate alerts after replay');
+    });
   } finally {
     jobs.stop();
     server.close();
