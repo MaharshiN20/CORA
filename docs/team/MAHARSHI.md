@@ -29,7 +29,7 @@
   - Keep a risk history: `store.collection('riskHistory')` rows `{ ts, patientId, score, tier }` written by an exported `recordRisk(patient)`. The core will call it after each check-in, so file a REQUESTS.md item for Prannav to wire it.
   - **Accept:** `scoreRisk(p)` without signals behaves exactly as before (the existing seed/check-in tests stay green). New tests for each dynamic factor, tier boundaries, trend, and missing signals (null) adding 0 points.
 
-- [ ] **M2. Insights API: prove the impact** (`backend/src/insights/*.js`, `routes/insights.js`)
+- [x] **M2. Insights API: prove the impact** (`backend/src/insights/*.js`, `routes/insights.js`)
   - `insights/cohort.js`: a deterministic (seeded PRNG) generator of about 60 historical 30-day patient journeys. Include a language mix (en/es/vi/hi/zh), check-in engagement, alerts with outcomes, readmissions (baseline around 20%, lower when engaged), response times and refill gaps. It's stored in `store.collection('cohort')` and regenerated on demand with `POST /api/insights/cohort/regenerate`.
   - Endpoints, each combining cohort + live demo patients, with `?source=cohort|live|all`:
     - `GET /api/insights/impact`: readmission rate engaged vs not, projected readmissions avoided, alerts per nurse per day, median time-to-ack, alert precision (true_positive / resolved).

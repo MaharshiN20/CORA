@@ -155,7 +155,8 @@ Other collections:
 | `GET /api/demo/scenarios` · `POST /api/demo/scenario/:name` | P | list is `[]` until P4-15. Render whatever it returns |
 | `GET /api/join` | K | `{ bot, links: [{ language, name, nativeName, url }] }` for QR codes |
 | `POST /webhooks/twilio/sms` · `/whatsapp` | K | coming: K5 |
-| `GET /api/insights/*` | M | coming: M2 (`/impact`, `/engagement`, `/equity`, `/roi`) |
+| `GET /api/insights/impact` · `/engagement` · `/equity` · `/roi` | M | `?source=cohort|live|all` (default all). `/roi` takes `discharges, readmitRate, costPerReadmit, reduction, penaltyPct, medicareRevenue, tcmContactRate, tcmHighComplexityShare, rpmEligibleRate`; TCM/RPM rates default to measured values |
+| `POST /api/insights/cohort/regenerate` | M | `{ seed?, size? }` → `{ ok, seed, size }`. The synthetic cohort lives in `store.collection('cohort')`, never in patients |
 | `POST /api/fhir/import` | M | coming: M5 |
 
 ## 5. LLM chain (core-internal, but everyone may call it)
