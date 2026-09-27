@@ -1,17 +1,20 @@
 // Nurse worklist logic, kept out of components so it's unit-tested (worklist.test.js).
 // Alert shape: docs/CONTRACTS.md §3 (alerts collection).
+import { Stethoscope, PhoneOff, Pill, House, CircleHelp, TriangleAlert, Activity, ClipboardCheck } from 'lucide-react';
 import { languageName } from './format.js';
 
 export const TIER_RANK = { RED: 0, YELLOW: 1, INFO: 2 };
 
+// icon: plain text for <option>s; Icon: the badge icon (one consistent set).
 export const KINDS = {
-  triage: { label: 'Triage', icon: '🩺' },
-  unreachable: { label: 'Unreachable', icon: '📵' },
-  refill: { label: 'Refill', icon: '💊' },
-  sdoh: { label: 'Social need', icon: '🏠' },
-  question: { label: 'Question', icon: '❓' },
-  med_discrepancy: { label: 'Med discrepancy', icon: '⚠️' },
-  device: { label: 'Device', icon: '📟' },
+  triage: { label: 'Triage', icon: '🩺', Icon: Stethoscope },
+  unreachable: { label: 'Unreachable', icon: '📵', Icon: PhoneOff },
+  refill: { label: 'Refill', icon: '💊', Icon: Pill },
+  sdoh: { label: 'Social need', icon: '🏠', Icon: House },
+  question: { label: 'Question', icon: '❓', Icon: CircleHelp },
+  med_discrepancy: { label: 'Med discrepancy', icon: '⚠️', Icon: TriangleAlert },
+  device: { label: 'Device', icon: '📟', Icon: Activity },
+  protocol_followup: { label: 'Follow-up', icon: '📋', Icon: ClipboardCheck },
 };
 export const kindOf = (alert) => KINDS[alert.kind ?? 'triage'] ?? { label: alert.kind, icon: '•' };
 

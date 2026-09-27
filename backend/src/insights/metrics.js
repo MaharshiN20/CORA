@@ -33,6 +33,7 @@ function alertPrecision(alerts) {
 
 // ---------------------------------------------------------------------------
 // GET /impact
+const SLA_MINUTES = { RED: 15, YELLOW: 240, INFO: 1440 }; // same as store.SLA_MS
 export function impact(js, { nurses = 2, windowDays = WINDOW_DAYS } = {}) {
   const engaged = readmission(js.filter(isEngaged));
   const notEngaged = readmission(js.filter((j) => !isEngaged(j)));
@@ -51,6 +52,14 @@ export function impact(js, { nurses = 2, windowDays = WINDOW_DAYS } = {}) {
       medianMinutesToAck: median(alerts.map((a) => a.ackMinutes)),
       medianMinutesToAckByTier: Object.fromEntries(
         ['RED', 'YELLOW', 'INFO'].map((t) => [t, median(alerts.filter((a) => a.tier === t).map((a) => a.ackMinutes))]),
+      ),
+      // Share acknowledged within the tier's SLA (never acknowledged = missed). A median in
+      // minutes hides RED's 14 min next to INFO's 9 h; a percentage reads the same for all.
+      withinSlaByTier: Object.fromEntries(
+        Object.entries(SLA_MINUTES).map(([t, m]) => {
+          const mine = alerts.filter((a) => a.tier === t);
+          return [t, rate(mine.filter((a) => a.ackMinutes != null && a.ackMinutes <= m).length, mine.length)];
+        }),
       ),
       precision: alertPrecision(alerts),
     },

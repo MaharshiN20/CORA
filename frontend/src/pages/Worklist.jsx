@@ -1,6 +1,7 @@
 // Worklist: every open alert and task, most urgent first (tier -> SLA -> risk), with live
 // SLA countdowns and the Acknowledge -> Contacted -> Resolve flow. Side panel: patients.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Siren } from 'lucide-react';
 import { Link } from 'react-router';
 import { api } from '../api.js';
 import { useLive, useNow } from '../hooks.js';
@@ -9,9 +10,35 @@ import { sortWorklist, filterWorklist, messageOutcome, KINDS, TIER_RANK } from '
 import { languageName } from '../lib/format.js';
 import AlertCard from '../components/AlertCard.jsx';
 import ImportDialog from '../components/ImportDialog.jsx';
-import { Card, Empty, TierBadge, Button, TREND_ICON } from '../components/ui.jsx';
+import { Card, Empty, TierBadge, RiskBadge, Button } from '../components/ui.jsx';
 
 const LAST_TIER_RANK = { RED: 0, YELLOW: 1, GREEN: 2 };
+
+// Alerts that arrived while the page is open: flash their card once and toast the newest,
+// so a nurse (or a judge) sees the RED land instead of hunting for it.
+function useArrivals(open) {
+  const seen = useRef(null);
+  const timers = useRef([]);
+  const [fresh, setFresh] = useState([]);
+  const [toast, setToast] = useState(null);
+  useEffect(() => {
+    if (!open) return; // not loaded yet
+    if (seen.current == null) {
+      seen.current = new Set(open.map((a) => a.id)); // first load: nothing is "new"
+      return;
+    }
+    const added = open.filter((a) => !seen.current.has(a.id));
+    for (const a of added) seen.current.add(a.id);
+    if (!added.length) return;
+    setFresh(added.map((a) => a.id));
+    setToast(added.find((a) => a.tier === 'RED') ?? added[0]);
+    timers.current.push(setTimeout(() => setFresh([]), 1800), setTimeout(() => setToast(null), 6000));
+  }, [open]);
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  return { fresh, toast, dismiss: () => setToast(null) };
+}
+
+const scrollToAlert = (id) => document.getElementById(`alert-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
 export default function Worklist() {
   const { data } = useLive(async () => {
@@ -28,12 +55,21 @@ export default function Worklist() {
   const shown = filterWorklist(open, { kind, tier });
   const counts = Object.fromEntries(['RED', 'YELLOW', 'INFO'].map((t) => [t, open.filter((a) => a.tier === t).length]));
   const overdue = open.filter((a) => Date.parse(a.dueBy) < now).length;
+  const reds = open.filter((a) => a.tier === 'RED' && (a.kind ?? 'triage') === 'triage');
+  const redNames = [...new Set(reds.map((a) => patientsById[a.patientId]?.name.split(' ')[0] ?? a.patientId))];
+  const { fresh, toast, dismiss } = useArrivals(data ? open : null);
 
   if (!data) return <Empty>Loading worklist…</Empty>;
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem] projector:lg:grid-cols-1">
       <div className="min-w-0 space-y-3">
+        {reds.length > 0 && (
+          <button onClick={() => scrollToAlert(reds[0].id)} className="flex w-full items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-left font-semibold text-white shadow-md hover:bg-red-700 projector:text-lg" role="alert">
+            <Siren className="animate-pulse" size={20} aria-hidden />
+            {redNames.length} {redNames.length === 1 ? 'patient was' : 'patients were'} told to call 911: {redNames.join(', ')}. Call now.
+          </button>
+        )}
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-xl font-bold">Worklist</h2>
           <span className="text-sm text-slate-500">
@@ -62,14 +98,32 @@ export default function Worklist() {
             <Empty>{open.length ? 'Nothing matches these filters.' : '🎉 Nothing needs attention right now.'}</Empty>
           </Card>
         ) : (
-          shown.map((a) => <AlertCard key={a.id} alert={a} patient={patientsById[a.patientId]} now={now} />)
+          <div className="space-y-3 projector:grid projector:grid-cols-2 projector:items-start projector:gap-3 projector:space-y-0">
+            {shown.map((a) => (
+              <AlertCard key={a.id} alert={a} patient={patientsById[a.patientId]} now={now} highlight={fresh.includes(a.id)} />
+            ))}
+          </div>
         )}
       </div>
 
-      <aside className="space-y-3">
+      <aside className="space-y-3 projector:hidden">
         <PatientPanel patients={data.patients} />
         <MessageBox patients={data.patients} />
       </aside>
+
+      {toast && (
+        <div className={`toast-in fixed bottom-5 right-5 z-30 flex max-w-sm items-start gap-3 rounded-xl p-3 text-sm shadow-2xl ${toast.tier === 'RED' ? 'bg-red-600 text-white' : 'bg-slate-900 text-white'}`} role="status">
+          <button className="text-left" onClick={() => (scrollToAlert(toast.id), dismiss())}>
+            <div className="font-semibold">
+              New {toast.tier} · {patientsById[toast.patientId]?.name ?? toast.patientId}
+            </div>
+            <div className="opacity-90">{toast.title}</div>
+          </button>
+          <button onClick={dismiss} aria-label="Dismiss" className="ml-auto opacity-70 hover:opacity-100">
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -101,7 +155,7 @@ function PatientPanel({ patients }) {
                 </div>
               </div>
               {p.lastTier && <TierBadge tier={p.lastTier} />}
-              <TierBadge tier={p.riskTier} suffix={p.riskDynamic?.trend ? ` ${TREND_ICON[p.riskDynamic.trend]}` : ''} />
+              <RiskBadge tier={p.riskTier} trend={p.riskDynamic?.trend} />
             </Link>
           </li>
         ))}

@@ -12,7 +12,7 @@ const RESULTS = [
 ];
 const PREVIEW = {
   data: { name: 'Rosa María Delgado', age: 78, language: 'es', dryWeightLb: 173.1 },
-  summary: { conditions: [{ flag: 'heartFailure', text: 'Heart failure' }], medications: ['Furosemide 40 mg (diuretic)'], warnings: [] },
+  summary: { heartFailure: true, conditions: [{ flag: 'heartFailure', text: 'Heart failure' }], medications: ['Furosemide 40 mg (diuretic)'], warnings: [] },
 };
 
 function PatientPage() {
@@ -75,6 +75,21 @@ describe('ImportDialog', () => {
     fireEvent.change(screen.getByLabelText('Patient name'), { target: { value: 'delgado' } });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     expect(await screen.findByText('EHR server unreachable (timed out)')).toBeInTheDocument();
+  });
+
+  it('a child with no heart-failure diagnosis cannot be enrolled without a deliberate override', async () => {
+    api.fhirPreview.mockResolvedValue({ data: { name: 'Rik Smithies', age: 4, language: 'en' }, summary: { heartFailure: false, conditions: [], medications: [], warnings: ['No heart-failure diagnosis found in the EHR'] } });
+    api.fhirImport.mockResolvedValue({ patient: { id: 'p_kid' } });
+    renderDialog();
+    await search();
+    fireEvent.click(screen.getByText('Rosa María Delgado'));
+    const enroll = await screen.findByRole('button', { name: 'Enroll patient' });
+    expect(enroll).toBeDisabled();
+    expect(screen.getByText(/No heart-failure diagnosis · Age 4/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(enroll);
+    expect(await screen.findByText('patient page p_kid')).toBeInTheDocument();
+    expect(api.fhirImport).toHaveBeenCalledWith('hb-rosa-1', { override: true });
   });
 
   it('needs at least 2 characters to search', () => {

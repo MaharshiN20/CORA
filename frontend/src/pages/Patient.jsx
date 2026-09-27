@@ -7,7 +7,7 @@ import { useLive, useNow } from '../hooks.js';
 import { useHealth } from '../App.jsx';
 import { formatDuration } from '../lib/worklist.js';
 import { languageName, shortDate, timeOf, pct } from '../lib/format.js';
-import { Card, Empty, TierBadge, Button, AsyncButton, KindBadge, TREND_ICON } from '../components/ui.jsx';
+import { Card, Empty, TierBadge, RiskBadge, Button, AsyncButton, KindBadge, TREND_ICON } from '../components/ui.jsx';
 import PhoneSimulator from '../components/PhoneSimulator.jsx';
 
 const DAY = 86400000;
@@ -85,7 +85,7 @@ function Header({ p }) {
       </div>
       <div className="flex items-center gap-2">
         <span className="text-xs uppercase text-slate-500">Risk</span>
-        <TierBadge tier={p.riskTier} suffix={` · ${p.riskScore ?? '—'} pts`} className="text-sm" />
+        <RiskBadge tier={p.riskTier} trend={p.riskDynamic?.trend} detail={` · ${p.riskScore ?? '—'} pts`} className="text-sm" />
         {p.lastTier && (
           <>
             <span className="ml-2 text-xs uppercase text-slate-500">Last check-in</span>

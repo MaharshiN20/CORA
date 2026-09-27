@@ -54,6 +54,8 @@ test('impact: readmission engaged vs not, avoided, alert load, ack time, precisi
   assert.equal(m.alerts.perNursePerDay, 0.067); // 4 / (2 nurses * 30 days)
   assert.equal(m.alerts.medianMinutesToAck, 30); // [10, 30, 100]
   assert.deepEqual(m.alerts.medianMinutesToAckByTier, { RED: 10, YELLOW: 65, INFO: null });
+  assert.equal(m.alerts.withinSlaByTier.RED, 1); // 10 min <= 15
+  assert.equal(m.alerts.withinSlaByTier.INFO, null); // no INFO alerts: no data, not 0
   assert.equal(m.alerts.precision, 0.667); // tp + ed_avoided out of 3 judged
 });
 

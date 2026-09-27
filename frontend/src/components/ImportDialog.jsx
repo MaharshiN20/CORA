@@ -5,6 +5,14 @@ import { api } from '../api.js';
 import { languageName } from '../lib/format.js';
 import { Button } from './ui.jsx';
 
+// Why this chart shouldn't be enrolled without a second look (mirrors the API's 422).
+export function importBlockers(preview) {
+  const out = [];
+  if (!preview?.summary?.heartFailure) out.push('No heart-failure diagnosis');
+  if (preview?.data?.age != null && preview.data.age < 18) out.push(`Age ${preview.data.age}`);
+  return out;
+}
+
 export default function ImportDialog({ onClose }) {
   const navigate = useNavigate();
   const [name, setName] = useState('');
@@ -13,6 +21,9 @@ export default function ImportDialog({ onClose }) {
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [override, setOverride] = useState(false);
+  // HeartBridge is an adult heart-failure program: anyone else needs a deliberate "yes".
+  const blockers = preview && !selected?.importedAs ? importBlockers(preview) : [];
 
   const run = async (fn) => {
     setBusy(true);
@@ -38,13 +49,14 @@ export default function ImportDialog({ onClose }) {
   const pick = (r) => {
     setSelected(r);
     setPreview(null);
+    setOverride(false);
     run(async () => setPreview(await api.fhirPreview(r.fhirId)));
   };
 
   const doImport = () =>
     run(async () => {
       try {
-        const { patient } = await api.fhirImport(selected.fhirId);
+        const { patient } = override ? await api.fhirImport(selected.fhirId, { override: true }) : await api.fhirImport(selected.fhirId);
         onClose();
         navigate(`/patients/${patient.id}`);
       } catch (e) {
@@ -117,8 +129,16 @@ export default function ImportDialog({ onClose }) {
                     ))}
                   </ul>
                 )}
+                {blockers.length > 0 && (
+                  <label className="mt-3 flex items-start gap-2 rounded-md bg-red-50 p-2 text-red-900">
+                    <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} className="mt-0.5" />
+                    <span>
+                      <b>{blockers.join(' · ')}.</b> HeartBridge is for adults with heart failure. Enroll anyway only if you have confirmed this with the care team.
+                    </span>
+                  </label>
+                )}
                 <div className="mt-3 flex gap-2">
-                  <Button onClick={doImport} disabled={busy}>
+                  <Button onClick={doImport} disabled={busy || (blockers.length > 0 && !override)}>
                     {selected.importedAs ? 'Open enrolled patient' : 'Enroll patient'}
                   </Button>
                   <Button variant="subtle" onClick={() => setSelected(null)}>

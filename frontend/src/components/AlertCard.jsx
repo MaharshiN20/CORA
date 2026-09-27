@@ -2,27 +2,75 @@
 // Acknowledge -> Mark contacted -> Resolve (with an outcome picker).
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { LineChart, Line, ReferenceLine, YAxis } from 'recharts';
+import { Phone } from 'lucide-react';
 import { api } from '../api.js';
 import { sla, nextAction, OUTCOMES, resolvePatch } from '../lib/worklist.js';
-import { timeOf } from '../lib/format.js';
+import { timeOf, languageName } from '../lib/format.js';
 import { TierBadge, KindBadge, Button } from './ui.jsx';
 
-const BORDER = { RED: 'border-l-red-500', YELLOW: 'border-l-amber-400', INFO: 'border-l-slate-300' };
+// A RED card must be unmistakable from across the room (projector): tinted, ringed, thick edge.
+const CARD = {
+  RED: 'border-red-300 border-l-red-600 bg-red-50/70 ring-2 ring-red-500/40',
+  YELLOW: 'border-slate-200 border-l-amber-400 bg-white',
+  INFO: 'border-slate-200 border-l-slate-300 bg-white',
+};
+
+// The SLA pill speaks the alert's tier: a RED is red however much time is left.
+function slaTone(tier, s) {
+  if (tier === 'RED') return s.overdue ? 'animate-pulse bg-red-600 text-white ring-2 ring-red-300' : 'bg-red-600 text-white';
+  if (s.overdue) return 'animate-pulse bg-red-600 text-white';
+  if (tier === 'YELLOW') return s.remainingMs < 60 * 60000 ? 'bg-amber-400 text-amber-950' : 'bg-amber-100 text-amber-900';
+  return 'bg-slate-100 text-slate-600';
+}
 
 export function SlaCountdown({ alert, now }) {
   const s = sla(alert, now);
   if (!s) return null;
   return (
-    <span
-      data-testid="sla"
-      className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${s.overdue ? 'animate-pulse bg-red-600 text-white' : s.remainingMs < 15 * 60000 ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-600'}`}
-    >
+    <span data-testid="sla" className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${slaTone(alert.tier, s)}`}>
       ⏱ {s.label}
     </span>
   );
 }
 
-export default function AlertCard({ alert, patient, now, update = api.updateAlert }) {
+const signed = (n) => (n == null ? '—' : `${n > 0 ? '▲' : n < 0 ? '▼' : ''}${Math.abs(Math.round(n * 10) / 10)}`);
+
+// What the nurse needs to act without clicking through: today's weight and its trend, the
+// last week as a sparkline against dry weight, and how to reach the patient.
+export function VitalsStrip({ patient, tier }) {
+  const weights = patient?.weights ?? [];
+  if (!weights.length) return null;
+  const last = weights.at(-1).lb;
+  const dry = patient.dryWeightLb;
+  const week = weights.slice(-7).map((w) => ({ lb: w.lb }));
+  const values = week.map((w) => w.lb).concat(dry ? [dry] : []);
+  const stroke = tier === 'RED' ? '#dc2626' : tier === 'YELLOW' ? '#d97706' : '#2563eb';
+  const d24 = patient.signals?.weightDelta24h;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-700 tabular-nums" data-testid="vitals">
+      <span>
+        <b className="text-sm text-slate-900">{last} lb</b> <span className={d24 >= 2 ? 'font-semibold text-red-700' : ''}>{signed(d24)} /24h</span>
+        {dry != null && <span className={last - dry >= 5 ? ' font-semibold text-red-700' : ''}> · {signed(last - dry)} vs dry</span>}
+      </span>
+      {week.length > 1 && (
+        <LineChart width={90} height={28} data={week} margin={{ top: 2, right: 2, bottom: 2, left: 2 }} aria-label="7-day weight">
+          <YAxis hide domain={[Math.min(...values) - 0.5, Math.max(...values) + 0.5]} />
+          {dry != null && <ReferenceLine y={dry} stroke="#10b981" strokeDasharray="3 3" />}
+          <Line isAnimationActive={false} type="monotone" dataKey="lb" stroke={stroke} strokeWidth={2} dot={false} />
+        </LineChart>
+      )}
+      {patient.contactPhone && (
+        <a href={`tel:${patient.contactPhone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline">
+          <Phone size={12} aria-hidden /> {patient.contactPhone}
+        </a>
+      )}
+      {patient.language && <span className="text-slate-500">{languageName(patient.language)}</span>}
+    </div>
+  );
+}
+
+export default function AlertCard({ alert, patient, now, update = api.updateAlert, highlight = false }) {
   const [resolving, setResolving] = useState(false);
   const [outcome, setOutcome] = useState('');
   const [note, setNote] = useState('');
@@ -53,7 +101,7 @@ export default function AlertCard({ alert, patient, now, update = api.updateAler
   };
 
   return (
-    <article className={`rounded-xl border border-l-4 border-slate-200 bg-white p-4 shadow-sm ${BORDER[alert.tier] ?? ''}`} aria-label={`${alert.tier} alert`}>
+    <article id={`alert-${alert.id}`} className={`rounded-xl border border-l-[6px] p-4 shadow-sm transition-shadow ${CARD[alert.tier] ?? CARD.INFO} ${highlight ? 'ring-4 ring-blue-400' : ''}`} aria-label={`${alert.tier} alert`}>
       <div className="flex flex-wrap items-center gap-2">
         <TierBadge tier={alert.tier} />
         <KindBadge alert={alert} />
@@ -70,7 +118,7 @@ export default function AlertCard({ alert, patient, now, update = api.updateAler
           <span className="text-xs capitalize text-slate-500">{alert.status}</span>
         </span>
       </div>
-      {alert.title && <p className="mt-2 font-medium text-slate-800">{alert.title}</p>}
+      {alert.title && <p className={`mt-2 font-semibold projector:text-lg ${alert.tier === 'RED' ? 'text-red-900' : 'text-slate-800'}`}>{alert.title}</p>}
       {alert.reasons?.length > 0 && (
         <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm text-slate-700">
           {alert.reasons.map((r, i) => (
@@ -79,6 +127,7 @@ export default function AlertCard({ alert, patient, now, update = api.updateAler
         </ul>
       )}
       {alert.ai?.nurseSummary && <p className="mt-2 rounded-md bg-violet-50 p-2 text-sm text-violet-900">🤖 {alert.ai.nurseSummary}</p>}
+      {(alert.kind ?? 'triage') === 'triage' && <VitalsStrip patient={patient} tier={alert.tier} />}
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
         <span>Opened {timeOf(alert.ts)}</span>
         {alert.assignee && <span>· {alert.assignee}</span>}

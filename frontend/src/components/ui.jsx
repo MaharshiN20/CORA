@@ -1,16 +1,20 @@
-// Small shared UI pieces. Tier colors are the same everywhere: RED/High = red,
-// YELLOW/Med = amber, GREEN/Low = green, INFO = slate.
+// Small shared UI pieces. Two visual languages, never mixed:
+//   triage tiers (RED / YELLOW / GREEN: "act now") are SOLID badges;
+//   background risk (High / Med / Low: "who to watch") is an OUTLINE chip that says "risk",
+// so five "High risk" patients don't drown out the one RED that needs a call.
 import { useState } from 'react';
 import { kindOf } from '../lib/worklist.js';
 
 const TIER_STYLE = {
-  RED: 'bg-red-100 text-red-800 ring-red-300',
-  High: 'bg-red-100 text-red-800 ring-red-300',
-  YELLOW: 'bg-amber-100 text-amber-900 ring-amber-300',
-  Med: 'bg-amber-100 text-amber-900 ring-amber-300',
-  GREEN: 'bg-emerald-100 text-emerald-800 ring-emerald-300',
-  Low: 'bg-emerald-100 text-emerald-800 ring-emerald-300',
+  RED: 'bg-red-600 text-white ring-red-700',
+  YELLOW: 'bg-amber-400 text-amber-950 ring-amber-500',
+  GREEN: 'bg-emerald-600 text-white ring-emerald-700',
   INFO: 'bg-slate-100 text-slate-700 ring-slate-300',
+};
+const RISK_STYLE = {
+  High: 'bg-white text-red-700 ring-red-300',
+  Med: 'bg-white text-amber-700 ring-amber-300',
+  Low: 'bg-white text-emerald-700 ring-emerald-300',
 };
 
 export function TierBadge({ tier, suffix = '', className = '' }) {
@@ -23,11 +27,23 @@ export function TierBadge({ tier, suffix = '', className = '' }) {
   );
 }
 
+// Background risk: "High risk ↑". Outline only, see the note at the top.
+export function RiskBadge({ tier, trend, detail = '', className = '' }) {
+  if (!tier) return null;
+  return (
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${RISK_STYLE[tier] ?? RISK_STYLE.Low} ${className}`}>
+      {tier} risk{trend ? ` ${TREND_ICON[trend] ?? ''}` : ''}
+      {detail}
+    </span>
+  );
+}
+
 export function KindBadge({ alert }) {
   const k = kindOf(alert);
+  const Icon = k.Icon;
   return (
     <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-      <span aria-hidden>{k.icon}</span>
+      {Icon ? <Icon size={13} aria-hidden strokeWidth={2.25} /> : <span aria-hidden>{k.icon}</span>}
       {k.label}
     </span>
   );

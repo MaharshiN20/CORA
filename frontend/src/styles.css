@@ -1,16 +1,27 @@
 @import "tailwindcss";
 
-/* Projector mode: everything is rem-based, so scaling the root scales the whole UI. */
-html.projector { font-size: 125%; }
+/* Projector mode is a layout, not a font bump: `projector:` classes restyle key pieces (one-line
+   header, full-width 2-column worklist, bigger titles). Scaling the root font used to inflate
+   Tailwind's rem breakpoints, which dropped a 1347px screen into the mobile layout. */
+@custom-variant projector (&:where(.projector, .projector *));
+html.projector #root { zoom: 1.1; }
 
-body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+body { font-family: var(--font-sans); font-feature-settings: "cv11", "ss01"; }
 
-/* New chat bubbles slide in (reduced-motion users get none). */
+/* New chat bubbles slide in; a newly arrived alert flashes once. Reduced motion: none. */
 @keyframes bubble-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
 }
 .bubble-in { animation: bubble-in 0.2s ease-out; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+.toast-in { animation: toast-in 0.25s ease-out; }
 @media (prefers-reduced-motion: reduce) {
-  .bubble-in { animation: none; }
+  .bubble-in, .toast-in { animation: none; }
 }

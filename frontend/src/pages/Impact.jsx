@@ -8,6 +8,8 @@ import { roi, ROI_DEFAULTS } from '../lib/roi.js';
 import { money, compactMoney, pct, num, minutes, languageName } from '../lib/format.js';
 import { Card, Stat, Empty, Button } from '../components/ui.jsx';
 
+const SLA_TIERS = ['RED', 'YELLOW', 'INFO'];
+
 const SOURCES = [
   ['all', 'Cohort + live'],
   ['cohort', 'Historical cohort'],
@@ -36,7 +38,14 @@ export default function Impact() {
             </button>
           ))}
         </div>
-        <span className="text-sm text-slate-500">{impact.patients} patients</span>
+        <span className="text-sm text-slate-500" title="Readmission rates only count patients whose 30-day outcome is known">
+          {impact.patients} patients · {r.engaged.n + r.notEngaged.n} with 30-day outcomes
+        </span>
+        {source !== 'live' && (
+          <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-800" title="Generated cohort for illustration; not real patient outcomes">
+            Synthetic cohort · illustrative
+          </span>
+        )}
         <Button variant="subtle" className="ml-auto" onClick={async () => (await fetch('/api/insights/cohort/regenerate', { method: 'POST' }), reload())}>
           Regenerate cohort
         </Button>
@@ -45,9 +54,9 @@ export default function Impact() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Stat label="Readmitted: engaged" value={pct(r.engaged.rate, 1)} sub={`${r.engaged.readmitted}/${r.engaged.n} patients`} tone="green" />
         <Stat label="Readmitted: not engaged" value={pct(r.notEngaged.rate, 1)} sub={`${r.notEngaged.readmitted}/${r.notEngaged.n} patients`} tone="red" />
-        <Stat label="Readmissions avoided" value={num(impact.projectedReadmissionsAvoided, 1)} sub="projected, engaged vs not" tone="blue" />
+        <Stat label="Projected readmissions avoided" value={num(impact.projectedReadmissionsAvoided, 1)} sub="engaged vs not (correlational)" tone="blue" />
         <Stat label="Alerts / nurse / day" value={num(impact.alerts.perNursePerDay, 1)} sub={`precision ${pct(impact.alerts.precision)}`} />
-        <Stat label="Median time to ack" value={minutes(impact.alerts.medianMinutesToAck)} sub={`RED ${minutes(impact.alerts.medianMinutesToAckByTier.RED)}`} tone="violet" />
+        <Stat label="RED acknowledged" value={minutes(impact.alerts.medianMinutesToAckByTier.RED)} sub={`median · SLA 15 min · ${pct(impact.alerts.withinSlaByTier?.RED)} on time`} tone="violet" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -95,14 +104,14 @@ export default function Impact() {
           <EquityChart equity={equity} />
         </Card>
 
-        <Card title="Time to acknowledge, by tier (SLA: RED 15 min · YELLOW 4 h · INFO 24 h)">
+        <Card title="Acknowledged within SLA, by tier (RED 15 min · YELLOW 4 h · INFO 24 h)">
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={['RED', 'YELLOW', 'INFO'].map((t) => ({ tier: t, minutes: impact.alerts.medianMinutesToAckByTier[t] ?? 0 }))} margin={{ left: -10 }}>
+            <BarChart data={SLA_TIERS.map((t) => ({ tier: `${t} · median ${minutes(impact.alerts.medianMinutesToAckByTier[t])}`, share: impact.alerts.withinSlaByTier?.[t] ?? 0 }))} margin={{ left: -10 }}>
               <CartesianGrid stroke="#eef1f6" vertical={false} />
               <XAxis dataKey="tier" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip formatter={(v) => minutes(v)} />
-              <Bar isAnimationActive={false} dataKey="minutes" name="Median minutes" radius={[6, 6, 0, 0]}>
+              <YAxis domain={[0, 1]} tickFormatter={(v) => pct(v)} tick={{ fontSize: 12 }} />
+              <Tooltip formatter={(v) => pct(v)} />
+              <Bar isAnimationActive={false} dataKey="share" name="Acknowledged on time" radius={[6, 6, 0, 0]}>
                 <Cell fill="#ef4444" />
                 <Cell fill="#f59e0b" />
                 <Cell fill="#94a3b8" />

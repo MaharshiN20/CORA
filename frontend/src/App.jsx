@@ -71,7 +71,7 @@ export default function App() {
       <div className="min-h-screen bg-slate-50 text-slate-900">
         {!bare && (
           <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
-            <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3">
+            <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 projector:max-w-none projector:flex-nowrap projector:py-2">
               <h1 className="text-lg font-bold">
                 💙 HeartBridge <span className="ml-1 text-sm font-normal text-slate-500">care team</span>
               </h1>
@@ -83,7 +83,9 @@ export default function App() {
                 ))}
               </nav>
               <div className="ml-auto flex items-center gap-3">
-                <HealthStrip health={health} />
+                <span className="projector:hidden">
+                  <HealthStrip health={health} />
+                </span>
                 <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600">
                   <input type="checkbox" checked={projector} onChange={(e) => setProjector(e.target.checked)} />
                   Projector mode
@@ -97,7 +99,7 @@ export default function App() {
             Can't reach the HeartBridge server. Retrying… (the page will catch up by itself)
           </div>
         )}
-        <main className={bare ? '' : 'mx-auto max-w-[1400px] px-5 py-5'}>
+        <main className={bare ? '' : 'mx-auto max-w-[1400px] px-5 py-5 projector:max-w-none'}>
           <Routes>
             <Route path="/" element={<Worklist />} />
             <Route path="/patients/:id" element={<Patient />} />
