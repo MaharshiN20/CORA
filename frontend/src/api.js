@@ -8,18 +8,37 @@ async function req(method, path, body) {
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`${method} ${path} -> ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(`${method} ${path} -> ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 
+const qs = (params) => {
+  const s = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== '')).toString();
+  return s ? `?${s}` : '';
+};
+
 export const api = {
   health: () => req('GET', '/health'),
+  languages: () => req('GET', '/languages'),
   patients: () => req('GET', '/patients'),
   patient: (id) => req('GET', `/patients/${id}`),
   alerts: () => req('GET', '/alerts'),
-  ackAlert: (id) => req('PATCH', `/alerts/${id}`, { status: 'acknowledged' }),
+  updateAlert: (id, patch) => req('PATCH', `/alerts/${id}`, patch),
   startCheckin: (id) => req('POST', `/patients/${id}/checkin`),
-  simulate: (id, text) => req('POST', `/patients/${id}/simulate`, { text }),
-  tap: (id, buttonData) => req('POST', `/patients/${id}/simulate`, { buttonData }),
-  reset: () => req('POST', '/reset'),
+  simulate: (id, body) => req('POST', `/patients/${id}/simulate`, body), // { text?, buttonData?, role? }
+  message: (id, text) => req('POST', `/patients/${id}/message`, { text, from: 'Nurse' }),
+  pickedUp: (id, med) => req('POST', `/patients/${id}/prescriptions/${encodeURIComponent(med)}/picked-up`, { by: 'dashboard' }),
+  join: () => req('GET', '/join'),
+  // demo console
+  clock: () => req('GET', '/demo/clock'),
+  advance: (hours) => req('POST', '/demo/advance', { hours }),
+  demoReset: () => req('POST', '/demo/reset'),
+  scenarios: () => req('GET', '/demo/scenarios'),
+  runScenario: (name) => req('POST', `/demo/scenario/${encodeURIComponent(name)}`),
+  // insights (M2)
+  insight: (name, params = {}) => req('GET', `/insights/${name}${qs(params)}`),
 };

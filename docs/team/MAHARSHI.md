@@ -38,7 +38,7 @@
     - `GET /api/insights/roi?discharges=&readmitRate=&costPerReadmit=&reduction=&penaltyPct=&medicareRevenue=`: HRRP penalty avoided, readmission costs avoided, TCM billable (contact within 2 business days, $220/$298), RPM-eligible (≥16 reading-days, ~$52/mo + $52/20 min). Defaults and sources come from `docs/STRATEGY.md`.
   - **Accept:** tests for each metric on a small hand-built dataset (exact numbers), a determinism test for the generator, and ROI math tests. `curl` each endpoint.
 
-- [ ] **M3. Dashboard overhaul: the nurse command center** (`frontend/`)
+- [x] **M3. Dashboard overhaul: the nurse command center** (`frontend/`)
   - Stack: React Router, Tailwind v4 (`@tailwindcss/vite`), recharts, `qrcode`, socket.io live refresh (already wired in `src/api.js`). Clean clinical design, big readable type, and a "projector mode" toggle that scales everything up.
   - **Worklist** `/`:
     - All open alerts and tasks, sorted by tier → SLA (`dueBy`) → risk, with live SLA countdowns (red when overdue).
