@@ -4,13 +4,14 @@
   "private": true,
   "description": "HeartBridge: multilingual post-discharge co-pilot (Telegram agent + nurse dashboard)",
   "scripts": {
-    "setup": "npm install && npm --prefix backend install && npm --prefix frontend install",
-    "dev": "concurrently -k -n api,web -c blue,magenta \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
-    "test": "npm --prefix backend test",
-    "build": "npm --prefix frontend run build",
-    "check": "npm test && npm run build",
-    "seed": "npm --prefix backend run seed",
-    "e2e": "npm --prefix backend run e2e"
+    "setup": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "dev": "concurrently -k -n api,web -c blue,magenta \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
+    "test": "cd backend && npm test",
+    "build": "cd frontend && npm run build",
+    "check": "npm test && npm run test:web && npm run build",
+    "seed": "cd backend && npm run seed",
+    "e2e": "cd backend && npm run e2e",
+    "test:web": "cd frontend && npm test"
   },
   "devDependencies": {
     "concurrently": "^10.0.5"

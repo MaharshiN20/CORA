@@ -174,8 +174,16 @@ async function callChain(prompt) {
   return obj && { ...obj, model: obj.model ?? llm.status().model };
 }
 
-const withTimeout = (promise, ms) =>
-  Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms).unref())]);
+// The timer must stay referenced while we wait (an unref'd timer lets Node's event loop
+// drain mid-wait, so the test runner cancelled the "hung provider" test), and is cleared
+// as soon as the race settles so a finished review never leaves a timer behind.
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 export async function reviewPatient(patient, { rules = null, messages = [], now = clock.now() } = {}, { call, timeoutMs = TIMEOUT_MS } = {}) {
   if (!enabled()) return null;

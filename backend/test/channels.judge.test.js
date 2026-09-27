@@ -69,8 +69,10 @@ test('/start DEMO_<LANG> enrolls a demo patient in every supported language', as
     assert.equal(link.patient.language, code);
     assert.equal(link.patient.source, 'demo');
     assert.match(link.patient.linkCode, /^DEMO[A-Z0-9]{5}$/);
-    // No LLM in tests: non-native languages fall back to the English template.
-    assert.equal(h.lastSent(calls).text, i18n.t(native ? code : 'en', 'ask_weight'), code);
+    // No LLM in tests: non-native languages use their generated template translation
+    // (src/core/i18n-generated, P2-11) when one exists, otherwise the English template.
+    const expected = native ? i18n.t(code, 'ask_weight') : await i18n.localize(code, i18n.t('en', 'ask_weight'));
+    assert.equal(h.lastSent(calls).text, expected, code);
   }
   assert.equal(demoPatients().length, enroll.languages().length);
 });
