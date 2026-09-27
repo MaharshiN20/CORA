@@ -23,10 +23,12 @@ export async function sendToPatient(patient, msg) {
 }
 
 export async function sendToCaregiver(patient, msg) {
-  store.addMessage({ patientId: patient.id, direction: 'out', to: 'caregiver', text: msg.text });
+  store.addMessage({ patientId: patient.id, direction: 'out', to: 'caregiver', text: msg.text, textEn: msg.textEn, buttons: msg.buttons });
   return deliver(patient.caregiver?.chatId, msg, { language: patient.caregiver?.language });
 }
 
+// Nurse messages aren't about one patient in general; when they are (msg.patientId), log them there too.
 export async function sendToNurses(msg) {
+  if (msg.patientId) store.addMessage({ patientId: msg.patientId, direction: 'out', to: 'nurse', text: msg.text, textEn: msg.textEn, buttons: msg.buttons });
   return deliver(process.env.NURSE_CHAT_ID, msg);
 }
