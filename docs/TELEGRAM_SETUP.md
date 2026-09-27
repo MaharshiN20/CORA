@@ -131,3 +131,29 @@ For longer text use `googleTTS.getAllAudioUrls` and send them in sequence. A per
 - `409 Conflict: terminated by other getUpdates request` means another process is polling the same token. Kill it or use your own token.
 - Don't commit `.env`.
 - Docs: https://grammy.dev (guide), https://core.telegram.org/bots/api (reference).
+
+## 8. SMS & WhatsApp (Twilio)
+
+Same agent, same check-in, no app to install. Useful for patients who don't have Telegram, and it's the channel a hospital would run behind a BAA (the "HIPAA path"). Everything is optional: with no Twilio variables set, the adapters stay disabled and nothing else changes.
+
+**How it works**
+- Outbound: `channels/index.js` sends on `patient.channel` (`telegram` | `sms` | `whatsapp`) and falls back to any other enabled channel the person has an address for (`chatId` or `phone`).
+- Buttons become numbered lines (`1️⃣ 😊 Normal`). A reply of `2` is turned back into that button's data, so the core can't tell SMS from a tap. Menus are remembered per phone for 24 h.
+- Inbound: `POST /webhooks/twilio/sms` and `/webhooks/twilio/whatsapp`. Texting `JOIN GARCIA1` links a phone to a patient, `JOIN CG_GARCIA1` links a caregiver, and `JOIN DEMO_ES` is judge mode. WhatsApp images and voice notes work too (photo → core, voice → Whisper).
+- Replies go out through the REST API and the webhook returns empty TwiML. If the REST call fails, or no credentials are set, the replies come back inside the TwiML instead.
+
+**Trial setup (about 10 minutes, free trial credit)**
+1. Sign up at https://www.twilio.com/try-twilio. From the Console home, copy the **Account SID** and **Auth Token** into `backend/.env`.
+2. **SMS:** Phone Numbers → Buy a number (trial credit covers it) → `TWILIO_SMS_FROM=+1...`. Trial accounts can only text **verified** numbers: Phone Numbers → Verified Caller IDs → add each demo phone.
+3. **WhatsApp sandbox:** Messaging → Try it out → Send a WhatsApp message. Each demo phone sends the sandbox's `join <two-words>` message to **+1 415 523 8886** once. Set `TWILIO_WHATSAPP_FROM=whatsapp:+14155238886`.
+4. Expose the backend: `ngrok http 3001`, then set `PUBLIC_URL=https://<id>.ngrok.app` in `.env` (the signature check needs the exact public URL).
+5. Point Twilio at it:
+   - SMS: Phone Numbers → your number → Messaging → "A message comes in" → Webhook, `POST https://<id>.ngrok.app/webhooks/twilio/sms`
+   - WhatsApp: Sandbox settings → "When a message comes in" → `POST https://<id>.ngrok.app/webhooks/twilio/whatsapp`
+6. Restart the backend. `GET /webhooks` should show `{ sms: true, whatsapp: true, signatureCheck: true }`. Text `JOIN GARCIA1` to try it.
+
+**Gotchas**
+- Requests are rejected with 403 when `TWILIO_AUTH_TOKEN` is set and the signature doesn't match. That's almost always a wrong or missing `PUBLIC_URL` (http vs https, or a stale ngrok id).
+- Trial messages start with "Sent from your Twilio trial account".
+- The WhatsApp sandbox forgets a phone after 72 h without messages; resend the `join` words.
+- Try it locally without Twilio (replies come back as TwiML): `curl --data-urlencode "From=+14045550100" --data-urlencode "Body=JOIN GARCIA1" localhost:3001/webhooks/twilio/sms`

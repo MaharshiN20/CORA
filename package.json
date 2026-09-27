@@ -9,7 +9,8 @@
     "test": "npm --prefix backend test",
     "build": "npm --prefix frontend run build",
     "check": "npm test && npm run build",
-    "seed": "npm --prefix backend run seed"
+    "seed": "npm --prefix backend run seed",
+    "e2e": "npm --prefix backend run e2e"
   },
   "devDependencies": {
     "concurrently": "^10.0.5"

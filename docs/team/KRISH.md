@@ -47,7 +47,7 @@
   - The core replies with a placeholder until P3-13 (med-bottle reconciliation) lands, and nothing needs to change on your side when it does.
   - **Accept:** a bot test with a mocked file download asserts `handleInbound` got base64 + mime, and the oversize path is covered.
 
-- [ ] **K5. SMS + WhatsApp adapters (channel-agnostic, the HIPAA-path story)**
+- [x] **K5. SMS + WhatsApp adapters (channel-agnostic, the HIPAA-path story)**
   - Adapter registry in `channels/index.js`: `{ telegram, sms, whatsapp }`, each `{ name, isEnabled(), send(address, reply) }`. Route by `patient.channel` (default `telegram`) and fall back to any enabled channel the patient has an address for. **Keep the exported `sendToPatient/sendToCaregiver/sendToNurses` signatures exactly as they are.**
   - Buttons over SMS become numbered options ("Reply 1 for Normal, 2 for…"). Keep a per-patient map so an inbound "2" becomes that button's `data`.
   - `channels/twilio.js`: sends through the Twilio REST API with `fetch` (no SDK needed). Env: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_SMS_FROM`, `TWILIO_WHATSAPP_FROM` (sandbox `whatsapp:+14155238886`).

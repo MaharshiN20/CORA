@@ -27,6 +27,7 @@ cp backend/.env.example backend/.env   # optional: add tokens/keys
 npm run setup                          # install root + backend + frontend
 npm run dev                            # backend :3001 + dashboard :5173
 npm run check                          # all tests + frontend build (run before every push)
+npm run e2e                            # rehearse the whole demo story over HTTP (no Telegram/LLM needed)
 ```
 
 No keys needed to start. Without a Telegram token you can still chat as a patient from the dashboard's "Simulate a patient reply" box.
