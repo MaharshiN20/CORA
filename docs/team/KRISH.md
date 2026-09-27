@@ -16,7 +16,7 @@
 
 ## Tasks (in order; tick each box when it's pushed)
 
-- [ ] **K1. Testable bot + Telegram polish**
+- [x] **K1. Testable bot + Telegram polish**
   - `buildBot()` refactor (above), plus a `test/channels.telegram.test.js` harness.
   - After a button tap: `answerCallbackQuery`, then edit the original message to remove the keyboard and append "→ <label>" so it can't be double-tapped.
   - `/start CODE` welcome in the patient's language. The i18n keys already exist in `core/i18n.js` (en + es): `welcome_patient`, `welcome_caregiver`, `unknown_code`, `help`, `language_prompt`, `language_set`, `voice_on/off`, `voice_unavailable`, `heard`, `file_too_large`. Use `t(patient.language, key, vars)` and `localize()` for non-native languages. Need more keys? Ask via REQUESTS.md.

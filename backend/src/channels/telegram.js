@@ -1,21 +1,46 @@
 // ============================================================================
-// Telegram channel — OWNER: Telegram teammate. See docs/TELEGRAM_SETUP.md.
+// Telegram channel (Krish lane). See docs/TELEGRAM_SETUP.md and docs/CONTRACTS.md §1.
 //
-// Responsibilities (and nothing else — no clinical logic here):
-//   1. /start <CODE>      -> store.linkChat(code, chatId), send welcome
-//   2. text / voice notes -> store.findByChatId -> agent.handleInbound -> render replies
-//   3. button taps        -> answerCallbackQuery, agent.handleInbound({ buttonData })
-//   4. sendToChat()       -> used by core for proactive check-ins, reminders, alerts
+// Responsibilities (and nothing else, no clinical logic here):
+//   1. /start <CODE>      -> store.linkChat(code, chatId), welcome in the patient's language
+//   2. text               -> store.findByChatId -> agent.handleInbound -> render replies
+//   3. button taps        -> answerCallbackQuery, lock the tapped message, handleInbound({ buttonData })
+//   4. commands           -> /checkin /help /language /voice /meds
+//   5. sendToChat()       -> used by channels/index.js for proactive check-ins, reminders, alerts
 //
-// Uses long polling (bot.start()), so no public URL / ngrok is needed.
+// Handlers live in buildBot() so tests can drive a bot with fake updates and a
+// transformer that swallows every API call (no network). start() is the only
+// thing that talks to Telegram for real (long polling, no public URL needed).
 // ============================================================================
 import { Bot, InlineKeyboard } from 'grammy';
 import * as store from '../store.js';
-import { handleInbound } from '../core/agent.js';
+import { handleInbound, startCheckin } from '../core/agent.js';
+import { languages, isSupportedLanguage } from '../core/enroll.js';
+import { t, localize } from '../core/i18n.js';
 
 let bot = null;
 
 export const isEnabled = () => bot !== null;
+
+// Shown in Telegram's "/" menu. Spanish variants are registered for es clients.
+export const COMMANDS = {
+  en: [
+    { command: 'checkin', description: 'Start your daily heart check-in' },
+    { command: 'meds', description: 'See your medicines' },
+    { command: 'language', description: 'Change language' },
+    { command: 'voice', description: 'Turn voice replies on/off' },
+    { command: 'help', description: 'How HeartBridge works' },
+  ],
+  es: [
+    { command: 'checkin', description: 'Empezar su chequeo diario' },
+    { command: 'meds', description: 'Ver sus medicinas' },
+    { command: 'language', description: 'Cambiar idioma' },
+    { command: 'voice', description: 'Activar/desactivar respuestas de voz' },
+    { command: 'help', description: 'Cómo funciona HeartBridge' },
+  ],
+};
+
+export const escapeHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // Reply.buttons ([[{label, data}]]) -> grammY InlineKeyboard
 function toKeyboard(buttons) {
@@ -28,57 +53,208 @@ function toKeyboard(buttons) {
   return kb;
 }
 
-export async function sendToChat(chatId, { text, buttons }) {
-  if (!bot) throw new Error('Telegram bot not started');
-  return bot.api.sendMessage(chatId, text, { reply_markup: toKeyboard(buttons) });
+// One Reply -> Telegram message(s). Urgent replies are bold + 🚨 and pinned (best effort),
+// which needs HTML mode, so the text is escaped: it can echo what the patient typed.
+export async function renderReply(api, chatId, reply) {
+  const reply_markup = toKeyboard(reply.buttons);
+  if (!reply.urgent) return api.sendMessage(chatId, reply.text, { reply_markup });
+  const text = reply.text.startsWith('🚨') ? reply.text : `🚨 ${reply.text}`;
+  const sent = await api.sendMessage(chatId, `<b>${escapeHtml(text)}</b>`, { parse_mode: 'HTML', reply_markup });
+  await api.pinChatMessage(chatId, sent.message_id).catch(() => {}); // not allowed in every chat
+  return sent;
 }
 
-export function start() {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) {
-    console.log('[telegram] TELEGRAM_BOT_TOKEN not set — bot disabled (dashboard still works).');
-    return;
-  }
-  bot = new Bot(token);
+export async function sendToChat(chatId, reply) {
+  if (!bot) throw new Error('Telegram bot not started');
+  return renderReply(bot.api, chatId, reply);
+}
 
-  // --- 1. Linking: t.me/<bot>?start=GARCIA1 arrives as "/start GARCIA1" ---
-  bot.command('start', async (ctx) => {
-    const code = ctx.match; // text after /start
-    const link = store.linkChat(code, ctx.chat.id);
-    if (!link) {
-      return ctx.reply('Welcome to HeartBridge 💙 Please open the link your care team gave you (or send /start YOURCODE).');
+// Test hook: make sendToChat() use a bot built by buildBot() without polling.
+export function useBot(b) {
+  bot = b;
+}
+
+// Language for someone we can't identify yet: Telegram tells us the app's language.
+const guessLang = (ctx) => (isSupportedLanguage(ctx.from?.language_code?.slice(0, 2)) ? ctx.from.language_code.slice(0, 2) : 'en');
+
+const langOf = (link) => (link.role === 'caregiver' ? link.patient.caregiver?.language ?? 'en' : link.patient.language);
+
+// t() + LLM translation for languages without built-in strings (falls back to English).
+const say = async (lang, key, vars) => localize(lang, t(lang, key, vars));
+
+const firstName = (patient) => patient.name.split(' ')[0];
+
+// Messages that don't go through handleInbound still belong in the dashboard log.
+function logOut(link, reply) {
+  store.addMessage({
+    patientId: link.patient.id,
+    direction: 'out',
+    to: link.role,
+    text: reply.text,
+    textEn: reply.textEn,
+    buttons: reply.buttons,
+    channel: 'telegram',
+  });
+}
+
+async function replyAll(ctx, replies) {
+  for (const r of replies) await renderReply(ctx.api, ctx.chat.id, r);
+}
+
+async function welcome(ctx, link) {
+  const lang = langOf(link);
+  const key = link.role === 'caregiver' ? 'welcome_caregiver' : 'welcome_patient';
+  const reply = { text: await say(lang, key, { name: firstName(link.patient) }), textEn: t('en', key, { name: firstName(link.patient) }) };
+  logOut(link, reply);
+  await renderReply(ctx.api, ctx.chat.id, reply);
+}
+
+// The /language picker. Two per row keeps native names readable on a phone.
+function languageButtons() {
+  const buttons = languages().map((l) => ({ label: l.nativeName, data: `lang:${l.code}` }));
+  const rows = [];
+  for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  return rows;
+}
+
+async function setLanguage(ctx, link, code) {
+  const { patient } = link;
+  if (link.role === 'caregiver') store.updatePatient(patient.id, { caregiver: { ...patient.caregiver, language: code } });
+  else store.updatePatient(patient.id, { language: code });
+  const name = languages().find((l) => l.code === code).nativeName;
+  const reply = { text: await say(code, 'language_set', { language: name }), textEn: t('en', 'language_set', { language: name }) };
+  logOut(link, reply);
+  await renderReply(ctx.api, ctx.chat.id, reply);
+}
+
+// After a tap: remove the keyboard and show what was picked, so it can't be tapped twice.
+async function lockTappedMessage(ctx) {
+  const msg = ctx.callbackQuery.message;
+  if (!msg?.text) return;
+  const data = ctx.callbackQuery.data;
+  const label = msg.reply_markup?.inline_keyboard?.flat().find((b) => b.callback_data === data)?.text;
+  await ctx
+    .editMessageText(label ? `${msg.text}\n\n→ ${label}` : msg.text, { reply_markup: { inline_keyboard: [] } })
+    .catch(() => {}); // message too old / unchanged: harmless
+}
+
+export function buildBot(token, { botInfo } = {}) {
+  const b = new Bot(token, botInfo ? { botInfo } : undefined);
+  const seenGroups = new Set();
+
+  // Group chats: log the id once so people can find NURSE_CHAT_ID. Never treat a group as a patient.
+  b.use(async (ctx, next) => {
+    if (ctx.chat && ctx.chat.type !== 'private') {
+      if (!seenGroups.has(ctx.chat.id)) {
+        seenGroups.add(ctx.chat.id);
+        console.log(`[telegram] group chat "${ctx.chat.title ?? ''}" id=${ctx.chat.id} (use as NURSE_CHAT_ID)`);
+      }
+      return;
     }
-    // TODO(telegram): welcome in patient.language (see core/i18n.js once it exists)
-    const who = link.role === 'caregiver' ? `caregiver for ${link.patient.name}` : link.patient.name;
-    await ctx.reply(`✅ Linked as ${who}. You'll get daily check-ins here.`);
+    return next();
   });
 
-  // --- 2. Free text from a linked patient ---
-  bot.on('message:text', async (ctx) => {
+  // --- Linking: t.me/<bot>?start=GARCIA1 arrives as "/start GARCIA1" ---
+  b.command('start', async (ctx) => {
+    const code = ctx.match?.trim();
+    if (!code) {
+      const existing = store.findByChatId(ctx.chat.id);
+      if (existing) return welcome(ctx, existing);
+      return ctx.reply(t(guessLang(ctx), 'unknown_code'));
+    }
+    const link = store.linkChat(code, ctx.chat.id);
+    if (!link) return ctx.reply(t(guessLang(ctx), 'unknown_code'));
+    store.audit('channel_link', link.patient.id, { channel: 'telegram', role: link.role });
+    await welcome(ctx, link);
+  });
+
+  // Everything below needs a linked chat.
+  const linked = (handler) => async (ctx) => {
     const link = store.findByChatId(ctx.chat.id);
-    if (!link) return ctx.reply('Please send /start YOURCODE first.');
-    if (link.role !== 'patient') return ctx.reply('Thanks! You will receive alerts and weekly updates here.');
-    const replies = await handleInbound({ patientId: link.patient.id, text: ctx.message.text });
-    for (const r of replies) await ctx.reply(r.text, { reply_markup: toKeyboard(r.buttons) });
-  });
+    if (!link) return ctx.reply(t(guessLang(ctx), 'unknown_code'));
+    return handler(ctx, link);
+  };
 
-  // --- 3. Inline button taps ---
-  bot.on('callback_query:data', async (ctx) => {
+  b.command('help', linked(async (ctx, link) => ctx.reply(await say(langOf(link), 'help'))));
+
+  b.command(
+    'checkin',
+    linked(async (ctx, link) => {
+      if (link.role !== 'patient') return ctx.reply(await say(langOf(link), 'help'));
+      const replies = await startCheckin(link.patient.id);
+      for (const r of replies) logOut(link, r);
+      await replyAll(ctx, replies);
+    }),
+  );
+
+  b.command(
+    'language',
+    linked(async (ctx, link) => {
+      await ctx.reply(await say(langOf(link), 'language_prompt'), { reply_markup: toKeyboard(languageButtons()) });
+    }),
+  );
+
+  b.command(
+    'voice',
+    linked(async (ctx, link) => {
+      if (link.role !== 'patient') return ctx.reply(await say(langOf(link), 'help'));
+      const on = !link.patient.voiceMode;
+      store.updatePatient(link.patient.id, { voiceMode: on });
+      await ctx.reply(await say(link.patient.language, on ? 'voice_on' : 'voice_off'));
+    }),
+  );
+
+  b.command(
+    'meds',
+    linked(async (ctx, link) => {
+      const meds = link.patient.meds ?? [];
+      const lines = meds.map((m) => `💊 ${[m.name, m.dose].filter(Boolean).join(' ')}${m.times?.length ? ` (${m.times.join(', ')})` : ''}`);
+      await ctx.reply(lines.length ? lines.join('\n') : '—');
+    }),
+  );
+
+  // --- Free text (patient or caregiver) ---
+  b.on(
+    'message:text',
+    linked(async (ctx, link) => {
+      const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', text: ctx.message.text });
+      await replyAll(ctx, replies);
+    }),
+  );
+
+  // --- Inline button taps ---
+  b.on('callback_query:data', async (ctx) => {
     await ctx.answerCallbackQuery();
     const link = store.findByChatId(ctx.chat.id);
-    if (!link || link.role !== 'patient') return;
-    const replies = await handleInbound({ patientId: link.patient.id, buttonData: ctx.callbackQuery.data });
-    for (const r of replies) await ctx.reply(r.text, { reply_markup: toKeyboard(r.buttons) });
+    if (!link) return;
+    await lockTappedMessage(ctx);
+    const data = ctx.callbackQuery.data;
+    const lang = data.startsWith('lang:') ? data.slice(5) : null;
+    if (lang && isSupportedLanguage(lang)) return setLanguage(ctx, link, lang);
+    const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', buttonData: data });
+    await replyAll(ctx, replies);
   });
 
-  // TODO(telegram): voice notes (stretch) — bot.on('message:voice'):
-  //   ctx.getFile() -> download -> Groq Whisper -> handleInbound({ voiceTranscript })
-  //   optionally reply with TTS audio via google-tts-api + ctx.replyWithAudio
-  // TODO(telegram): /checkin, /meds, /help commands
-  // TODO(telegram): log ctx.chat.id for group messages so we can find NURSE_CHAT_ID
+  b.catch((err) => console.error('[telegram] error:', err.error?.message ?? err));
+  return b;
+}
 
-  bot.catch((err) => console.error('[telegram] error:', err.error?.message ?? err));
-  bot.start({ onStart: (me) => console.log(`[telegram] @${me.username} polling`) });
+export async function start() {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
+    console.log('[telegram] TELEGRAM_BOT_TOKEN not set, bot disabled (dashboard still works).');
+    return;
+  }
+  bot = buildBot(token);
+  try {
+    await bot.api.setMyCommands(COMMANDS.en);
+    await bot.api.setMyCommands(COMMANDS.es, { language_code: 'es' });
+  } catch (err) {
+    console.error('[telegram] setMyCommands failed:', err.message);
+  }
+  bot
+    .start({ onStart: (me) => console.log(`[telegram] @${me.username} polling`) })
+    .catch((err) => console.error('[telegram] polling stopped:', err.message));
 }
 
 export async function stop() {
