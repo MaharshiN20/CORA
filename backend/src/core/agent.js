@@ -35,6 +35,12 @@ const START_WORDS = /^\/?(check[- ]?in|start|chequeo|empezar|hola|hi|hello)\b/i;
 // Caregivers must ask explicitly (or tap the button): a "hi" shouldn't start a proxy check-in.
 const PROXY_WORDS = /^\/?(check[- ]?in|chequeo)\b/i;
 
+// Background English translations of inbound messages (tests / e2e can wait for them).
+const pendingTranslations = new Set();
+export async function flushTranslations() {
+  while (pendingTranslations.size) await Promise.all([...pendingTranslations]);
+}
+
 export async function handleInbound({ patientId, role = 'patient', channel, text, buttonData, voiceTranscript, photo }) {
   const patient = store.getPatient(patientId);
   if (!patient) return [{ text: 'Sorry, I could not find your record. Ask your care team for your link code.' }];
@@ -77,10 +83,18 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
   // Replies (and the sender's text) are in the sender's language: caregiver or patient.
   const lang = role === 'caregiver' ? patient.caregiver?.language ?? 'en' : patient.language;
 
-  // English copy of what they said, for the dashboard.
+  // English copy of what they said, for the dashboard. Only the nurse needs it, so it's
+  // filled in the background (the dashboard updates live) instead of making the patient
+  // wait seconds for an AI translation before their next question.
   if (input && lang !== 'en') {
-    textEn ??= await toEnglish(lang, input);
     if (textEn) store.updateMessage(inbound.id, { textEn });
+    else {
+      const job = toEnglish(lang, input)
+        .then((en) => en && store.updateMessage(inbound.id, { textEn: en }))
+        .catch(() => {})
+        .finally(() => pendingTranslations.delete(job));
+      pendingTranslations.add(job);
+    }
   }
 
   replies = await Promise.all(replies.map((r) => localizeReply(lang, r)));

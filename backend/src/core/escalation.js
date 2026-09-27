@@ -11,7 +11,13 @@ export async function escalate(patient, result, { source = 'check-in', reporter 
   if (result.tier === 'GREEN') return null;
 
   const reasons = result.flags.map((f) => f.text);
-  const alert = store.addAlert({ patientId: patient.id, tier: result.tier, reasons, source, priority: result.priority, reporter });
+  // A summary title for scanning the worklist; the reasons list carries the detail.
+  const n = reasons.length;
+  const title =
+    result.tier === 'RED'
+      ? `Possible emergency: told to call 911 (${reasons[0]}${n > 1 ? ` +${n - 1} more` : ''})`
+      : `Nurse call today: ${n} warning sign${n === 1 ? '' : 's'}`;
+  const alert = store.addAlert({ patientId: patient.id, tier: result.tier, title, reasons, source, priority: result.priority, reporter });
 
   const action = result.tier === 'RED' ? 'Patient told to call 911. Call patient NOW.' : 'Nurse callback needed today.';
   const who = reporter === 'caregiver' ? `\nReported by caregiver ${patient.caregiver?.name ?? ''} (${patient.caregiver?.relation ?? 'family'})` : '';

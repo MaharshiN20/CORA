@@ -6,6 +6,7 @@ import * as channels from '../channels/index.js';
 import { handleInbound, startCheckin } from '../core/agent.js';
 import { createPatient, languages } from '../core/enroll.js';
 import { getSignals } from '../core/signals.js';
+import { scoreRisk } from '../core/risk.js';
 import { adherence } from '../core/meds.js';
 import { markPickedUp } from '../core/pharmacy.js';
 import { startLadder } from '../core/outreach.js';
@@ -30,14 +31,29 @@ api.get('/health', (_req, res) =>
 api.get('/languages', (_req, res) => res.json(languages()));
 
 // ---- patients ----
-api.get('/patients', (_req, res) => res.json(store.listPatients().map((p) => ({ ...p, signals: getSignals(p) }))));
+// Risk is computed live on every read (Risk v2: baseline + today's signals), so the dashboard
+// is never behind: a weight jump shows up before the patient's next check-in finishes.
+function withLiveRisk(p) {
+  const signals = getSignals(p);
+  const live = scoreRisk(p, signals);
+  return {
+    ...p,
+    signals,
+    riskScore: live.score,
+    riskTier: live.tier,
+    riskFactors: live.factors,
+    riskBaseline: live.baseline,
+    riskDynamic: live.dynamic,
+  };
+}
+
+api.get('/patients', (_req, res) => res.json(store.listPatients().map(withLiveRisk)));
 
 api.get('/patients/:id', (req, res) => {
   const p = store.getPatient(req.params.id);
   if (!p) return res.status(404).json({ error: 'not found' });
   res.json({
-    ...p,
-    signals: getSignals(p),
+    ...withLiveRisk(p),
     adherence: adherence(p),
     messages: store.listMessages(p.id),
     alerts: store.listAlerts().filter((a) => a.patientId === p.id),

@@ -52,13 +52,20 @@ export default function PhoneSimulator({ patient, messages, role = 'patient', on
   const [busy, setBusy] = useState(false);
   const shown = messages.filter((m) => (role === 'caregiver' ? m.to === 'caregiver' || m.from === 'caregiver' : m.to !== 'caregiver' && m.from !== 'caregiver'));
 
+  // Clear the box as soon as the message is sent (like a real chat app). Clearing it after
+  // the reply arrived erased anything typed while the previous message was in flight
+  // (AI calls can take a few seconds). On failure the text comes back.
   const send = async (e) => {
     e.preventDefault();
-    if (!draft.trim()) return;
+    const text = draft;
+    if (!text.trim()) return;
+    setDraft('');
     setBusy(true);
     try {
-      await api.simulate(patient.id, { text: draft, role });
-      setDraft('');
+      await api.simulate(patient.id, { text, role });
+    } catch (err) {
+      setDraft((current) => current || text);
+      throw err;
     } finally {
       setBusy(false);
     }

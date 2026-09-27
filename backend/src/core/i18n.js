@@ -349,7 +349,8 @@ export async function localize(lang, text) {
   if (cache.has(key)) return cache.get(key);
   const out = await llm.complete(
     `Translate the user's message into ${LANG_NAMES[lang] ?? lang} for an elderly heart-failure patient. ` +
-      'Keep it simple and warm, keep emojis, numbers and "911" unchanged. Output only the translation.',
+      'Keep it simple and warm, and use the respectful/formal form of address (e.g. "usted" in Spanish, "Bác/ông/bà" in Vietnamese, "आप" in Hindi). ' +
+      'Keep emojis, numbers and "911" unchanged. Output only the translation.',
     text,
   );
   const result = out || text;
@@ -366,6 +367,7 @@ export async function translateFromEnglish(lang, text) {
   if (cache.has(key)) return { text: cache.get(key), translated: true };
   const out = await llm.complete(
     `Translate the message from a nurse into ${LANG_NAMES[lang] ?? (lang === 'es' ? 'Spanish' : lang)} for an elderly heart-failure patient. ` +
+      'Use the respectful/formal form of address (e.g. "usted" in Spanish, "Bác/ông/bà" in Vietnamese, "आप" in Hindi). ' +
       'Keep names, times, numbers, emojis and "911" unchanged. Output only the translation.',
     text,
   );

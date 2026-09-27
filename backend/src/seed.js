@@ -149,10 +149,3 @@ export function buildSeed() {
     demoDayOffset: 0,
   };
 }
-
-// `npm run seed` -> wipe data/db.json back to the seed
-if (process.argv.includes('--reset')) {
-  const { reset } = await import('./store.js');
-  reset();
-  console.log('Seed data restored to data/db.json');
-}

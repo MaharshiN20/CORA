@@ -66,7 +66,8 @@
 - [ ] **P4-15 Scenarios** `core/scenarios/`: `maria` (5-day decompensation), `johnson` (refill barrier), `nguyen` (silent → ladder → caregiver proxy), `judge` (fresh demo patient). `GET /api/demo/scenarios` + `POST /api/demo/scenario/:name`, deterministic.
 - [ ] **P4-16 E2E for every scenario** (extend P1-8), running both with no LLM and with a local LLM.
 - [ ] **P4-17 Docs**: `docs/DEMO_SCRIPT.md` (3-minute pitch + click path + fallback plan), `docs/SAFETY_PRIVACY.md`, `docs/ARCHITECTURE.md` (with a diagram).
-- [ ] **Integration 1** (after P1 + K1–K2 + M3 Worklist/Patient) and **Integration 2** (everything): full live run, fix gaps, update CONTRACTS.md.
+- [x] **Integration 1** (dashboard + demo console + API + scheduler + AI chain, driven headless in Edge): Maria's story end to end, ack/message/resolve, +1 day ladder, caregiver proxy. 8 gaps fixed (see commit). Live Telegram leg still to run with a bot token + a real phone.
+- [ ] **Integration 2** (everything, incl. Telegram on real phones + judge QR): full dress rehearsal, fix gaps, update CONTRACTS.md.
 
 ## Definition of done (every task)
 Tests written and green, `npm run check` green, a manual check noted in the commit body, box ticked here, then commit `[core] …` and push.

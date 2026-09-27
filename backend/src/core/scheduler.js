@@ -71,10 +71,15 @@ export function tick() {
   return running;
 }
 
+const MAX_JOBS_PER_TICK = 2000; // runaway guard
+
+// Runs due jobs one at a time in dueAt order, re-reading the queue after each job: a job
+// can schedule follow-ups that are already due during a demo-clock catch-up (a 09:00
+// check-in schedules its 11:00 and 15:00 ladder rungs), and those must run before a 20:00
+// reminder, not after it.
 async function runDue() {
   const summary = { ran: 0, missed: 0, failed: 0 };
-  // Loop: handlers may schedule follow-ups that are already due (e.g. catch-up after a jump).
-  for (let pass = 0; pass < 10; pass++) {
+  for (let n = 0; n < MAX_JOBS_PER_TICK; n++) {
     const now = clock.now();
     const due = jobs()
       .filter((j) => j.status === 'pending' && Date.parse(j.dueAt) <= now)
@@ -89,15 +94,20 @@ async function runDue() {
       const g = groupOf(j);
       if (!newest.has(g) || newest.get(g).dueAt < j.dueAt) newest.set(g, j);
     }
-
+    let collapsed = false;
     for (const j of due) {
-      const h = handlers.get(j.kind);
-      if (h?.collapse && newest.get(groupOf(j)) !== j) {
+      if (handlers.get(j.kind)?.collapse && newest.get(groupOf(j)) !== j) {
         j.status = 'missed';
         j.ranAt = clock.nowISO();
         summary.missed++;
-        continue;
+        collapsed = true;
       }
+    }
+    if (collapsed) continue; // re-read: the earliest due job may have changed
+
+    {
+      const j = due[0];
+      const h = handlers.get(j.kind);
       j.status = 'running';
       try {
         if (!h) throw new Error(`no handler for "${j.kind}"`);

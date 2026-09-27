@@ -49,7 +49,11 @@ scheduler.defineJob('checkin_due', {
     }
     const replies = await startCheckin(p.id);
     for (const r of replies) await channels.sendToPatient(p, r);
-    startLadder(p, store.getPatient(p.id).checkin.startedAt);
+    // The ladder counts from when the check-in was *due*, not when this tick ran: after a
+    // demo-clock jump the job runs at the end of the window, and counting from there pushed
+    // the +2h reminder and +6h caregiver ping past the jump (a "+1 day" showed no escalation).
+    // In live use the two are within one 30s tick of each other.
+    startLadder(p, job.dueAt);
     store.audit('checkin_sent', p.id, { jobId: job.id, scheduledFor: job.dueAt });
     return { sent: replies.length };
   },

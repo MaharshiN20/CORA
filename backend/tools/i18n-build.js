@@ -38,7 +38,8 @@ export async function buildLanguage({ lang, languageName, keys, enTemplate, plac
   // No example tokens in the prompt: small models parrot them into short strings.
   const system =
     `You are a professional medical translator. Translate the text inside <text></text> into ${languageName} ` +
-    'for an elderly patient, simply and warmly. Translate ONLY that text: never add sentences, greetings, links or hashtags. ' +
+    'for an elderly patient, simply and warmly, using the respectful/formal form of address (e.g. "usted" in Spanish). ' +
+    'Translate ONLY that text: never add sentences, greetings, links or hashtags. ' +
     'Words in curly braces are placeholders: copy them unchanged. Keep emojis, numbers, line breaks, brand names and ' +
     'anything starting with "/" unchanged. A short button label stays a short label. Output only the translation, without the tags.';
   for (const key of keys) {

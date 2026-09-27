@@ -37,11 +37,24 @@ const cgPings = (id) => store.listMessages(id).filter((m) => m.to === 'caregiver
 const unreachable = (id) => store.listAlerts().filter((a) => a.patientId === id && a.kind === 'unreachable');
 const rungs = (id, status) => scheduler.listJobs({ kind: 'outreach_step', patientId: id, status });
 
-test('a sent check-in schedules three rungs at +2h, +6h, +24h', () => {
+test('a sent check-in schedules three rungs at +2h, +6h, +24h from when it was due', () => {
   const pending = rungs('p5', 'pending');
   assert.equal(pending.length, 3);
-  const start = Date.parse(store.getPatient('p5').checkin.startedAt);
-  assert.deepEqual(pending.map((j) => (Date.parse(j.dueAt) - start) / clock.HOUR), [2, 6, 24]);
+  const due = Date.parse(scheduler.listJobs({ kind: 'checkin_due', patientId: 'p5', status: 'done' })[0].dueAt);
+  assert.deepEqual(pending.map((j) => (Date.parse(j.dueAt) - due) / clock.HOUR), [2, 6, 24]);
+});
+
+test('a one-day demo jump runs the ladder inside the jump (reminder + caregiver ping)', async () => {
+  // beforeEach already sent the 09:00 check-in at 09:01; start over and jump a whole day at once
+  jobs.stop();
+  store.reset();
+  const six = planning.occurrences(['06:00'], clock.now(), clock.now() + clock.DAY)[0].at;
+  clock.advance(six - clock.now());
+  await jobs.start({ intervalMs: 0 });
+  await advanceBy(20 * clock.HOUR); // 06:00 -> 02:00 next day: 09:00 check-in, 11:00 + 15:00 rungs all inside
+  assert.equal(reminders('p5').length, 1);
+  assert.equal(cgPings('p5').length, 1);
+  assert.equal(unreachable('p5').length, 0); // +24h rung is still in the future
 });
 
 test('+2h: patient reminder re-asks the current question (in their language)', async () => {
