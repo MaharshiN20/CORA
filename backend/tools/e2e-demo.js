@@ -150,8 +150,13 @@ export async function runE2E({ log = console.log } = {}) {
 
     await step('Caregiver answers for Nguyen (proxy check-in) → ladder recovery', async () => {
       await sim('p3', { role: 'caregiver', buttonData: 'cmd:proxy' });
-      for (const x of [{ text: '151' }, { buttonData: 'ci:breath:normal' }, { buttonData: 'ci:swell:none' }, { buttonData: 'ci:rf:none' }, { buttonData: 'ci:diu:yes' }]) {
-        await sim('p3', { role: 'caregiver', ...x });
+      // Answer whatever the (live, Risk v2) plan asks: a silent day can raise Nguyen's tier
+      // and add questions (orthopnea, SpO2), so answer by the current step, not a fixed list.
+      const ANSWERS = { weight: { text: '151' }, breath: { buttonData: 'ci:breath:normal' }, orthopnea: { buttonData: 'ci:orth:no' }, swelling: { buttonData: 'ci:swell:none' }, redflags: { buttonData: 'ci:rf:none' }, diuretic: { buttonData: 'ci:diu:yes' }, spo2: { buttonData: 'ci:spo2:none' } };
+      for (let i = 0; i < 10; i++) {
+        const state = (await get('/api/patients/p3')).checkin.state;
+        if (state === 'idle') break;
+        await sim('p3', { role: 'caregiver', ...ANSWERS[state] });
       }
       const p = await get('/api/patients/p3');
       expect(p.checkins.at(-1)?.reporter === 'caregiver', 'check-in not tagged caregiver');

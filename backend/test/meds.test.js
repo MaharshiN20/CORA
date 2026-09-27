@@ -1,6 +1,7 @@
 // P1-3: medication reminders, confirmations, adherence, and the triage link.
 import { test, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { completeCheckin } from './helpers/checkin.js';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -124,8 +125,8 @@ test('two days of missed water pills -> next check-in is YELLOW with missed_diur
     await tap('p5', miss);
   }
   await advanceTo('09:00');
-  await agent.handleInbound({ patientId: 'p5', text: '140' });
-  for (const b of ['ci:breath:normal', 'ci:swell:none', 'ci:rf:none', 'ci:diu:no']) await tap('p5', b);
+  // Missed doses raise Dorothy's live risk, so the check-in may ask extra questions: answer by step.
+  await completeCheckin(agent, store, 'p5', { weight: '140', diuretic: 'ci:diu:no' });
   const last = store.getPatient('p5').checkins.at(-1);
   assert.equal(last.tier, 'YELLOW');
   assert.ok(last.flags.some((f) => f.code === 'missed_diuretic'));

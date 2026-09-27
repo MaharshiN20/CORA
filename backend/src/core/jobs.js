@@ -14,6 +14,7 @@ import * as channels from '../channels/index.js';
 import { startCheckin } from './agent.js';
 import { isActive as checkinActive } from './checkin.js';
 import { scoreRisk } from './risk.js';
+import { getSignals } from './signals.js';
 import { occurrences, isMonitored, allPlanners } from './planning.js';
 // Feature modules register their job kinds + planners on import.
 import './meds.js';
@@ -60,7 +61,7 @@ scheduler.defineJob('checkin_due', {
 export { atLocalTime, occurrences, isMonitored, addPlanner } from './planning.js';
 
 export function planPatient(p, fromMs, toMs) {
-  const { plan } = scoreRisk(p);
+  const { plan } = scoreRisk(p, getSignals(p)); // live tier (Risk v2): High risk -> 2 check-ins/day
   const times = CHECKIN_TIMES[plan.checkinsPerDay] ?? CHECKIN_TIMES[1];
   for (const { at, key } of occurrences(times, fromMs, toMs)) {
     if (!isMonitored(p, at)) continue;

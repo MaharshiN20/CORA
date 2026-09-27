@@ -91,7 +91,7 @@ reviewPatient(patient, { rules, messages, now }) → null | {
 }
 ```
 `null` means no data yet, never zero. `scoreRisk(patient)` without signals must keep working (seed, tests).
-The core calls `scoreRisk(patient)` today. Once Risk v2 lands, the core will call `scoreRisk(patient, getSignals(patient))`.
+The core calls `scoreRisk(patient, getSignals(patient))` for check-in depth and scheduling, and saves the result on the patient after each check-in. Seed patients carry a check-in history (`seeded: true`), so signals start realistic.
 `core/aireview.js` already calls `risk.recordRisk(patient)` after every check-in **if that export exists**, and runs `reviewPatient` in the background only on GREEN days when the shared LLM chain has a provider.
 
 ---
@@ -102,7 +102,9 @@ The patient object (from `GET /api/patients/:id`, which also adds `signals`, `ad
 {
   id, linkCode, name, age, language, condition: 'CHF', channel, chatId, phone?,
   dischargedAt, dryWeightLb, profile: { priorAdmits12mo, ejectionFraction, lengthOfStay, ckd, diabetes, copd, livesAlone },
-  riskScore, riskTier, riskFactors, lastTier, lastCheckinAt, lastReplyAt, voiceMode, caregiverConsent,
+  riskScore, riskTier, riskFactors,        // live Risk v2 (baseline + dynamic), re-saved after every check-in
+  riskBaseline?, riskDynamic?,            // { score, factors } / { score, factors, trend }
+  lastTier, lastCheckinAt, lastReplyAt, voiceMode, caregiverConsent,
   weights: [{ ts, lb }],
   doses: [{ id, ts, med, dose, diuretic, taken: true|false|null, source: 'reminder'|'checkin', reminderId?, respondedAt?, confirmedBy? }],
                                          // taken=null = unanswered reminder (never counted as missed)

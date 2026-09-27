@@ -6,6 +6,7 @@
 import * as store from '../store.js';
 import { t, hasNative } from './i18n.js';
 import { scoreRisk } from './risk.js';
+import { getSignals } from './signals.js';
 import { triage, consecutiveMissedDiureticDays } from './triage.js';
 import { escalate } from './escalation.js';
 import * as parser from './parser.js';
@@ -164,7 +165,7 @@ export function currentPrompt(patient) {
 
 // reporter: 'patient' (default) or 'caregiver' (proxy check-in, lang = caregiver's language).
 export function start(patient, { reporter = 'patient', lang } = {}) {
-  const { plan } = scoreRisk(patient);
+  const { plan } = scoreRisk(patient, getSignals(patient)); // live tier (Risk v2) drives check-in depth
   const steps = STEPS.filter((s) => !s.enabled || s.enabled(plan));
   const checkin = { state: steps[0].id, answers: {}, startedAt: clock.nowISO(), reporter };
   if (reporter === 'caregiver') checkin.lang = lang ?? patient.caregiver?.language ?? 'en';
@@ -185,7 +186,7 @@ export const reporterOf = (patient) => (isActive(patient) ? patient.checkin.repo
 
 // Returns { replies, textEn } where textEn is an English translation of the inbound text, if we made one.
 export async function handle(patient, { text, buttonData }) {
-  const { plan } = scoreRisk(patient);
+  const { plan } = scoreRisk(patient, getSignals(patient)); // live tier (Risk v2) drives check-in depth
   const steps = STEPS.filter((s) => !s.enabled || s.enabled(plan));
   const state = patient.checkin;
   const a = state.answers;
@@ -236,8 +237,18 @@ async function finish(patient, a) {
     lastTier: result.tier,
     lastCheckinAt: now,
   });
-  const fresh = store.getPatient(patient.id);
-  await escalate(fresh, result, { reporter });
+  await escalate(store.getPatient(patient.id), result, { reporter });
+  // Re-score with today's answers + alerts so the dashboard and tomorrow's plan follow the
+  // live (Risk v2) tier; trend is vs the previous saved score.
+  const scored = store.getPatient(patient.id);
+  const live = scoreRisk(scored, getSignals(scored));
+  store.updatePatient(patient.id, {
+    riskScore: live.score,
+    riskTier: live.tier,
+    riskFactors: live.factors,
+    riskBaseline: live.baseline,
+    riskDynamic: live.dynamic,
+  });
   // AI second look + risk history, in the background (never delays the reply).
   queueReview(patient.id, result);
 

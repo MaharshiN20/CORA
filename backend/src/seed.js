@@ -1,5 +1,6 @@
 import { scoreRisk } from './core/risk.js';
 import * as clock from './core/clock.js';
+import { triage } from './core/triage.js';
 
 // Demo patients. Mrs. Garcia is the "hero" patient for the pitch: high risk,
 // Spanish-speaking, weight trending up, unfilled diuretic refill.
@@ -42,6 +43,18 @@ export function makePatient(p) {
   };
   const risk = scoreRisk(out);
   return { ...out, riskScore: risk.score, riskTier: risk.tier, riskFactors: risk.factors };
+}
+
+// Seed patients answered a check-in on every day they have a weight, except today (today's
+// check-in is the demo). Each day's tier is what triage says for the weights up to that day,
+// so the history is consistent and signals don't report days of "missed" check-ins.
+function withCheckinHistory(p) {
+  const checkins = p.weights.slice(0, -1).map((w, i) => {
+    const r = triage({ weights: p.weights.slice(0, i + 1), answers: { breath: 'normal', swelling: 'none' } });
+    return { ts: w.ts, answers: { weightLb: w.lb, breath: 'normal', swelling: 'none' }, tier: r.tier, flags: r.flags, weight: r.weight, reporter: 'patient', seeded: true };
+  });
+  const last = checkins.at(-1);
+  return { ...p, checkins, lastTier: last?.tier ?? null, lastCheckinAt: last?.ts ?? null };
 }
 
 export function buildSeed() {
@@ -130,7 +143,7 @@ export function buildSeed() {
         prescriptions: [{ med: 'Furosemide', expectedPickup: iso(11), pickedUpAt: iso(11) }],
         caregiver: { name: 'James Smith', relation: 'brother', language: 'en' },
       }),
-    ],
+    ].map(withCheckinHistory),
     messages: [],
     alerts: [],
     demoDayOffset: 0,

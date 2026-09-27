@@ -10,6 +10,7 @@
 import * as store from '../store.js';
 import * as clock from './clock.js';
 import { weightChange24h, weightChange7d } from './triage.js';
+import { atLocalTime, localDayKey } from './planning.js';
 
 const dayKey = (iso) => iso.slice(0, 10);
 
@@ -20,11 +21,23 @@ export function getSignals(patient) {
   const discharged = Date.parse(patient.dischargedAt);
   const daysSinceDischarge = Math.max(0, Math.floor((now - discharged) / clock.DAY));
 
-  // Check-ins: expected one per day since discharge (capped at 7), minus completed.
+  // Check-ins: over the last 7 *finished* local days, one expected per day after the
+  // discharge day. Today isn't counted as missed while it's still today.
+  const todayStart = atLocalTime(now, '00:00');
+  const dischargeDayStart = atLocalTime(discharged, '00:00');
   const recent = (patient.checkins ?? []).filter((c) => Date.parse(c.ts) >= since7d);
-  const completedDays = new Set(recent.map((c) => dayKey(c.ts))).size;
-  const expectedDays = Math.min(7, daysSinceDischarge);
-  const missedCheckins7d = Math.max(0, expectedDays - completedDays);
+  const completedDays = new Set(recent.map((c) => localDayKey(Date.parse(c.ts)))).size;
+  let expectedDays = 0;
+  const doneBeforeToday = new Set();
+  for (let d = 1; d <= 7; d++) {
+    const dayStart = todayStart - d * clock.DAY;
+    if (dayStart > dischargeDayStart) expectedDays++;
+  }
+  for (const c of patient.checkins ?? []) {
+    const t = Date.parse(c.ts);
+    if (t >= todayStart - 7 * clock.DAY && t < todayStart && t >= dischargeDayStart + clock.DAY) doneBeforeToday.add(localDayKey(t));
+  }
+  const missedCheckins7d = Math.max(0, expectedDays - doneBeforeToday.size);
 
   // Adherence counts answered doses only; unanswered reminders are reported separately.
   const doses7d = (patient.doses ?? []).filter((d) => Date.parse(d.ts) >= since7d);
