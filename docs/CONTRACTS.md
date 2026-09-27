@@ -26,7 +26,7 @@ Button = { label, data }                     // data ≤ 64 bytes, returned as b
 - Render `text` and `buttons` (rows). **Ignore `textEn`**; it's the English copy for the dashboard.
 - `urgent: true` → emergency styling (bold, 🚨, pinned if possible).
 - `voice: true` → also send a TTS voice note of `text` (the patient enabled voice mode).
-- Button data prefixes the core emits: `ci:*` (check-in), `cmd:checkin`, `med:*` (medication confirmations, work any time), `rx:*` (refill barriers), `cmd:proxy` (caregiver answers for the patient, sent to caregivers), `lesson:*` (teach-back quiz answers), and later `sdoh:*`, `lesson:*`, `lang:*`. Pass every one through untouched.
+- Button data prefixes the core emits: `ci:*` (check-in), `cmd:checkin`, `med:*` (medication confirmations, work any time), `rx:*` (refill barriers), `cmd:proxy` (caregiver answers for the patient, sent to caregivers), `lesson:*` (teach-back quiz answers), `sdoh:*` (social-needs screen), and later `sdoh:*`, `lesson:*`, `lang:*`. Pass every one through untouched.
 - Caregiver messages: call `handleInbound({ role: 'caregiver', patientId })` with the *patient's* id. The core handles:
   `cmd:proxy` button or "check in"/"chequeo" → proxy check-in (questions in the caregiver's language, answers tagged `reporter: 'caregiver'`);
   `ci:*` taps during that proxy check-in; emergency phrases ("he has chest pain") → RED escalation + 911 reply to the caregiver; anything else → acknowledgement.
@@ -107,7 +107,8 @@ The patient object (from `GET /api/patients/:id`, which also adds `signals`, `ad
   dischargeInstructions,                 // optional hospital free text
   carePlan: { fluidLimitL, sodiumMg },   // drives the personalised discharge instructions (companion)
   followUp: { with, at },                // follow-up appointment
-  sdoh?: { flags: string[], answers },   // flags so far: 'transportation', 'medication_cost' (from refill barriers); full screen P2-10
+  sdoh?: { flags: string[], answers: { ride, cost, food, help }, pending: [q], startedAt, screenedAt },
+                                         // flags: transportation | medication_cost | food_insecurity | social_isolation
   lessons?: { sent: [id], queue: [id], answers: { [id]: { attempts, correct, firstCorrect, answeredAt } }, score }, // score = first-try correct share
   source: 'seed' | 'demo' | 'fhir' | 'manual',
 }
@@ -116,8 +117,8 @@ Other collections:
 | Collection | Shape |
 |---|---|
 | `messages` | `{ id, ts, patientId, direction: 'in'\|'out', from?, to: 'patient'\|'caregiver'\|'nurse', text, textEn?, buttons?, channel? }` |
-| `alerts` (nurse worklist) | `{ id, ts, patientId, kind, tier: 'RED'\|'YELLOW'\|'INFO', title, reasons[], status, dueBy, assignee, outcome, note?, history: [{ ts, status, by }], source?, priority?, reporter?: 'patient'\|'caregiver', med?, barrier? }`. AI-review alerts (`source: 'ai_review'`, YELLOW, only ever on a GREEN rules day) carry `nurseSummary`, `suggestedActions[]`, `readmissionRisk`, `model`; reasons quote the patient's words as evidence. Question tasks (discharge companion) carry `question` (original text) and `dosing` (true = medication-change question, YELLOW). Unreachable tasks (outreach ladder, YELLOW) carry `silentDays`. Refill tasks carry `med` + `barrier` (`transport\|cost\|other\|no_response`) |
-| `audit` | `{ id, ts, type, patientId, data }`. Types include `triage`, `escalation`, `nurse_action`, `enroll`, `device_reading`, `photo_received`, `checkin_sent`, `checkin_abandoned`, `med_reminder`, `med_response`, `refill_nudge`, `refill_barrier`, `refill_picked_up`, `outreach` (`data.event`/`data.rung`), `outreach_recovered` (`data.afterRung`: the patient replied after the ladder fired, a recovery metric), `nurse_message`, `nurse_ack_notice`, `digest`, `ai_review` (`data.rulesTier/aiTier/finalTier/escalate/readmissionRisk/model`), `lesson_sent`, `lesson_answer` (`data.lesson/correct/attempt`), `companion` (`data.kind`: answer\|nurse\|dosing, `data.via`: llm\|keywords, `data.sectionIds`), `job_failed`. `outreach_recovered.data.via` is `patient` or `caregiver` |
+| `alerts` (nurse worklist) | `{ id, ts, patientId, kind, tier: 'RED'\|'YELLOW'\|'INFO', title, reasons[], status, dueBy, assignee, outcome, note?, history: [{ ts, status, by }], source?, priority?, reporter?: 'patient'\|'caregiver', med?, barrier? }`. AI-review alerts (`source: 'ai_review'`, YELLOW, only ever on a GREEN rules day) carry `nurseSummary`, `suggestedActions[]`, `readmissionRisk`, `model`; reasons quote the patient's words as evidence. SDOH tasks (kind `sdoh`, INFO) carry `needs[]` (the flags). Question tasks (discharge companion) carry `question` (original text) and `dosing` (true = medication-change question, YELLOW). Unreachable tasks (outreach ladder, YELLOW) carry `silentDays`. Refill tasks carry `med` + `barrier` (`transport\|cost\|other\|no_response`) |
+| `audit` | `{ id, ts, type, patientId, data }`. Types include `triage`, `escalation`, `nurse_action`, `enroll`, `device_reading`, `photo_received`, `checkin_sent`, `checkin_abandoned`, `med_reminder`, `med_response`, `refill_nudge`, `refill_barrier`, `refill_picked_up`, `outreach` (`data.event`/`data.rung`), `outreach_recovered` (`data.afterRung`: the patient replied after the ladder fired, a recovery metric), `nurse_message`, `nurse_ack_notice`, `digest`, `ai_review` (`data.rulesTier/aiTier/finalTier/escalate/readmissionRisk/model`), `sdoh` (`data.event`: started\|answer\|completed), `lesson_sent`, `lesson_answer` (`data.lesson/correct/attempt`), `companion` (`data.kind`: answer\|nurse\|dosing, `data.via`: llm\|keywords, `data.sectionIds`), `job_failed`. `outreach_recovered.data.via` is `patient` or `caregiver` |
 | `readings` | `{ id, ts, patientId, type: 'weight'\|'spo2'\|'hr', value, source: 'self'\|'device'\|'caregiver', device? }` |
 | custom | `store.collection('<name>')` for lane-owned data (e.g. Maharshi's `cohort`). Call `store.persist()` after mutating |
 
@@ -142,6 +143,7 @@ Other collections:
 | `POST /api/patients/:id/simulate` | P | `{ text?, buttonData?, role?, photo? }` → `Reply[]` (dashboard phone simulator) |
 | `POST /api/patients/:id/message` | P | nurse → patient: `{ text, from? }` or `{ template: 'call_scheduled', time, from? }` → `{ delivered, text, textEn }`. Translated to the patient's language (English body kept if no LLM); 400 on empty/unknown template/missing time |
 | `GET /api/patients/:id/digest?lang=` · `POST /api/patients/:id/digest` | P | weekly caregiver digest: preview `{ text }` / send now → `{ sent, delivered?, text?, textEn?, reason? }` (auto-sent Sundays 18:00) |
+| `POST /api/patients/:id/sdoh/start` | P | send the 4-question social-needs screen now → `{ sent }` (auto-sent at the first noon ≥24h after discharge, once) |
 | `POST /api/patients/:id/prescriptions/:med/picked-up` | P | `{ by? }` → updated prescription; resolves open refill tasks (pharmacy-feed stand-in / dashboard button) |
 | `GET /api/alerts` | P | worklist, newest first |
 | `PATCH /api/alerts/:id` | P | `{ status?, outcome?, assignee?, note?, by? }`. First `acknowledged` on a RED/YELLOW triage/unreachable/device/question alert sends the patient "<nurse> saw your update" and sets `patientNotifiedAt` |

@@ -20,6 +20,7 @@ import './meds.js';
 import './pharmacy.js';
 import './digest.js';
 import './lessons.js';
+import './sdoh.js';
 import { startLadder } from './outreach.js';
 
 const HORIZON_MS = 48 * clock.HOUR;
