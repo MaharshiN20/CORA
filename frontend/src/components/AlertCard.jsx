@@ -8,6 +8,7 @@ import { api } from '../api.js';
 import { sla, nextAction, OUTCOMES, resolvePatch } from '../lib/worklist.js';
 import { timeOf, languageName } from '../lib/format.js';
 import { TierBadge, KindBadge, Button } from './ui.jsx';
+import ProtocolCard from './ProtocolCard.jsx';
 
 // A RED card must be unmistakable from across the room (projector): tinted, ringed, thick edge.
 const CARD = {
@@ -128,6 +129,7 @@ export default function AlertCard({ alert, patient, now, update = api.updateAler
       )}
       {alert.ai?.nurseSummary && <p className="mt-2 rounded-md bg-violet-50 p-2 text-sm text-violet-900">🤖 {alert.ai.nurseSummary}</p>}
       {(alert.kind ?? 'triage') === 'triage' && <VitalsStrip patient={patient} tier={alert.tier} />}
+      {alert.protocolCheck?.triggered && alert.status !== 'resolved' && <ProtocolCard alert={alert} />}
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
         <span>Opened {timeOf(alert.ts)}</span>
         {alert.assignee && <span>· {alert.assignee}</span>}

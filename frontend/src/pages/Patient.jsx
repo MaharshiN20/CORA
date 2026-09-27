@@ -9,6 +9,8 @@ import { formatDuration } from '../lib/worklist.js';
 import { languageName, shortDate, timeOf, pct } from '../lib/format.js';
 import { Card, Empty, TierBadge, RiskBadge, Button, AsyncButton, KindBadge, TREND_ICON } from '../components/ui.jsx';
 import PhoneSimulator from '../components/PhoneSimulator.jsx';
+import DebugDrawer from '../components/DebugDrawer.jsx';
+import ExportDialog from '../components/ExportDialog.jsx';
 
 const DAY = 86400000;
 
@@ -44,6 +46,7 @@ export default function Patient() {
           </Card>
         </div>
       </div>
+      <DebugDrawer audit={p.audit} patientName={p.name.split(' ')[0]} />
     </div>
   );
 }
@@ -71,6 +74,7 @@ function SilentAlarm({ p }) {
 
 function Header({ p }) {
   const s = p.signals ?? {};
+  const [exporting, setExporting] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div>
@@ -93,7 +97,11 @@ function Header({ p }) {
           </>
         )}
       </div>
-      <div className="ml-auto text-right text-sm">
+      <Button variant="ghost" className="ml-auto" onClick={() => setExporting(true)}>
+        ⤴ Export to EHR
+      </Button>
+      {exporting && <ExportDialog patient={p} onClose={() => setExporting(false)} />}
+      <div className="text-right text-sm">
         <div className="text-xs uppercase text-slate-500">Caregiver</div>
         {p.caregiver?.name ? (
           <div>
@@ -188,11 +196,15 @@ function CheckinTimeline({ p }) {
 }
 
 // The explainability panel: every decision with its inputs, from the audit log + alert reasons.
-const AUDIT_LABEL = { triage: '🩺 Triage', escalation: '🚨 Escalation', nurse_action: '👩‍⚕️ Nurse', enroll: '📝 Enrolled', device_reading: '📟 Device', photo_received: '📷 Photo', outreach: '📣 Outreach', outreach_recovered: '↩️ Recovered', refill_nudge: '💊 Refill nudge', refill_barrier: '💊 Refill barrier', llm_parse: '🤖 AI parse', ai_review: '🤖 AI review', fhir_import: '🏥 EHR import', risk: '📈 Risk' };
+const AUDIT_LABEL = { triage: '🩺 Triage', escalation: '🚨 Escalation', nurse_action: '👩‍⚕️ Nurse', enroll: '📝 Enrolled', device_reading: '📟 Device', photo_received: '📷 Photo', outreach: '📣 Outreach', outreach_recovered: '↩️ Recovered', refill_nudge: '💊 Refill nudge', refill_barrier: '💊 Refill barrier', llm_parse: '🤖 AI parse', ai_review: '🤖 AI review', fhir_import: '🏥 EHR import', risk: '📈 Risk', parse_trace: '🔍 Read', red_lock: '🚨 RED lock', protocol_applied: '💊 Standing order', injection_attempt: '🛡️ Injection blocked', tier_cleared: '↩️ False alarm', scenario: '🎬 Scenario', vital_reported: '🩺 Vital', companion: '💬 Companion' };
 
 export function auditSummary(e) {
   const d = e.data ?? {};
   const parts = [];
+  if (e.type === 'parse_trace') {
+    const read = Object.entries(d.rules ?? {}).filter(([k]) => !/Asked|Pending/.test(k)).map(([k, v]) => `${k}=${v}`);
+    return [d.text ? `“${d.text}”` : d.button, read.length && `rules read ${read.join(', ')}`, d.llm && (d.llm.timedOut ? 'AI timed out' : 'AI consulted'), d.outcome?.tier].filter(Boolean).join(' · ');
+  }
   if (d.tier) parts.push(d.tier);
   const flags = d.flags ?? d.reasons;
   if (Array.isArray(flags) && flags.length) parts.push(flags.map((f) => f.text ?? f).join('; '));

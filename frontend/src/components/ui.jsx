@@ -32,7 +32,7 @@ export function RiskBadge({ tier, trend, detail = '', className = '' }) {
   if (!tier) return null;
   return (
     <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${RISK_STYLE[tier] ?? RISK_STYLE.Low} ${className}`}>
-      {tier} risk{trend ? ` ${TREND_ICON[trend] ?? ''}` : ''}
+      {tier} risk{trend && trend !== 'flat' ? ` ${TREND_ICON[trend] ?? ''}` : ''}
       {detail}
     </span>
   );

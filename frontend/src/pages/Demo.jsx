@@ -5,6 +5,7 @@ import { useLive, useStored } from '../hooks.js';
 import { languageName, timeOf } from '../lib/format.js';
 import { Card, Empty, Button } from '../components/ui.jsx';
 import PhoneSimulator from '../components/PhoneSimulator.jsx';
+import DebugDrawer from '../components/DebugDrawer.jsx';
 import Qr from '../components/Qr.jsx';
 
 const STEPS = [
@@ -154,6 +155,7 @@ function SimulatorPicker({ patients, id, onPick }) {
       </div>
       {error && <p className="text-sm text-red-700">{error}</p>}
       {p && p.id === id ? <PhoneSimulator patient={p} messages={p.messages ?? []} role={role} onRoleChange={setRole} compact /> : <Empty>Loading…</Empty>}
+      {p && <DebugDrawer audit={p.audit} patientName={p.name.split(' ')[0]} />}
     </div>
   );
 }
