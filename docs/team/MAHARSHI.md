@@ -60,7 +60,7 @@
   - **Join** `/join`: a full-screen QR grid for judges ("Scan to become a patient").
   - **Accept:** `npm run build` green, vitest tests for sorting, SLA countdown, outcome flow and ROI math, and a manual walkthrough of all pages against a running backend with Maria's story (run her check-in from the simulator, then watch the alert appear live on the Worklist). Screenshots go in the PR/commit body if possible.
 
-- [ ] **M4. Evals: evidence the language layer is reliable** (`evals/`)
+- [x] **M4. Evals: evidence the language layer is reliable** (`evals/`)
   - `evals/messages.jsonl`: at least 150 labelled messages `{ id, lang, step, text, expected: { weightLb?, breath?, orthopnea?, swelling?, chestPain?, dizzy?, confusion?, fainting?, diureticTaken?, spo2? } }`.
     - Mix en/es/vi/hi/zh.
     - Include hard cases: negations ("no chest pain", "sin dolor de pecho"), units (kg), typos, run-on messages, sarcasm/noise, and emergencies hidden in chit-chat.

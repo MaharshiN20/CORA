@@ -1,0 +1,156 @@
+{"id":"en-001","lang":"en","step":"weight","text":"176","expected":{"weightLb":176}}
+{"id":"en-002","lang":"en","step":"weight","text":"176.4 lbs","expected":{"weightLb":176.4}}
+{"id":"en-003","lang":"en","step":"weight","text":"i weighed 179 this morning","expected":{"weightLb":179}}
+{"id":"en-004","lang":"en","step":"weight","text":"80 kg","expected":{"weightLb":176.4}}
+{"id":"en-005","lang":"en","step":"weight","text":"Scale says 182.5 lb, up from yesterday :(","expected":{"weightLb":182.5}}
+{"id":"en-006","lang":"en","step":"weight","text":"one seventy eight","expected":{"weightLb":178}}
+{"id":"en-007","lang":"en","step":"weight","text":"idk didnt weigh myself today","expected":{}}
+{"id":"en-008","lang":"en","step":"weight","text":"177 and my ankles are more swollen","expected":{"weightLb":177,"swelling":"worse"}}
+{"id":"en-009","lang":"en","step":"weight","text":"174, feeling good","expected":{"weightLb":174}}
+{"id":"en-010","lang":"en","step":"weight","text":"181lbs. also cant breathe when i lie down, sleeping on 3 pillows","expected":{"weightLb":181,"orthopnea":true},"note":"orthopnea, not breathlessness at rest"}
+{"id":"en-011","lang":"en","step":"breath","text":"normal, breathing fine","expected":{"breath":"normal"}}
+{"id":"en-012","lang":"en","step":"breath","text":"get winded walking to the mailbox","expected":{"breath":"exertion"}}
+{"id":"en-013","lang":"en","step":"breath","text":"short of breath even sitting on the couch","expected":{"breath":"rest"},"note":"hidden emergency: breathless at rest"}
+{"id":"en-014","lang":"en","step":"breath","text":"I can't catch my breath","expected":{"breath":"rest"}}
+{"id":"en-015","lang":"en","step":"breath","text":"out of breath on the stairs","expected":{"breath":"exertion"}}
+{"id":"en-016","lang":"en","step":"breath","text":"cant breathe","expected":{"breath":"rest"}}
+{"id":"en-017","lang":"en","step":"orthopnea","text":"yes","expected":{"orthopnea":true}}
+{"id":"en-018","lang":"en","step":"orthopnea","text":"nope","expected":{"orthopnea":false}}
+{"id":"en-019","lang":"en","step":"orthopnea","text":"been sleeping in the recliner","expected":{"orthopnea":true}}
+{"id":"en-020","lang":"en","step":"orthopnea","text":"need 2 pillows now","expected":{"orthopnea":true}}
+{"id":"en-021","lang":"en","step":"orthopnea","text":"woke up gasping for air twice","expected":{"orthopnea":true}}
+{"id":"en-022","lang":"en","step":"swelling","text":"no swelling","expected":{"swelling":"none"}}
+{"id":"en-023","lang":"en","step":"swelling","text":"ankles a little puffy, same as yesterday","expected":{"swelling":"mild"}}
+{"id":"en-024","lang":"en","step":"swelling","text":"legs are way more swollen than yesterday","expected":{"swelling":"worse"}}
+{"id":"en-025","lang":"en","step":"swelling","text":"shoes dont fit, feet swelling worse","expected":{"swelling":"worse"}}
+{"id":"en-026","lang":"en","step":"swelling","text":"not swollen at all","expected":{"swelling":"none"}}
+{"id":"en-027","lang":"en","step":"redflags","text":"none","expected":{}}
+{"id":"en-028","lang":"en","step":"redflags","text":"no chest pain, no dizziness","expected":{"chestPain":false,"dizzy":false},"note":"negation"}
+{"id":"en-029","lang":"en","step":"redflags","text":"a little dizzy when I stand up","expected":{"dizzy":true}}
+{"id":"en-030","lang":"en","step":"redflags","text":"i passed out in the bathroom last night","expected":{"fainting":true}}
+{"id":"en-031","lang":"en","step":"redflags","text":"feel kinda confused today, forgot where i was","expected":{"confusion":true}}
+{"id":"en-032","lang":"en","step":"redflags","text":"chest pressure since this morning","expected":{"chestPain":true}}
+{"id":"en-033","lang":"en","step":"free","text":"Good morning! lovely weather. btw my chest has been really tight since lunch","expected":{"chestPain":true},"note":"hidden emergency in chit-chat"}
+{"id":"en-034","lang":"en","step":"free","text":"grandkids visiting, so fun! kinda lightheaded tho","expected":{"dizzy":true}}
+{"id":"en-035","lang":"en","step":"free","text":"lol that mortgage bill gave me a heart attack","expected":{"chestPain":false},"note":"sarcasm/noise"}
+{"id":"en-036","lang":"en","step":"free","text":"my wife says i seem confused and i fainted earlier","expected":{"confusion":true,"fainting":true}}
+{"id":"en-037","lang":"en","step":"free","text":"no fainting, no confusion, just tired","expected":{"fainting":false,"confusion":false},"note":"negation"}
+{"id":"en-038","lang":"en","step":"free","text":"Pain in my chest when i walk","expected":{"chestPain":true}}
+{"id":"en-039","lang":"en","step":"free","text":"cant breath","expected":{"breath":"rest"},"note":"typo"}
+{"id":"en-040","lang":"en","step":"free","text":"chest pian bad","expected":{"chestPain":true},"note":"typo"}
+{"id":"en-041","lang":"en","step":"diuretic","text":"yes took it","expected":{"diureticTaken":true}}
+{"id":"en-042","lang":"en","step":"diuretic","text":"forgot","expected":{"diureticTaken":false}}
+{"id":"en-043","lang":"en","step":"diuretic","text":"not yet, will take after breakfast","expected":{"diureticTaken":false}}
+{"id":"en-044","lang":"en","step":"diuretic","text":"yep","expected":{"diureticTaken":true}}
+{"id":"en-045","lang":"en","step":"diuretic","text":"I ran out of the water pill","expected":{"diureticTaken":false}}
+{"id":"en-046","lang":"en","step":"spo2","text":"95","expected":{"spo2":95}}
+{"id":"en-047","lang":"en","step":"spo2","text":"oxygen 88%","expected":{"spo2":88}}
+{"id":"en-048","lang":"en","step":"spo2","text":"no device","expected":{}}
+{"id":"en-049","lang":"en","step":"spo2","text":"pulse ox says 91, heart rate 102","expected":{"spo2":91}}
+{"id":"en-050","lang":"en","step":"spo2","text":"86 percent","expected":{"spo2":86}}
+{"id":"en-051","lang":"en","step":"free","text":"weight 180 today, ankles worse, and i feel dizzy","expected":{"weightLb":180,"swelling":"worse","dizzy":true},"note":"run-on"}
+{"id":"es-001","lang":"es","step":"weight","text":"176","expected":{"weightLb":176}}
+{"id":"es-002","lang":"es","step":"weight","text":"80 kilos","expected":{"weightLb":176.4},"note":"kg as 'kilos'"}
+{"id":"es-003","lang":"es","step":"weight","text":"peso 178 libras","expected":{"weightLb":178}}
+{"id":"es-004","lang":"es","step":"weight","text":"hoy 179,5","expected":{"weightLb":179.5}}
+{"id":"es-005","lang":"es","step":"weight","text":"ciento setenta y siete","expected":{"weightLb":177}}
+{"id":"es-006","lang":"es","step":"weight","text":"177 y los tobillos más hinchados","expected":{"weightLb":177,"swelling":"worse"}}
+{"id":"es-007","lang":"es","step":"weight","text":"no me pesé hoy","expected":{}}
+{"id":"es-008","lang":"es","step":"breath","text":"normal, respiro bien","expected":{"breath":"normal"}}
+{"id":"es-009","lang":"es","step":"breath","text":"me falta el aire al caminar","expected":{"breath":"exertion"}}
+{"id":"es-010","lang":"es","step":"breath","text":"no puedo respirar","expected":{"breath":"rest"}}
+{"id":"es-011","lang":"es","step":"breath","text":"me ahogo aunque estoy sentada","expected":{"breath":"rest"}}
+{"id":"es-012","lang":"es","step":"breath","text":"me falta el aire incluso descansando","expected":{"breath":"rest"},"note":"hidden emergency: breathless at rest"}
+{"id":"es-013","lang":"es","step":"breath","text":"me canso al caminar a la tienda","expected":{"breath":"exertion"}}
+{"id":"es-014","lang":"es","step":"orthopnea","text":"sí","expected":{"orthopnea":true}}
+{"id":"es-015","lang":"es","step":"orthopnea","text":"no","expected":{"orthopnea":false}}
+{"id":"es-016","lang":"es","step":"orthopnea","text":"duermo con tres almohadas","expected":{"orthopnea":true}}
+{"id":"es-017","lang":"es","step":"orthopnea","text":"me desperté sin aire","expected":{"orthopnea":true}}
+{"id":"es-018","lang":"es","step":"orthopnea","text":"duermo sentada en el sillón","expected":{"orthopnea":true}}
+{"id":"es-019","lang":"es","step":"swelling","text":"sin hinchazón","expected":{"swelling":"none"}}
+{"id":"es-020","lang":"es","step":"swelling","text":"los pies más hinchados que ayer","expected":{"swelling":"worse"}}
+{"id":"es-021","lang":"es","step":"swelling","text":"un poco hinchados, igual que ayer","expected":{"swelling":"mild"}}
+{"id":"es-022","lang":"es","step":"swelling","text":"no están hinchados","expected":{"swelling":"none"},"note":"negation"}
+{"id":"es-023","lang":"es","step":"redflags","text":"nada","expected":{}}
+{"id":"es-024","lang":"es","step":"redflags","text":"sin dolor de pecho","expected":{"chestPain":false},"note":"negation"}
+{"id":"es-025","lang":"es","step":"redflags","text":"dolor en el pecho","expected":{"chestPain":true}}
+{"id":"es-026","lang":"es","step":"redflags","text":"me desmayé ayer","expected":{"fainting":true}}
+{"id":"es-027","lang":"es","step":"redflags","text":"estoy mareada","expected":{"dizzy":true}}
+{"id":"es-028","lang":"es","step":"redflags","text":"mi hija dice que estoy confundida","expected":{"confusion":true}}
+{"id":"es-029","lang":"es","step":"redflags","text":"presión en el pecho","expected":{"chestPain":true}}
+{"id":"es-030","lang":"es","step":"free","text":"hola! todo bien con los nietos. oye me duele mucho el pecho desde anoche","expected":{"chestPain":true},"note":"hidden emergency in chit-chat"}
+{"id":"es-031","lang":"es","step":"free","text":"no me he desmayado ni nada","expected":{"fainting":false},"note":"negation"}
+{"id":"es-032","lang":"es","step":"free","text":"dolor de pecho y me desmayé","expected":{"chestPain":true,"fainting":true}}
+{"id":"es-033","lang":"es","step":"free","text":"se me olvidó dónde estoy, muy confundido","expected":{"confusion":true}}
+{"id":"es-034","lang":"es","step":"free","text":"tengo el pecho apretado","expected":{"chestPain":true},"note":"chest tightness"}
+{"id":"es-035","lang":"es","step":"free","text":"mareo al pararme","expected":{"dizzy":true}}
+{"id":"es-036","lang":"es","step":"free","text":"no puedo respirar bien acostada","expected":{"orthopnea":true},"note":"orthopnea, not breathlessness at rest"}
+{"id":"es-037","lang":"es","step":"diuretic","text":"sí, la tomé","expected":{"diureticTaken":true}}
+{"id":"es-038","lang":"es","step":"diuretic","text":"lo tomé","expected":{"diureticTaken":true}}
+{"id":"es-039","lang":"es","step":"diuretic","text":"se me olvidó","expected":{"diureticTaken":false}}
+{"id":"es-040","lang":"es","step":"diuretic","text":"todavía no","expected":{"diureticTaken":false}}
+{"id":"es-041","lang":"es","step":"diuretic","text":"no la compré, está muy cara","expected":{"diureticTaken":false}}
+{"id":"es-042","lang":"es","step":"spo2","text":"94","expected":{"spo2":94}}
+{"id":"es-043","lang":"es","step":"spo2","text":"oxígeno 87","expected":{"spo2":87}}
+{"id":"es-044","lang":"es","step":"spo2","text":"no tengo aparato","expected":{}}
+{"id":"es-045","lang":"es","step":"spo2","text":"89 por ciento","expected":{"spo2":89}}
+{"id":"vi-001","lang":"vi","step":"weight","text":"176","expected":{"weightLb":176}}
+{"id":"vi-002","lang":"vi","step":"weight","text":"80 ký","expected":{"weightLb":176.4}}
+{"id":"vi-003","lang":"vi","step":"weight","text":"hôm nay 178 pound","expected":{"weightLb":178}}
+{"id":"vi-004","lang":"vi","step":"breath","text":"đi bộ thì hụt hơi","expected":{"breath":"exertion"}}
+{"id":"vi-005","lang":"vi","step":"breath","text":"ngồi yên cũng khó thở","expected":{"breath":"rest"}}
+{"id":"vi-006","lang":"vi","step":"breath","text":"thở bình thường","expected":{"breath":"normal"}}
+{"id":"vi-007","lang":"vi","step":"orthopnea","text":"có","expected":{"orthopnea":true}}
+{"id":"vi-008","lang":"vi","step":"orthopnea","text":"phải kê ba cái gối mới ngủ được","expected":{"orthopnea":true}}
+{"id":"vi-009","lang":"vi","step":"swelling","text":"chân sưng nhiều hơn hôm qua","expected":{"swelling":"worse"}}
+{"id":"vi-010","lang":"vi","step":"swelling","text":"không sưng","expected":{"swelling":"none"}}
+{"id":"vi-011","lang":"vi","step":"redflags","text":"đau ngực","expected":{"chestPain":true}}
+{"id":"vi-012","lang":"vi","step":"redflags","text":"không đau ngực, không chóng mặt","expected":{"chestPain":false,"dizzy":false},"note":"negation"}
+{"id":"vi-013","lang":"vi","step":"redflags","text":"tôi bị ngất sáng nay","expected":{"fainting":true}}
+{"id":"vi-014","lang":"vi","step":"redflags","text":"hơi chóng mặt","expected":{"dizzy":true}}
+{"id":"vi-015","lang":"vi","step":"free","text":"Mẹ tôi có vẻ lú lẫn, không biết mình đang ở đâu","expected":{"confusion":true}}
+{"id":"vi-016","lang":"vi","step":"diuretic","text":"đã uống rồi","expected":{"diureticTaken":true}}
+{"id":"vi-017","lang":"vi","step":"diuretic","text":"quên uống thuốc lợi tiểu","expected":{"diureticTaken":false}}
+{"id":"vi-018","lang":"vi","step":"spo2","text":"92","expected":{"spo2":92}}
+{"id":"vi-019","lang":"vi","step":"spo2","text":"oxy 88%","expected":{"spo2":88}}
+{"id":"vi-020","lang":"vi","step":"free","text":"tức ngực và khó thở khi nằm","expected":{"chestPain":true,"orthopnea":true}}
+{"id":"hi-001","lang":"hi","step":"weight","text":"176","expected":{"weightLb":176}}
+{"id":"hi-002","lang":"hi","step":"weight","text":"वज़न 80 किलो","expected":{"weightLb":176.4}}
+{"id":"hi-003","lang":"hi","step":"weight","text":"आज 179 पाउंड","expected":{"weightLb":179}}
+{"id":"hi-004","lang":"hi","step":"breath","text":"चलने पर सांस फूलती है","expected":{"breath":"exertion"}}
+{"id":"hi-005","lang":"hi","step":"breath","text":"आराम करते हुए भी सांस नहीं आ रही","expected":{"breath":"rest"}}
+{"id":"hi-006","lang":"hi","step":"breath","text":"सांस ठीक है","expected":{"breath":"normal"}}
+{"id":"hi-007","lang":"hi","step":"orthopnea","text":"हाँ","expected":{"orthopnea":true}}
+{"id":"hi-008","lang":"hi","step":"orthopnea","text":"तीन तकियों पर सोना पड़ता है","expected":{"orthopnea":true}}
+{"id":"hi-009","lang":"hi","step":"swelling","text":"पैरों में सूजन कल से ज़्यादा है","expected":{"swelling":"worse"}}
+{"id":"hi-010","lang":"hi","step":"swelling","text":"कोई सूजन नहीं","expected":{"swelling":"none"}}
+{"id":"hi-011","lang":"hi","step":"redflags","text":"सीने में दर्द","expected":{"chestPain":true}}
+{"id":"hi-012","lang":"hi","step":"redflags","text":"सीने में दर्द नहीं है","expected":{"chestPain":false},"note":"negation"}
+{"id":"hi-013","lang":"hi","step":"redflags","text":"मैं बेहोश हो गया था","expected":{"fainting":true}}
+{"id":"hi-014","lang":"hi","step":"redflags","text":"चक्कर आ रहे हैं","expected":{"dizzy":true}}
+{"id":"hi-015","lang":"hi","step":"free","text":"पापा उलझन में हैं, उन्हें कुछ समझ नहीं आ रहा","expected":{"confusion":true}}
+{"id":"hi-016","lang":"hi","step":"diuretic","text":"हाँ, ले ली","expected":{"diureticTaken":true}}
+{"id":"hi-017","lang":"hi","step":"diuretic","text":"भूल गया","expected":{"diureticTaken":false}}
+{"id":"hi-018","lang":"hi","step":"spo2","text":"95","expected":{"spo2":95}}
+{"id":"hi-019","lang":"hi","step":"spo2","text":"ऑक्सीजन 87","expected":{"spo2":87}}
+{"id":"hi-020","lang":"hi","step":"free","text":"नमस्ते! सब ठीक है, बस सीने में जकड़न है","expected":{"chestPain":true},"note":"hidden emergency in chit-chat"}
+{"id":"zh-001","lang":"zh","step":"weight","text":"176","expected":{"weightLb":176}}
+{"id":"zh-002","lang":"zh","step":"weight","text":"80公斤","expected":{"weightLb":176.4}}
+{"id":"zh-003","lang":"zh","step":"weight","text":"今天178磅","expected":{"weightLb":178}}
+{"id":"zh-004","lang":"zh","step":"breath","text":"走路的时候喘不上气","expected":{"breath":"exertion"}}
+{"id":"zh-005","lang":"zh","step":"breath","text":"坐着也喘不过气","expected":{"breath":"rest"}}
+{"id":"zh-006","lang":"zh","step":"breath","text":"呼吸正常","expected":{"breath":"normal"}}
+{"id":"zh-007","lang":"zh","step":"orthopnea","text":"是","expected":{"orthopnea":true}}
+{"id":"zh-008","lang":"zh","step":"orthopnea","text":"要垫三个枕头才能睡","expected":{"orthopnea":true}}
+{"id":"zh-009","lang":"zh","step":"swelling","text":"脚比昨天肿得厉害","expected":{"swelling":"worse"}}
+{"id":"zh-010","lang":"zh","step":"swelling","text":"没有肿","expected":{"swelling":"none"}}
+{"id":"zh-011","lang":"zh","step":"redflags","text":"胸口痛","expected":{"chestPain":true}}
+{"id":"zh-012","lang":"zh","step":"redflags","text":"没有胸痛,也不头晕","expected":{"chestPain":false,"dizzy":false},"note":"negation"}
+{"id":"zh-013","lang":"zh","step":"redflags","text":"昨天晕倒了","expected":{"fainting":true}}
+{"id":"zh-014","lang":"zh","step":"redflags","text":"有点头晕","expected":{"dizzy":true}}
+{"id":"zh-015","lang":"zh","step":"free","text":"我妈妈糊涂了,不知道自己在哪里","expected":{"confusion":true}}
+{"id":"zh-016","lang":"zh","step":"diuretic","text":"吃了","expected":{"diureticTaken":true}}
+{"id":"zh-017","lang":"zh","step":"diuretic","text":"忘记吃利尿药了","expected":{"diureticTaken":false}}
+{"id":"zh-018","lang":"zh","step":"spo2","text":"93","expected":{"spo2":93}}
+{"id":"zh-019","lang":"zh","step":"spo2","text":"血氧88","expected":{"spo2":88}}
+{"id":"zh-020","lang":"zh","step":"free","text":"你好!孙子来看我了,很开心。就是胸口有点闷","expected":{"chestPain":true},"note":"hidden emergency in chit-chat"}

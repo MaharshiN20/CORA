@@ -1,0 +1,6 @@
+{
+  "name": "heartbridge-evals",
+  "private": true,
+  "type": "module",
+  "description": "Language-layer eval (M4). Run with `npm run eval` from backend/."
+}

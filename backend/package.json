@@ -9,7 +9,8 @@
     "start": "node --env-file-if-exists=.env src/index.js",
     "seed": "node src/seed.js --reset",
     "test": "node --test \"test/**/*.test.js\"",
-    "e2e": "node tools/e2e-demo.js"
+    "e2e": "node tools/e2e-demo.js",
+    "eval": "node --env-file-if-exists=.env ../evals/run.js"
   },
   "engines": {
     "node": ">=22"
