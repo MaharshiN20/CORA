@@ -54,6 +54,16 @@ const STRINGS = {
     voice_unavailable: "Sorry, I couldn't understand the voice note. Could you type your answer?",
     heard: '🎙️ I heard: "{text}"',
     file_too_large: 'That file is too big. Please send a smaller photo.',
+    // --- medications (core/meds.js) ---
+    med_reminder: '💊 Time for your {time} medicines:\n{list}\nTap to tell me which ones you took.',
+    med_taken_label: '✅ {med}',
+    med_missed_label: '❌ {med}',
+    med_took_all: '✅ I took them all',
+    med_logged_all: 'Great job! ✅ All logged.',
+    med_logged_taken: '✅ Logged: {med} taken. Thank you!',
+    med_logged_missed: 'Got it, {med} not taken today.',
+    med_missed_other: "If you remember soon, take it now. If it's almost time for the next dose, skip it. Don't double up. Ask your pharmacist or nurse if you're unsure.",
+    med_already: 'Already logged 👍',
   },
   es: {
     greeting: '¡Buenos días {name}! 💙 Es hora de su chequeo diario del corazón. Toma como un minuto.',
@@ -105,6 +115,15 @@ const STRINGS = {
     voice_unavailable: 'Perdón, no pude entender la nota de voz. ¿Podría escribir su respuesta?',
     heard: '🎙️ Escuché: "{text}"',
     file_too_large: 'Ese archivo es muy grande. Por favor envíe una foto más pequeña.',
+    med_reminder: '💊 Es hora de sus medicinas de las {time}:\n{list}\nToque para decirme cuáles tomó.',
+    med_taken_label: '✅ {med}',
+    med_missed_label: '❌ {med}',
+    med_took_all: '✅ Las tomé todas',
+    med_logged_all: '¡Muy bien! ✅ Todo anotado.',
+    med_logged_taken: '✅ Anotado: tomó {med}. ¡Gracias!',
+    med_logged_missed: 'Entendido, hoy no tomó {med}.',
+    med_missed_other: 'Si se acuerda pronto, tómela ahora. Si ya casi es hora de la siguiente dosis, sáltela. No doble la dosis. Pregunte a su farmacéutico o enfermera si tiene dudas.',
+    med_already: 'Ya está anotado 👍',
   },
 };
 

@@ -11,6 +11,8 @@ import { escalate } from './escalation.js';
 import * as parser from './parser.js';
 import * as llm from './llm.js';
 import * as clock from './clock.js';
+import { applyDiureticAnswer } from './meds.js';
+import { localDayKey } from './planning.js';
 
 // Order matters. `enabled(plan)` lets risk tier decide how deep the check-in goes.
 const STEPS = [
@@ -173,15 +175,16 @@ export async function handle(patient, { text, buttonData }) {
 
 async function finish(patient, a) {
   const now = clock.nowISO();
-  const today = now.slice(0, 10);
+  const today = localDayKey(clock.now());
+  const dayOf = (w) => localDayKey(Date.parse(w.ts));
 
-  // Record today's weight (replace if already logged today).
-  const weights = patient.weights.filter((w) => w.ts.slice(0, 10) !== today);
+  // Record today's weight (replace if already logged today, by local calendar day).
+  const weights = patient.weights.filter((w) => dayOf(w) !== today);
   if (a.weightLb != null) weights.push({ ts: now, lb: a.weightLb });
-  else if (patient.weights.at(-1)?.ts.slice(0, 10) === today) weights.push(patient.weights.at(-1));
+  else if (patient.weights.at(-1) && dayOf(patient.weights.at(-1)) === today) weights.push(patient.weights.at(-1));
 
-  const doses = [...(patient.doses ?? [])];
-  if (a.diureticTaken != null) doses.push({ ts: now, med: diureticName(patient), diuretic: true, taken: a.diureticTaken });
+  // The water-pill answer merges into today's reminder dose instead of duplicating it.
+  const doses = a.diureticTaken != null ? applyDiureticAnswer(patient, a.diureticTaken, now) : [...(patient.doses ?? [])];
 
   const result = triage({ weights, answers: a, missedDiureticDays: consecutiveMissedDiureticDays(doses) });
   const record = { ts: now, answers: a, tier: result.tier, flags: result.flags, weight: result.weight };

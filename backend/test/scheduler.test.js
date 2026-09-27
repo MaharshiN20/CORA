@@ -92,7 +92,9 @@ test('advance 24h: every patient gets exactly one check-in; high risk collapses 
   clock.advance(clock.DAY);
   const summary = await jobs.afterAdvance(clock.DAY);
   const patients = store.listPatients();
-  assert.equal(summary.ran, patients.length);
+  // other job kinds (med reminders) run too; count check-ins specifically
+  assert.equal(scheduler.listJobs({ kind: 'checkin_due', status: 'done' }).length, patients.length);
+  assert.equal(summary.failed, 0);
   for (const p of patients) {
     const done = scheduler.listJobs({ kind: 'checkin_due', patientId: p.id, status: 'done' });
     assert.equal(done.length, 1, `${p.id} should get one check-in`);
@@ -142,8 +144,9 @@ test('http: advance returns the job summary; jobs list + tick + reset work', asy
   await jobs.start({ intervalMs: 0 });
   const post = (p, body) => fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) }).then((r) => r.json());
   const r = await post('/api/demo/advance', { hours: 24 });
-  assert.equal(r.jobs.ran, store.listPatients().length);
-  const list = await (await fetch(`${base}/api/demo/jobs?patientId=p1&status=done`)).json();
+  assert.ok(r.jobs.ran >= store.listPatients().length);
+  assert.equal(r.jobs.failed, 0);
+  const list = await (await fetch(`${base}/api/demo/jobs?patientId=p1&status=done&kind=checkin_due`)).json();
   assert.equal(list.length, 1);
   assert.deepEqual(await post('/api/demo/tick'), { ran: 0, missed: 0, failed: 0 });
   await post('/api/demo/reset');

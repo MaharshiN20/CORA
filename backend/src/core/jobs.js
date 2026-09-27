@@ -14,10 +14,12 @@ import * as channels from '../channels/index.js';
 import { startCheckin } from './agent.js';
 import { isActive as checkinActive } from './checkin.js';
 import { scoreRisk } from './risk.js';
+import { occurrences, isMonitored, allPlanners } from './planning.js';
+// Feature modules register their job kinds + planners on import.
+import './meds.js';
 
 const HORIZON_MS = 48 * clock.HOUR;
 const TICK_MS = 30_000;
-const ACTIVE_DAYS = 30; // monitoring window after discharge
 
 // Check-in times by plan (local time). High risk (2/day) adds an evening check.
 export const CHECKIN_TIMES = { 1: ['09:00'], 2: ['09:00', '19:00'] };
@@ -38,40 +40,8 @@ scheduler.defineJob('checkin_due', {
 
 // ---------- planning ----------
 
-// "HH:MM" on the local calendar day containing dayMs -> ms timestamp
-export function atLocalTime(dayMs, hhmm) {
-  const [h, m] = hhmm.split(':').map(Number);
-  const d = new Date(dayMs);
-  d.setHours(h, m, 0, 0);
-  return d.getTime();
-}
-
-const localDayKey = (ms) => {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
-export function isMonitored(p, atMs = clock.now()) {
-  if (p.active === false) return false;
-  const since = atMs - Date.parse(p.dischargedAt);
-  return since >= 0 && since <= ACTIVE_DAYS * clock.DAY;
-}
-
-// Every occurrence of `times` (local HH:MM) in (fromMs, toMs].
-export function occurrences(times, fromMs, toMs) {
-  const out = [];
-  for (let day = fromMs - clock.DAY; day <= toMs + clock.DAY; day += clock.DAY) {
-    for (const t of times) {
-      const at = atLocalTime(day, t);
-      if (at > fromMs && at <= toMs) out.push({ at, key: `${localDayKey(at)}T${t}` });
-    }
-  }
-  return out.sort((a, b) => a.at - b.at);
-}
-
-// Extra planners registered by feature modules (meds, pharmacy, outreach, digest…).
-const planners = [];
-export const addPlanner = (fn) => planners.push(fn);
+// Re-exported so tests and callers have one import for planning.
+export { atLocalTime, occurrences, isMonitored, addPlanner } from './planning.js';
 
 export function planPatient(p, fromMs, toMs) {
   const { plan } = scoreRisk(p);
@@ -80,7 +50,7 @@ export function planPatient(p, fromMs, toMs) {
     if (!isMonitored(p, at)) continue;
     scheduler.schedule({ kind: 'checkin_due', patientId: p.id, dueAt: at, key: `checkin_due:${p.id}:${key}` });
   }
-  for (const planner of planners) planner(p, fromMs, toMs);
+  for (const planner of allPlanners()) planner(p, fromMs, toMs);
 }
 
 export function planAll(fromMs, toMs) {

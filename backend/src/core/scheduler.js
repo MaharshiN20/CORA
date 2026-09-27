@@ -1,6 +1,6 @@
 // Job scheduler: persisted, idempotent, demo-clock aware.
 //
-//   defineJob(kind, { run, collapse })   // register a handler (done by the feature modules)
+//   defineJob(kind, { run, collapse, collapseKey })   // register a handler (done by feature modules)
 //   schedule({ kind, patientId, dueAt, key, payload })  // idempotent by `key`
 //   cancel(filter) / listJobs(filter)
 //   tick() -> { ran, missed, failed }    // run everything due at clock.now()
@@ -13,12 +13,14 @@
 import * as store from '../store.js';
 import * as clock from './clock.js';
 
-const handlers = new Map(); // kind -> { run(job), collapse }
+const handlers = new Map(); // kind -> { run(job), collapse, collapseKey(job)? }
 let running = null;
 
-export function defineJob(kind, { run, collapse = false }) {
-  handlers.set(kind, { run, collapse });
+export function defineJob(kind, { run, collapse = false, collapseKey }) {
+  handlers.set(kind, { run, collapse, collapseKey });
 }
+
+const groupOf = (j) => `${j.kind}:${handlers.get(j.kind)?.collapseKey?.(j) ?? j.patientId}`;
 
 const jobs = () => store.collection('jobs');
 
@@ -79,17 +81,18 @@ async function runDue() {
       .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
     if (!due.length) break;
 
-    // Collapse overdue recurring jobs: keep only the newest per (kind, patient).
+    // Collapse overdue recurring jobs: keep only the newest per group
+    // (default group = kind + patient; a kind can refine it, e.g. per med time slot).
     const newest = new Map();
     for (const j of due) {
       if (!handlers.get(j.kind)?.collapse) continue;
-      const g = `${j.kind}:${j.patientId}`;
+      const g = groupOf(j);
       if (!newest.has(g) || newest.get(g).dueAt < j.dueAt) newest.set(g, j);
     }
 
     for (const j of due) {
       const h = handlers.get(j.kind);
-      if (h?.collapse && newest.get(`${j.kind}:${j.patientId}`) !== j) {
+      if (h?.collapse && newest.get(groupOf(j)) !== j) {
         j.status = 'missed';
         j.ranAt = clock.nowISO();
         summary.missed++;

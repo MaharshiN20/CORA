@@ -21,6 +21,7 @@
 // ============================================================================
 import * as store from '../store.js';
 import * as checkin from './checkin.js';
+import * as meds from './meds.js';
 import { t, localize, toEnglish, hasNative } from './i18n.js';
 
 const START_WORDS = /^\/?(check-?in|start|chequeo|empezar|hola|hi|hello)\b/i;
@@ -43,6 +44,9 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
     // TODO(core P3-13): med-bottle photo reconciliation via llm.completeVision.
     store.audit('photo_received', patientId, { mime: photo.mime, bytes: Math.round((photo.base64?.length ?? 0) * 0.75) });
     replies = [{ text: t(patient.language, 'photo_received'), textEn: t('en', 'photo_received') }];
+  } else if (buttonData?.startsWith('med:')) {
+    // Medication confirmations work any time, even in the middle of a check-in.
+    replies = meds.handleButton(patient, buttonData);
   } else if (buttonData === 'cmd:checkin') {
     replies = checkin.start(patient);
   } else if (checkin.isActive(patient)) {

@@ -26,7 +26,7 @@ Button = { label, data }                     // data ≤ 64 bytes, returned as b
 - Render `text` and `buttons` (rows). **Ignore `textEn`**; it's the English copy for the dashboard.
 - `urgent: true` → emergency styling (bold, 🚨, pinned if possible).
 - `voice: true` → also send a TTS voice note of `text` (the patient enabled voice mode).
-- Button data prefixes the core emits: `ci:*` (check-in), `cmd:checkin`, and later `med:*`, `rx:*`, `sdoh:*`, `lesson:*`, `lang:*`. Pass every one through untouched.
+- Button data prefixes the core emits: `ci:*` (check-in), `cmd:checkin`, `med:*` (medication confirmations, work any time), and later `rx:*`, `sdoh:*`, `lesson:*`, `lang:*`. Pass every one through untouched.
 - Caregiver messages: call `handleInbound({ role: 'caregiver', patientId })` with the *patient's* id (proxy check-in, coming: P1-7).
 
 ### Outbound: `channels/index.js` (Krish owns the implementation, core calls it)
@@ -69,7 +69,7 @@ scoreRisk(patient, signals?) → {
 // core/signals.js (Prannav)
 getSignals(patient) → {
   daysSinceDischarge, checkinsCompleted7d, missedCheckins7d,
-  adherence7d: 0..1 | null, weightDelta24h, weightDelta7d,
+  adherence7d: 0..1 | null, unconfirmedDoses7d, weightDelta24h, weightDelta7d,
   openAlerts, openRedAlerts, sdohFlags: string[], lessonScore: 0..1 | null,
   rpmDays30, lastCheckinAt, lastTier,
 }
@@ -87,13 +87,15 @@ The core calls `scoreRisk(patient)` today. Once Risk v2 lands, the core will cal
 ---
 
 ## 3. Store: data every lane reads
-The patient object (from `GET /api/patients/:id`, which also adds `signals`, `messages`, `alerts`, `readings`, `audit`):
+The patient object (from `GET /api/patients/:id`, which also adds `signals`, `adherence: { overall, byMed: { [med]: { taken, missed, unknown, rate } }, unconfirmed }`, `messages`, `alerts`, `readings`, `audit`):
 ```js
 {
   id, linkCode, name, age, language, condition: 'CHF', channel, chatId, phone?,
   dischargedAt, dryWeightLb, profile: { priorAdmits12mo, ejectionFraction, lengthOfStay, ckd, diabetes, copd, livesAlone },
   riskScore, riskTier, riskFactors, lastTier, lastCheckinAt, voiceMode, caregiverConsent,
-  weights: [{ ts, lb }], doses: [{ ts, med, diuretic, taken }],
+  weights: [{ ts, lb }],
+  doses: [{ id, ts, med, dose, diuretic, taken: true|false|null, source: 'reminder'|'checkin', reminderId?, respondedAt?, confirmedBy? }],
+                                         // taken=null = unanswered reminder (never counted as missed)
   meds: [{ name, dose, times, diuretic? }],
   prescriptions: [{ med, expectedPickup, pickedUpAt, barrier? /* coming: P1-4 */ }],
   checkin: { state, answers }, checkins: [{ ts, answers, tier, flags, weight }],
@@ -128,7 +130,7 @@ Other collections:
 | `GET /api/health` | P | `{ ok, telegram, llm: { provider, model, available }, now, demoOffsetMs }` |
 | `GET /api/languages` | P | `languages()` |
 | `GET /api/patients` | P | patients with `signals` |
-| `GET /api/patients/:id` | P | patient + `signals`, `messages`, `alerts`, `readings`, `audit` |
+| `GET /api/patients/:id` | P | patient + `signals`, `adherence`, `messages`, `alerts`, `readings`, `audit` |
 | `POST /api/patients` | P | `createPatient` body → 201 |
 | `POST /api/patients/:id/checkin` | P | start a check-in (sends via channel) |
 | `POST /api/patients/:id/simulate` | P | `{ text?, buttonData?, role?, photo? }` → `Reply[]` (dashboard phone simulator) |

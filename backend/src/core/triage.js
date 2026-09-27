@@ -25,6 +25,8 @@
 //   missedDiureticDays: consecutive days the diuretic was missed (0 = taken)
 // ============================================================================
 
+import { localDayKey } from './planning.js';
+
 export const TIERS = ['GREEN', 'YELLOW', 'RED'];
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -134,10 +136,12 @@ const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
 
 // Consecutive most-recent days a diuretic dose was missed.
 // doses: [{ ts, med, taken: boolean, diuretic?: boolean }]
+// Unanswered doses (taken === null) are ignored: silence is not a missed dose.
+// Days are local calendar days (a 9pm check-in belongs to today, not UTC tomorrow).
 export function consecutiveMissedDiureticDays(doses = []) {
   const byDay = new Map();
-  for (const d of doses.filter((x) => x.diuretic)) {
-    const day = d.ts.slice(0, 10);
+  for (const d of doses.filter((x) => x.diuretic && typeof x.taken === 'boolean')) {
+    const day = localDayKey(Date.parse(d.ts));
     byDay.set(day, (byDay.get(day) ?? false) || d.taken);
   }
   const days = [...byDay.keys()].sort().reverse();

@@ -6,6 +6,7 @@ import * as channels from '../channels/index.js';
 import { handleInbound, startCheckin } from '../core/agent.js';
 import { createPatient, languages } from '../core/enroll.js';
 import { getSignals } from '../core/signals.js';
+import { adherence } from '../core/meds.js';
 import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
 
@@ -32,6 +33,7 @@ api.get('/patients/:id', (req, res) => {
   res.json({
     ...p,
     signals: getSignals(p),
+    adherence: adherence(p),
     messages: store.listMessages(p.id),
     alerts: store.listAlerts().filter((a) => a.patientId === p.id),
     readings: store.listReadings(p.id),

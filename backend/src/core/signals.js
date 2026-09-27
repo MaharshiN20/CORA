@@ -3,7 +3,7 @@
 // as features land. `null` means "no data yet", never "zero".
 //
 //   getSignals(patient) -> {
-//     daysSinceDischarge, checkinsCompleted7d, missedCheckins7d, adherence7d (0-1|null),
+//     daysSinceDischarge, checkinsCompleted7d, missedCheckins7d, adherence7d (0-1|null), unconfirmedDoses7d,
 //     weightDelta24h, weightDelta7d, openAlerts, openRedAlerts, sdohFlags: string[],
 //     lessonScore (0-1|null), rpmDays30, lastCheckinAt, lastTier
 //   }
@@ -26,8 +26,11 @@ export function getSignals(patient) {
   const expectedDays = Math.min(7, daysSinceDischarge);
   const missedCheckins7d = Math.max(0, expectedDays - completedDays);
 
+  // Adherence counts answered doses only; unanswered reminders are reported separately.
   const doses7d = (patient.doses ?? []).filter((d) => Date.parse(d.ts) >= since7d);
-  const adherence7d = doses7d.length ? doses7d.filter((d) => d.taken).length / doses7d.length : null;
+  const answered = doses7d.filter((d) => typeof d.taken === 'boolean');
+  const adherence7d = answered.length ? answered.filter((d) => d.taken).length / answered.length : null;
+  const unconfirmedDoses7d = doses7d.length - answered.length;
 
   const alerts = store.listAlerts().filter((a) => a.patientId === patient.id && a.status !== 'resolved');
 
@@ -42,6 +45,7 @@ export function getSignals(patient) {
     checkinsCompleted7d: completedDays,
     missedCheckins7d,
     adherence7d,
+    unconfirmedDoses7d,
     weightDelta24h: weightChange24h(patient.weights ?? []),
     weightDelta7d: weightChange7d(patient.weights ?? []),
     openAlerts: alerts.length,

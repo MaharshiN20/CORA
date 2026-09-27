@@ -19,7 +19,7 @@
   - `POST /api/demo/tick`, and start the scheduler from `index.js`.
   - Idempotent: never double-send.
   - **Test:** advance 24h → exactly one check-in job per patient fires; a restart doesn't duplicate jobs.
-- [ ] **P1-3 Medications** `core/meds.js`: reminders with `med:<doseId>:taken|missed` buttons, dose records, adherence per med and overall (feeds `signals.adherence7d`), a missed diuretic feeds triage. i18n en/es. **Test:** full reminder → tap → adherence, and two missed diuretic days → YELLOW on the next check-in.
+- [x] **P1-3 Medications** `core/meds.js`: reminders with `med:<doseId>:taken|missed` buttons, dose records, adherence per med and overall (feeds `signals.adherence7d`), a missed diuretic feeds triage. i18n en/es. **Test:** full reminder → tap → adherence, and two missed diuretic days → YELLOW on the next check-in.
 - [ ] **P1-4 Pharmacy refill gaps** `core/pharmacy.js`:
   - A `refill_check` job flags any prescription unfilled 48h past `expectedPickup` → nudge with `rx:<med>:picked|ride|cost|other` buttons.
   - `barrier` is stored on the prescription.
