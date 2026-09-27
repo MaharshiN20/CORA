@@ -68,7 +68,7 @@
   - **Gate:** rules red-flag recall on en/es must be 100%. Any miss becomes a REQUESTS.md item for Prannav with the failing examples, since the parser is core-owned.
   - **Accept:** `npm run eval` works with no LLM (rules only) and with LM Studio/Ollama when running. RESULTS.md is committed.
 
-- [ ] **M5. FHIR import: "enroll straight from the EHR"**
+- [x] **M5. FHIR import: "enroll straight from the EHR"**
   - `integrations/fhir.js`: fetch from the public HAPI R4 sandbox (`https://hapi.fhir.org/baseR4`, configurable `FHIR_BASE_URL`). Map `Patient` (name, birthDate → age, communication.language → language), `MedicationRequest` (→ meds + prescriptions) and `Condition` (flags such as CKD/diabetes/COPD in `profile`), then `createPatient({ ..., source: 'fhir' })`.
   - `routes/fhir.js`: `GET /api/fhir/search?name=` and `POST /api/fhir/import { fhirPatientId }`.
   - Dashboard: an "Import from EHR" dialog on the Worklist patient panel.

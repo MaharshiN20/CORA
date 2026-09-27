@@ -1,0 +1,15 @@
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "entry": [
+    { "resource": { "resourceType": "Observation", "id": "w-3", "status": "final",
+      "code": { "coding": [{ "system": "http://loinc.org", "code": "29463-7", "display": "Body weight" }] },
+      "effectiveDateTime": "2026-09-20T08:00:00Z", "valueQuantity": { "value": 78.5, "unit": "kg", "system": "http://unitsofmeasure.org", "code": "kg" } } },
+    { "resource": { "resourceType": "Observation", "id": "w-1", "status": "final",
+      "code": { "coding": [{ "system": "http://loinc.org", "code": "29463-7" }] },
+      "effectiveDateTime": "2026-09-18T08:00:00Z", "valueQuantity": { "value": 176, "unit": "lb", "code": "[lb_av]" } } },
+    { "resource": { "resourceType": "Observation", "id": "w-2", "status": "entered-in-error",
+      "code": { "coding": [{ "system": "http://loinc.org", "code": "29463-7" }] },
+      "effectiveDateTime": "2026-09-19T08:00:00Z", "valueQuantity": { "value": 7.9, "unit": "kg", "code": "kg" } } }
+  ]
+}

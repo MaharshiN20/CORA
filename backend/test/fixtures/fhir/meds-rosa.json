@@ -1,0 +1,38 @@
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "entry": [
+    { "resource": {
+      "resourceType": "MedicationRequest", "id": "mr-1", "status": "active", "intent": "order",
+      "medicationCodeableConcept": { "coding": [{ "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "313988", "display": "Furosemide 40 MG Oral Tablet" }] },
+      "subject": { "reference": "Patient/hb-rosa-1" },
+      "authoredOn": "2026-09-20T15:00:00Z",
+      "dosageInstruction": [{ "text": "40 mg by mouth twice daily", "timing": { "repeat": { "frequency": 2, "period": 1, "periodUnit": "d" } } }],
+      "dispenseRequest": { "validityPeriod": { "start": "2026-09-21" } }
+    } },
+    { "resource": {
+      "resourceType": "MedicationRequest", "id": "mr-2", "status": "active", "intent": "order",
+      "medicationCodeableConcept": { "text": "Carvedilol" },
+      "subject": { "reference": "Patient/hb-rosa-1" },
+      "authoredOn": "2026-09-20T15:00:00Z",
+      "dosageInstruction": [{ "text": "12.5 mg twice daily", "timing": { "repeat": { "frequency": 2, "period": 1, "periodUnit": "d" } }, "doseAndRate": [{ "doseQuantity": { "value": 12.5, "unit": "mg" } }] }]
+    } },
+    { "resource": {
+      "resourceType": "MedicationRequest", "id": "mr-3", "status": "stopped", "intent": "order",
+      "medicationCodeableConcept": { "text": "Lisinopril 10 MG Oral Tablet" },
+      "subject": { "reference": "Patient/hb-rosa-1" }
+    } },
+    { "resource": {
+      "resourceType": "MedicationRequest", "id": "mr-4", "status": "active", "intent": "order",
+      "medicationCodeableConcept": { "text": "Furosemide 40 MG Oral Tablet" },
+      "subject": { "reference": "Patient/hb-rosa-1" },
+      "note": [{ "text": "duplicate order" }]
+    } },
+    { "resource": {
+      "resourceType": "MedicationRequest", "id": "mr-5", "status": "active", "intent": "order",
+      "medicationCodeableConcept": { "coding": [{ "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "314077", "display": "lisinopril 5 MG Oral Tablet" }] },
+      "subject": { "reference": "Patient/hb-rosa-1" },
+      "authoredOn": "2026-09-20T15:00:00Z"
+    } }
+  ]
+}

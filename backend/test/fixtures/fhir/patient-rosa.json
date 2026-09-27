@@ -1,0 +1,14 @@
+{
+  "resourceType": "Patient",
+  "id": "hb-rosa-1",
+  "name": [
+    { "use": "nickname", "given": ["Rosita"] },
+    { "use": "official", "family": "Delgado", "given": ["Rosa", "María"], "text": "Rosa María Delgado" }
+  ],
+  "gender": "female",
+  "birthDate": "1948-03-12",
+  "communication": [
+    { "language": { "coding": [{ "system": "urn:ietf:bcp:47", "code": "en-US", "display": "English" }] } },
+    { "language": { "coding": [{ "system": "urn:ietf:bcp:47", "code": "es-MX", "display": "Spanish (Mexico)" }], "text": "Spanish" }, "preferred": true }
+  ]
+}

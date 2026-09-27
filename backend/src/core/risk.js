@@ -26,7 +26,8 @@ const BASELINE = [
   { label: 'Age 65–74', points: 1, test: (p) => p.age >= 65 && p.age < 75 },
   { label: '2+ admissions in past year', points: 3, test: (p) => p.profile?.priorAdmits12mo >= 2 },
   { label: '1 admission in past year', points: 1, test: (p) => p.profile?.priorAdmits12mo === 1 },
-  { label: 'Ejection fraction ≤ 30%', points: 2, test: (p) => p.profile?.ejectionFraction <= 30 },
+  // isNum: in JS `null <= 30` is true, and an unknown EF must not score as a low one.
+  { label: 'Ejection fraction ≤ 30%', points: 2, test: (p) => isNum(p.profile?.ejectionFraction) && p.profile.ejectionFraction <= 30 },
   { label: 'Length of stay ≥ 5 days', points: 1, test: (p) => p.profile?.lengthOfStay >= 5 },
   { label: 'Chronic kidney disease', points: 2, test: (p) => !!p.profile?.ckd },
   { label: 'Diabetes', points: 1, test: (p) => !!p.profile?.diabetes },
