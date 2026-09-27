@@ -4,10 +4,10 @@
 import * as store from '../store.js';
 import * as telegram from './telegram.js';
 
-async function deliver(chatId, msg) {
+async function deliver(chatId, msg, opts) {
   if (!chatId || !telegram.isEnabled()) return false;
   try {
-    await telegram.sendToChat(chatId, msg);
+    await telegram.sendToChat(chatId, msg, opts);
     return true;
   } catch (err) {
     console.error('[channels] telegram send failed:', err.message);
@@ -17,12 +17,14 @@ async function deliver(chatId, msg) {
 
 export async function sendToPatient(patient, msg) {
   store.addMessage({ patientId: patient.id, direction: 'out', to: 'patient', text: msg.text, textEn: msg.textEn, buttons: msg.buttons });
-  return deliver(patient.chatId, msg);
+  // Proactive messages (check-ins, reminders) honour voice mode too, not just replies.
+  const voice = msg.voice ?? Boolean(patient.voiceMode);
+  return deliver(patient.chatId, { ...msg, voice }, { language: patient.language });
 }
 
 export async function sendToCaregiver(patient, msg) {
   store.addMessage({ patientId: patient.id, direction: 'out', to: 'caregiver', text: msg.text });
-  return deliver(patient.caregiver?.chatId, msg);
+  return deliver(patient.caregiver?.chatId, msg, { language: patient.caregiver?.language });
 }
 
 export async function sendToNurses(msg) {

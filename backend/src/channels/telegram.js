@@ -12,12 +12,13 @@
 // transformer that swallows every API call (no network). start() is the only
 // thing that talks to Telegram for real (long polling, no public URL needed).
 // ============================================================================
-import { Bot, InlineKeyboard } from 'grammy';
+import { Bot, InlineKeyboard, InputFile } from 'grammy';
 import * as store from '../store.js';
 import { handleInbound, startCheckin } from '../core/agent.js';
 import { languages, isSupportedLanguage, enrollDemoPatient } from '../core/enroll.js';
 import { joinLinksText } from '../routes/join.js';
 import { t, localize } from '../core/i18n.js';
+import { transcribe, tts } from '../integrations/speech.js';
 
 let bot = null;
 
@@ -56,7 +57,14 @@ function toKeyboard(buttons) {
 
 // One Reply -> Telegram message(s). Urgent replies are bold + 🚨 and pinned (best effort),
 // which needs HTML mode, so the text is escaped: it can echo what the patient typed.
-export async function renderReply(api, chatId, reply) {
+// voice: the text always goes first; the audio is a bonus and can't block it.
+export async function renderReply(api, chatId, reply, { language = 'en' } = {}) {
+  const sent = await sendText(api, chatId, reply);
+  if (reply.voice) await sendVoice(api, chatId, reply.text, language);
+  return sent;
+}
+
+async function sendText(api, chatId, reply) {
   const reply_markup = toKeyboard(reply.buttons);
   if (!reply.urgent) return api.sendMessage(chatId, reply.text, { reply_markup });
   const text = reply.text.startsWith('🚨') ? reply.text : `🚨 ${reply.text}`;
@@ -65,9 +73,44 @@ export async function renderReply(api, chatId, reply) {
   return sent;
 }
 
-export async function sendToChat(chatId, reply) {
+async function sendVoice(api, chatId, text, language) {
+  const audio = await tts(text, language);
+  if (!audio) return;
+  try {
+    if (audio.buffer) return await api.sendAudio(chatId, new InputFile(audio.buffer, 'heartbridge.mp3'));
+    try {
+      return await api.sendAudio(chatId, audio.url); // Telegram fetches it itself
+    } catch {
+      // Telegram couldn't fetch the URL (blocked/slow): download and upload it ourselves.
+      const res = await fetch(audio.url, { signal: AbortSignal.timeout(20_000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await api.sendAudio(chatId, new InputFile(Buffer.from(await res.arrayBuffer()), 'heartbridge.mp3'));
+    }
+  } catch (err) {
+    console.error('[telegram] voice reply failed:', err.message);
+  }
+}
+
+export async function sendToChat(chatId, reply, opts) {
   if (!bot) throw new Error('Telegram bot not started');
-  return renderReply(bot.api, chatId, reply);
+  return renderReply(bot.api, chatId, reply, opts);
+}
+
+// Telegram bots can download files up to 20 MB; we cap lower to keep memory and uploads sane.
+export const MAX_FILE_BYTES = 8 * 1024 * 1024;
+
+export class FileTooLargeError extends Error {}
+
+// Download an incoming file (voice note, photo) into a Buffer.
+async function downloadFile(ctx, declaredSize) {
+  if (declaredSize > MAX_FILE_BYTES) throw new FileTooLargeError();
+  const file = await ctx.getFile();
+  if (file.file_size > MAX_FILE_BYTES) throw new FileTooLargeError();
+  const res = await fetch(`https://api.telegram.org/file/bot${ctx.api.token}/${file.file_path}`, { signal: AbortSignal.timeout(30_000) });
+  if (!res.ok) throw new Error(`file download HTTP ${res.status}`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  if (buffer.length > MAX_FILE_BYTES) throw new FileTooLargeError();
+  return buffer;
 }
 
 // Test hook: make sendToChat() use a bot built by buildBot() without polling.
@@ -98,8 +141,9 @@ function logOut(link, reply) {
   });
 }
 
-async function replyAll(ctx, replies) {
-  for (const r of replies) await renderReply(ctx.api, ctx.chat.id, r);
+async function replyAll(ctx, link, replies) {
+  const voice = link.role === 'patient' && Boolean(link.patient.voiceMode);
+  for (const r of replies) await renderReply(ctx.api, ctx.chat.id, { ...r, voice: r.voice || voice }, { language: langOf(link) });
 }
 
 async function welcome(ctx, link) {
@@ -191,7 +235,7 @@ export function buildBot(token, { botInfo } = {}) {
       await welcome(ctx, link);
       const replies = await startCheckin(patient.id);
       for (const r of replies) logOut(link, r);
-      return replyAll(ctx, replies);
+      return replyAll(ctx, link, replies);
     }
 
     if (!store.getPatientByCode(code.replace(/^CG_/i, ''))) return ctx.reply(t(guessLang(ctx), 'unknown_code'));
@@ -216,7 +260,7 @@ export function buildBot(token, { botInfo } = {}) {
       if (link.role !== 'patient') return ctx.reply(await say(langOf(link), 'help'));
       const replies = await startCheckin(link.patient.id);
       for (const r of replies) logOut(link, r);
-      await replyAll(ctx, replies);
+      await replyAll(ctx, link, replies);
     }),
   );
 
@@ -251,7 +295,28 @@ export function buildBot(token, { botInfo } = {}) {
     'message:text',
     linked(async (ctx, link) => {
       const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', text: ctx.message.text });
-      await replyAll(ctx, replies);
+      await replyAll(ctx, link, replies);
+    }),
+  );
+
+  // --- Voice notes: transcribe, show what we heard, then treat it like typed text ---
+  dm.on(
+    ['message:voice', 'message:audio'],
+    linked(async (ctx, link) => {
+      const lang = langOf(link);
+      const media = ctx.message.voice ?? ctx.message.audio;
+      let transcript = null;
+      try {
+        const audio = await downloadFile(ctx, media.file_size);
+        transcript = await transcribe(audio, media.mime_type ?? 'audio/ogg', lang);
+      } catch (err) {
+        if (err instanceof FileTooLargeError) return ctx.reply(await say(lang, 'file_too_large'));
+        console.error('[telegram] voice download failed:', err.message);
+      }
+      if (!transcript) return ctx.reply(await say(lang, 'voice_unavailable'));
+      await ctx.reply(t(lang, 'heard', { text: transcript }));
+      const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', voiceTranscript: transcript });
+      await replyAll(ctx, link, replies);
     }),
   );
 
@@ -265,7 +330,7 @@ export function buildBot(token, { botInfo } = {}) {
     const lang = data.startsWith('lang:') ? data.slice(5) : null;
     if (lang && isSupportedLanguage(lang)) return setLanguage(ctx, link, lang);
     const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', buttonData: data });
-    await replyAll(ctx, replies);
+    await replyAll(ctx, link, replies);
   });
 
   b.catch((err) => console.error('[telegram] error:', err.error?.message ?? err));

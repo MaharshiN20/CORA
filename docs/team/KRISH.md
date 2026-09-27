@@ -33,7 +33,7 @@
   - Keep `routes/join.js` correct (it already returns deep links). Add `?format=text` returning plain links for printing.
   - **Accept:** a test where a fake judge chat runs the whole check-in via button taps and free text and a YELLOW alert lands in `store.listAlerts()`. Link tests for every language code in `languages()`.
 
-- [ ] **K3. Voice-first mode**
+- [x] **K3. Voice-first mode**
   - `integrations/speech.js`:
     - `transcribe(buffer, mime, languageHint)` uses the Groq Whisper API (`GROQ_API_KEY`, model `whisper-large-v3`, multipart upload; see TELEGRAM_SETUP §6). Returns `null` with no key or on error.
     - `tts(text, language)` uses `google-tts-api` (`getAllAudioUrls` for text longer than 200 chars). Returns `null` on failure.
