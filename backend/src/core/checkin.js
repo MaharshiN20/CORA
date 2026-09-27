@@ -77,9 +77,41 @@ function prompt(p, stepId) {
 
 // ---------- applying input ----------
 
+// A weight far from the last one is usually a typo or the wrong units ("250" instead of
+// "150", kg typed as lb). Hold it until the patient confirms, instead of paging a nurse
+// about a 73-lb overnight gain.
+const IMPLAUSIBLE_CHANGE_LB = 15;
+function confirmWeight(a) {
+  a.weightLb = a.weightPending;
+  a.weightConfirmed = true;
+  delete a.weightPending;
+}
+function holdImplausibleWeight(patient, a) {
+  const last = patient.weights?.at(-1)?.lb;
+  if (a.weightLb == null || a.weightConfirmed || last == null) return;
+  if (Math.abs(a.weightLb - last) > IMPLAUSIBLE_CHANGE_LB) {
+    a.weightPending = a.weightLb;
+    delete a.weightLb;
+  }
+}
+function weightConfirmPrompt(p, a) {
+  const last = p.weights.at(-1).lb;
+  const diff = Math.round(Math.abs(a.weightPending - last) * 10) / 10;
+  const key = a.weightPending > last ? 'weight_confirm_up' : 'weight_confirm_down';
+  const L = langOf(p);
+  return reply(p, key, { diff, last, lb: a.weightPending }, [
+    [{ label: t(L, 'weight_confirm_yes', { lb: a.weightPending }), data: 'ci:wconf:yes' }],
+    [{ label: t(L, 'weight_confirm_no'), data: 'ci:wconf:no' }],
+  ]);
+}
+
 function applyButton(a, data) {
   const [, field, value] = data.split(':');
   switch (field) {
+    case 'wconf':
+      if (value === 'yes' && a.weightPending != null) confirmWeight(a);
+      else delete a.weightPending;
+      break;
     case 'breath': a.breath = value; break;
     case 'orth': a.orthopnea = value === 'yes'; break;
     case 'swell': a.swelling = value; break;
@@ -101,7 +133,11 @@ async function applyText(a, text, step) {
   // Step-specific parsing first (numbers and yes/no only make sense in context).
   if (step === 'weight') {
     const lb = parser.parseWeight(text);
-    if (lb) a.weightLb = lb;
+    if (lb) {
+      a.weightLb = lb;
+      delete a.weightPending;
+    } else if (a.weightPending && parser.isYes(text)) confirmWeight(a);
+    else if (a.weightPending && parser.isNo(text)) delete a.weightPending;
   } else if (step === 'spo2') {
     const n = parser.parseSpo2(text);
     if (n) { a.spo2 = n; a.spo2Asked = true; }
@@ -195,7 +231,9 @@ export async function handle(patient, { text, buttonData }) {
 
   if (buttonData?.startsWith('ci:')) applyButton(a, buttonData);
   else if (text) ({ understood, textEn } = await applyText(a, text, state.state));
+  holdImplausibleWeight(patient, a);
 
+  // Emergencies never wait for a weight confirmation.
   if (isEmergency(a)) return { replies: await finish(patient, a), textEn };
 
   const next = steps.find((s) => !s.done(a));
@@ -203,7 +241,8 @@ export async function handle(patient, { text, buttonData }) {
 
   store.updatePatient(patient.id, { checkin: { ...state, state: next.id, answers: a } });
   const replies = [];
-  if (!understood && next.id === 'weight') replies.push(reply(patient, 'bad_weight'));
+  if (next.id === 'weight' && a.weightPending != null) replies.push(weightConfirmPrompt(patient, a));
+  else if (!understood && next.id === 'weight') replies.push(reply(patient, 'bad_weight'));
   else replies.push(prompt(patient, next.id));
   return { replies, textEn };
 }

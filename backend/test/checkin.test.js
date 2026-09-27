@@ -112,3 +112,44 @@ test('random text outside a check-in offers to start one', async () => {
   const r2 = await tap('p5', 'cmd:checkin');
   assert.match(r2[1].text, /weight/i);
 });
+
+// ---------- implausible weight confirmation (found in live Telegram testing: "I am 250") ----------
+test('a weight far from the last one is held until the patient confirms it', async () => {
+  await agent.startCheckin('p5'); // last weight 139.9
+  let r = await say('p5', '250');
+  assert.match(r[0].text, /110\.1 lb more than your last weight \(139\.9 lb\)\. Is 250 lb right\?/);
+  assert.deepEqual(buttonsOf(r), ['ci:wconf:yes', 'ci:wconf:no']);
+  assert.equal(store.getPatient('p5').checkin.state, 'weight');
+  r = await tap('p5', 'ci:wconf:yes');
+  assert.match(r[0].text, /breathing/i); // confirmed -> next question
+  assert.equal(store.getPatient('p5').checkin.answers.weightLb, 250);
+});
+
+test('re-entering after a typo replaces it; typing "no" asks again; normal changes pass straight through', async () => {
+  await agent.startCheckin('p5');
+  await say('p5', '250');
+  let r = await say('p5', 'no');
+  assert.match(r[0].text, /weight this morning/i);
+  r = await say('p5', '150'); // 10.1 lb from 139.9: plausible, accepted without a question
+  assert.match(r[0].text, /breathing/i);
+  assert.equal(store.getPatient('p5').checkin.answers.weightLb, 150);
+});
+
+test('normal day-to-day changes are accepted without a question', async () => {
+  await agent.startCheckin('p5');
+  const r = await say('p5', '141');
+  assert.match(r[0].text, /breathing/i);
+});
+
+test('an emergency is never held up by a weight confirmation', async () => {
+  await agent.startCheckin('p5');
+  const r = await say('p5', "250 and I can't breathe");
+  assert.equal(r[0].urgent, true);
+  assert.match(r[0].text, /911/);
+});
+
+test('Spanish weight confirmation', async () => {
+  await agent.startCheckin('p1'); // last 176.8
+  const r = await say('p1', '250 libras');
+  assert.match(r[0].text, /73\.2 libras más que su último peso \(176\.8 libras\)/);
+});

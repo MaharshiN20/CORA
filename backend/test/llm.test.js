@@ -286,3 +286,36 @@ test('a 400 is not retried', async () => {
   assert.equal(await llm.complete('s', 'u'), null);
   assert.equal(n, 1);
 });
+
+test('an exhausted quota (429 "quota") puts the provider on cooldown: later calls skip it', async () => {
+  process.env.GEMINI_API_KEY = 'g-test';
+  let geminiCalls = 0;
+  mockFetch({
+    [GEMINI_CHAT]: () => (geminiCalls++, new Response('{"error":{"code":429,"message":"You exceeded your current quota, please check your plan and billing details."}}', { status: 429 })),
+    [LMS_MODELS]: () => ({ data: [{ id: 'llama-3-8b' }] }),
+    [LMS_CHAT]: () => chatReply('local answer'),
+  });
+  await llm.detect({ force: true });
+  assert.equal(await llm.complete('s', 'u'), 'local answer');
+  const afterFirst = geminiCalls; // 2: the call + its one retry
+  assert.equal(await llm.complete('s', 'u'), 'local answer');
+  assert.equal(geminiCalls, afterFirst); // skipped entirely while cooling down
+  assert.equal(llm.status().provider, 'lmstudio');
+  assert.deepEqual(llm.status().cooling, ['gemini']);
+});
+
+test('a rejected key (401) also cools down; a brief 503 spike does not', async () => {
+  process.env.GEMINI_API_KEY = 'g-test';
+  let n = 0;
+  mockFetch({
+    [GEMINI_CHAT]: () => (n++, new Response('{"error":"unavailable"}', { status: 503 })),
+    [LMS_MODELS]: () => ({ data: [{ id: 'llama-3-8b' }] }),
+    [LMS_CHAT]: () => chatReply('ok'),
+  });
+  await llm.detect({ force: true });
+  await llm.complete('s', 'u');
+  assert.equal(llm.status().cooling, undefined); // 503 = transient, keep trying Gemini
+  mockFetch({ [GEMINI_CHAT]: () => new Response('bad key', { status: 401 }), [LMS_MODELS]: () => ({ data: [{ id: 'llama-3-8b' }] }), [LMS_CHAT]: () => chatReply('ok') });
+  await llm.complete('s', 'u');
+  assert.deepEqual(llm.status().cooling, ['gemini']);
+});

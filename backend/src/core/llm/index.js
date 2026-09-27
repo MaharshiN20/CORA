@@ -54,18 +54,37 @@ export function enabled() {
   return providers.length > 0;
 }
 
+// The provider that will actually answer next (skips ones cooling down after a quota/key error).
 export function status() {
-  const p = providers[0];
-  return { provider: p?.name ?? 'none', model: p?.model ?? null, available: providers.map((x) => x.name) };
+  const now = Date.now();
+  const cooling = providers.filter((x) => (coolingUntil.get(x.name) ?? 0) > now).map((x) => x.name);
+  const p = providers.find((x) => !cooling.includes(x.name));
+  return { provider: p?.name ?? 'none', model: p?.model ?? null, available: providers.map((x) => x.name), ...(cooling.length && { cooling }) };
 }
 
 // Try each available provider in order; fall through on errors.
+// Providers that can't serve for a while are skipped instead of costing a failed call (plus a
+// retry) on every patient message: an exhausted quota (429 "quota") or a rejected key (401/403).
+// Brief 503/429 spikes are retried inside the provider and don't trigger this.
+const COOLDOWN_MS = { quota: 10 * 60_000, auth: 30 * 60_000 };
+const coolingUntil = new Map(); // provider name -> ms (real time: infrastructure, not the demo clock)
+
+function coolDownIfNeeded(p, err) {
+  const msg = String(err?.message ?? '');
+  const reason = err?.status === 401 || err?.status === 403 ? 'auth' : err?.status === 429 && /quota|billing|exceeded/i.test(msg) ? 'quota' : null;
+  if (!reason) return;
+  coolingUntil.set(p.name, Date.now() + COOLDOWN_MS[reason]);
+  console.error(`[llm] ${p.name} ${reason === 'quota' ? 'quota exhausted' : 'key rejected'}: skipping it for ${COOLDOWN_MS[reason] / 60000} min`);
+}
+
 async function run(opts) {
   for (const p of await detect()) {
+    if ((coolingUntil.get(p.name) ?? 0) > Date.now()) continue;
     try {
       const text = (await p.chat(opts))?.trim();
       if (text) return text;
     } catch (err) {
+      coolDownIfNeeded(p, err);
       console.error(`[llm] ${p.name} failed, trying next:`, err.message);
     }
   }
@@ -93,6 +112,7 @@ export async function completeJSON(system, user, { maxTokens = 400, ...opts } = 
 
 // Test hook
 export function _reset() {
+  coolingUntil.clear();
   providers = [];
   probedAt = 0;
   probing = null;
