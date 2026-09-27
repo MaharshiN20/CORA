@@ -157,3 +157,12 @@ test('recordRisk with real getSignals (no signals passed) works on a seed patien
   assert.ok(['Low', 'Med', 'High'].includes(row.tier));
   assert.ok(row.score >= 12); // never below Garcia's baseline
 });
+
+test('core/risk.js recordRisk (what aireview.js calls) appends to history', async () => {
+  const p = store.getPatient('p2');
+  const row = await risk.recordRisk(p);
+  assert.equal(row.patientId, 'p2');
+  assert.deepEqual(history.riskHistory('p2'), [row]);
+  // Never throws into the caller: a broken patient resolves to null.
+  assert.equal(await risk.recordRisk(null), null);
+});

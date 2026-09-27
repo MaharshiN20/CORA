@@ -14,7 +14,8 @@
 //     baseline: { score, factors },
 //     dynamic?: { score, factors, trend: 'up'|'down'|'flat' },   // only when signals given
 //   }
-// History (recordRisk / riskHistory) lives in insights/riskHistory.js: this file stays free of
+//   recordRisk(patient, signals?) -> Promise<{ ts, patientId, score, tier } | null>   // appends to riskHistory
+// History itself lives in insights/riskHistory.js: this file stays free of
 // store imports because seed.js imports it while the store is still initialising.
 //
 // Without signals, score/tier/factors/plan are exactly the baseline (seed + tests rely on it).
@@ -124,4 +125,17 @@ export function scoreRisk(patient, signals, { previousScore = patient.riskScore 
     baseline,
     dynamic: { score: dynScore, factors: dynFactors, trend: trendFor(score, previousScore) },
   };
+}
+
+// Entry point for the core (aireview.js calls this after every check-in, fire-and-forget).
+// History needs the store, which risk.js can't import (seed.js loads it during store init),
+// so load insights/riskHistory.js on first use. Resolves to the new row, or null on error.
+export async function recordRisk(patient, signals) {
+  try {
+    const history = await import('../insights/riskHistory.js');
+    return history.recordRisk(patient, signals ?? undefined);
+  } catch (err) {
+    console.error('[risk] recordRisk failed:', err.message);
+    return null;
+  }
 }
