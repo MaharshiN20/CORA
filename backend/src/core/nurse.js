@@ -8,7 +8,7 @@ import * as clock from './clock.js';
 import * as channels from '../channels/index.js';
 import { t, hasNative, localize, translateFromEnglish } from './i18n.js';
 
-const TEMPLATES = { call_scheduled: 'nurse_call_scheduled' };
+const TEMPLATES = { call_scheduled: 'nurse_call_scheduled', ask_bp: 'nurse_ask_bp' };
 // Alerts where the patient is waiting on a human; refill/SDOH tasks already told them.
 const ACK_NOTIFY_KINDS = new Set(['triage', 'unreachable', 'device', 'question', 'med_discrepancy']);
 

@@ -161,6 +161,15 @@ export function wordsToNumber(text) {
   return tail == null ? null : hundreds + tail;
 }
 
+// "118/72", "bp 130 over 85" -> { sbp, dbp } or null (plausible ranges only).
+export function parseBloodPressure(text) {
+  const m = String(text).match(/(?<![\d.])(\d{2,3})\s*(?:\/|over|sobre)\s*(\d{2,3})(?![\d.])/i);
+  if (!m) return null;
+  const sbp = Number(m[1]);
+  const dbp = Number(m[2]);
+  return sbp >= 60 && sbp <= 260 && dbp >= 30 && dbp <= 160 && sbp > dbp ? { sbp, dbp } : null;
+}
+
 export function parseSpo2(text) {
   const m = String(text).match(/(?<![\d.])(\d{2,3})(?![\d.]*\d)\s*%?/);
   const n = m ? parseInt(m[1], 10) : NaN;

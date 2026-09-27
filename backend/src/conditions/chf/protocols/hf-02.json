@@ -1,0 +1,33 @@
+{
+  "id": "HF-02",
+  "version": "2026-09-demo",
+  "title": "Standing order: diuretic adjustment for fluid gain",
+  "demo": true,
+  "disclaimer": "DEMO protocol with illustrative values. Not medical advice. A clinic must author, review and sign its own standing order (drug, dose, eligibility, labs) before any real use.",
+  "authoredBy": "Medical director (demo placeholder, unsigned)",
+  "triggers": ["weight_24h", "weight_7d", "edema_worse"],
+  "exclusions": {
+    "anyRedFlag": true,
+    "spo2Below": 90
+  },
+  "requiresDiureticTakenToday": true,
+  "labs": {
+    "maxAgeDays": 14,
+    "potassium": [3.5, 5.0],
+    "creatinineMax": 1.5
+  },
+  "bloodPressure": {
+    "required": false,
+    "maxAgeHours": 24,
+    "sbpMin": 95
+  },
+  "patientInstructions": {
+    "en": "take ONE extra dose of your water pill ({med} {dose}) this afternoon, then go back to your usual dose tomorrow. Weigh yourself tomorrow morning and send me the number.",
+    "es": "tome UNA dosis extra de su pastilla para el agua ({med} {dose}) esta tarde y mañana vuelva a su dosis de siempre. Pésese mañana por la mañana y envíeme el número."
+  },
+  "followUp": {
+    "title": "Re-weigh after standing order HF-02",
+    "at": "08:00",
+    "tier": "YELLOW"
+  }
+}

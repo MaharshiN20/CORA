@@ -15,6 +15,7 @@ import { buildDigest, sendDigest } from '../core/digest.js';
 import { startScreen } from '../core/sdoh.js';
 import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
+import * as protocols from '../core/protocols.js';
 
 export const api = Router();
 
@@ -72,7 +73,29 @@ api.post('/patients', (req, res) => {
 });
 
 // ---- nurse worklist (alerts + tasks) ----
-api.get('/alerts', (_req, res) => res.json(store.listAlerts()));
+// Open YELLOW triage alerts carry the standing-order check (protocols.eligibility), so the
+// worklist can show the one-click protocol card without another request.
+api.get('/alerts', (_req, res) =>
+  res.json(
+    store.listAlerts().map((a) => {
+      if ((a.kind ?? 'triage') !== 'triage' || a.tier !== 'YELLOW' || a.status === 'resolved') return a;
+      const p = store.getPatient(a.patientId);
+      const protocol = p && protocols.eligibility(p, a);
+      return protocol?.triggered ? { ...a, protocolCheck: protocol } : a;
+    }),
+  ),
+);
+
+// POST /api/alerts/:id/protocol { by?, protocolId? } -> { alert, task, message, fhir }
+// Re-checks eligibility server-side (409 with the failing checks if not eligible), then sends
+// the clinic-authored instructions, moves the alert to contacted, schedules a re-weigh task.
+api.post('/alerts/:id/protocol', async (req, res) => {
+  try {
+    res.json(await protocols.apply(req.params.id, { by: req.body?.by, protocolId: req.body?.protocolId }));
+  } catch (err) {
+    res.status(err.status ?? 500).json({ error: err.message, ...(err.checks && { checks: err.checks }) });
+  }
+});
 
 const STATUSES = ['open', 'acknowledged', 'contacted', 'resolved'];
 const OUTCOMES = ['true_positive', 'false_positive', 'ed_avoided', 'readmitted', 'other'];
