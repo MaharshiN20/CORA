@@ -15,7 +15,8 @@
 import { Bot, InlineKeyboard } from 'grammy';
 import * as store from '../store.js';
 import { handleInbound, startCheckin } from '../core/agent.js';
-import { languages, isSupportedLanguage } from '../core/enroll.js';
+import { languages, isSupportedLanguage, enrollDemoPatient } from '../core/enroll.js';
+import { joinLinksText } from '../routes/join.js';
 import { t, localize } from '../core/i18n.js';
 
 let bot = null;
@@ -109,6 +110,15 @@ async function welcome(ctx, link) {
   await renderReply(ctx.api, ctx.chat.id, reply);
 }
 
+// Drop every existing link for this chat (patient or caregiver) before it links to someone else.
+function unlinkChat(chatId) {
+  for (let link = store.findByChatId(chatId); link; link = store.findByChatId(chatId)) {
+    const { patient } = link;
+    if (link.role === 'caregiver') store.updatePatient(patient.id, { caregiver: { ...patient.caregiver, chatId: null } });
+    else store.updatePatient(patient.id, { chatId: null });
+  }
+}
+
 // The /language picker. Two per row keeps native names readable on a phone.
 function languageButtons() {
   const buttons = languages().map((l) => ({ label: l.nativeName, data: `lang:${l.code}` }));
@@ -142,28 +152,51 @@ export function buildBot(token, { botInfo } = {}) {
   const b = new Bot(token, botInfo ? { botInfo } : undefined);
   const seenGroups = new Set();
 
-  // Group chats: log the id once so people can find NURSE_CHAT_ID. Never treat a group as a patient.
+  // Group chats: log the id once so people can find NURSE_CHAT_ID.
   b.use(async (ctx, next) => {
-    if (ctx.chat && ctx.chat.type !== 'private') {
-      if (!seenGroups.has(ctx.chat.id)) {
-        seenGroups.add(ctx.chat.id);
-        console.log(`[telegram] group chat "${ctx.chat.title ?? ''}" id=${ctx.chat.id} (use as NURSE_CHAT_ID)`);
-      }
-      return;
+    if (ctx.chat && ctx.chat.type !== 'private' && !seenGroups.has(ctx.chat.id)) {
+      seenGroups.add(ctx.chat.id);
+      console.log(`[telegram] group chat "${ctx.chat.title ?? ''}" id=${ctx.chat.id} (use as NURSE_CHAT_ID)`);
     }
     return next();
   });
 
+  // Groups only get nurse-side commands; a group is never treated as a patient.
+  const group = b.chatType(['group', 'supergroup']);
+  const isNurseGroup = (ctx) => !process.env.NURSE_CHAT_ID || String(ctx.chat.id) === String(process.env.NURSE_CHAT_ID);
+
+  // /demo: the judge-mode join links, so the nurse group can share them on the spot.
+  group.command('demo', async (ctx) => {
+    if (!isNurseGroup(ctx)) return;
+    await ctx.reply(joinLinksText(), { link_preview_options: { is_disabled: true } });
+  });
+
+  const dm = b.chatType('private');
+
   // --- Linking: t.me/<bot>?start=GARCIA1 arrives as "/start GARCIA1" ---
-  b.command('start', async (ctx) => {
-    const code = ctx.match?.trim();
+  dm.command('start', async (ctx) => {
+    const code = ctx.match?.trim() ?? '';
     if (!code) {
       const existing = store.findByChatId(ctx.chat.id);
       if (existing) return welcome(ctx, existing);
       return ctx.reply(t(guessLang(ctx), 'unknown_code'));
     }
+
+    // Judge mode: /start DEMO or /start DEMO_ES -> a fresh Maria clone, straight into a check-in.
+    const demo = code.match(/^DEMO(?:_([A-Za-z]{2}))?$/i);
+    if (demo) {
+      unlinkChat(ctx.chat.id);
+      const patient = enrollDemoPatient({ chatId: ctx.chat.id, language: demo[1]?.toLowerCase() ?? guessLang(ctx) });
+      const link = { role: 'patient', patient };
+      await welcome(ctx, link);
+      const replies = await startCheckin(patient.id);
+      for (const r of replies) logOut(link, r);
+      return replyAll(ctx, replies);
+    }
+
+    if (!store.getPatientByCode(code.replace(/^CG_/i, ''))) return ctx.reply(t(guessLang(ctx), 'unknown_code'));
+    unlinkChat(ctx.chat.id); // one chat = one person; re-linking moves it
     const link = store.linkChat(code, ctx.chat.id);
-    if (!link) return ctx.reply(t(guessLang(ctx), 'unknown_code'));
     store.audit('channel_link', link.patient.id, { channel: 'telegram', role: link.role });
     await welcome(ctx, link);
   });
@@ -175,9 +208,9 @@ export function buildBot(token, { botInfo } = {}) {
     return handler(ctx, link);
   };
 
-  b.command('help', linked(async (ctx, link) => ctx.reply(await say(langOf(link), 'help'))));
+  dm.command('help', linked(async (ctx, link) => ctx.reply(await say(langOf(link), 'help'))));
 
-  b.command(
+  dm.command(
     'checkin',
     linked(async (ctx, link) => {
       if (link.role !== 'patient') return ctx.reply(await say(langOf(link), 'help'));
@@ -187,14 +220,14 @@ export function buildBot(token, { botInfo } = {}) {
     }),
   );
 
-  b.command(
+  dm.command(
     'language',
     linked(async (ctx, link) => {
       await ctx.reply(await say(langOf(link), 'language_prompt'), { reply_markup: toKeyboard(languageButtons()) });
     }),
   );
 
-  b.command(
+  dm.command(
     'voice',
     linked(async (ctx, link) => {
       if (link.role !== 'patient') return ctx.reply(await say(langOf(link), 'help'));
@@ -204,7 +237,7 @@ export function buildBot(token, { botInfo } = {}) {
     }),
   );
 
-  b.command(
+  dm.command(
     'meds',
     linked(async (ctx, link) => {
       const meds = link.patient.meds ?? [];
@@ -214,7 +247,7 @@ export function buildBot(token, { botInfo } = {}) {
   );
 
   // --- Free text (patient or caregiver) ---
-  b.on(
+  dm.on(
     'message:text',
     linked(async (ctx, link) => {
       const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', text: ctx.message.text });
@@ -223,7 +256,7 @@ export function buildBot(token, { botInfo } = {}) {
   );
 
   // --- Inline button taps ---
-  b.on('callback_query:data', async (ctx) => {
+  dm.on('callback_query:data', async (ctx) => {
     await ctx.answerCallbackQuery();
     const link = store.findByChatId(ctx.chat.id);
     if (!link) return;

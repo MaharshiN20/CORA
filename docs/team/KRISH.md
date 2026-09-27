@@ -27,7 +27,7 @@
   - Log group chat ids (`ctx.chat.type !== 'private'`) once, to help people find `NURSE_CHAT_ID`.
   - **Accept:** tests for /start valid + invalid code, patient and caregiver linking, text round-trip, button tap edits the message, every command, language switch changes the next check-in's language, urgent formatting, HTML escaping. `npm run check` green.
 
-- [ ] **K2. Judge mode (the #1 demo moment)**
+- [x] **K2. Judge mode (the #1 demo moment)**
   - `/start DEMO` and `/start DEMO_<LANG>` (e.g. `DEMO_ES`, `DEMO_VI`) → `enrollDemoPatient({ chatId, language })` → welcome → immediately send the `startCheckin` replies. A chat that's already linked and sends `/start DEMO` gets a fresh demo patient (clear the old link).
   - `/demo` (in the nurse group only) replies with the join links from `GET /api/join` logic.
   - Keep `routes/join.js` correct (it already returns deep links). Add `?format=text` returning plain links for printing.
