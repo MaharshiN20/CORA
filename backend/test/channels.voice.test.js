@@ -63,6 +63,7 @@ async function mariaMidCheckin(results = {}) {
   const { bot, calls } = h.makeBot({ results: { getFile: getFileResult(), ...results } });
   await bot.handleUpdate(h.textUpdate(CHAT, '/start GARCIA1'));
   await bot.handleUpdate(h.textUpdate(CHAT, '/checkin'));
+  await bot.handleUpdate(h.textUpdate(CHAT, 'no')); // red-flag screen first; the voice note answers the weight
   return { bot, calls };
 }
 
@@ -83,9 +84,11 @@ test('a voice note is transcribed, echoed back, and answers the check-in', async
 test('no GROQ key: the patient is asked to type, in her language, and nothing reaches the core', async () => {
   delete process.env.GROQ_API_KEY;
   const { bot, calls } = await mariaMidCheckin();
+  const inbound = () => store.listMessages('p1').filter((m) => m.direction === 'in').length;
+  const before = inbound();
   await bot.handleUpdate(voiceUpdate(CHAT));
   assert.equal(h.lastSent(calls).text, i18n.t('es', 'voice_unavailable'));
-  assert.equal(store.listMessages('p1').filter((m) => m.direction === 'in').length, 0);
+  assert.equal(inbound(), before);
   assert.ok(!fetches.some((u) => u.startsWith('https://api.groq.com/')));
 });
 

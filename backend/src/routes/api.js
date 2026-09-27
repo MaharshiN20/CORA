@@ -178,6 +178,7 @@ api.post('/patients/:id/checkin', async (req, res) => {
 api.post('/patients/:id/simulate', async (req, res) => {
   const { text, buttonData, role, photo } = req.body ?? {};
   if (!store.getPatient(req.params.id)) return res.status(404).json({ error: 'not found' });
+  if (!text?.trim() && !buttonData && !photo) return res.status(400).json({ error: 'text, buttonData or photo is required' });
   const replies = await handleInbound({ patientId: req.params.id, text, buttonData, role, photo, channel: 'sim' });
   res.json(replies);
 });

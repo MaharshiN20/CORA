@@ -79,7 +79,9 @@ test('patient text round-trips through handleInbound and renders buttons', async
   const inbound = store.listMessages('p1').find((m) => m.direction === 'in');
   assert.equal(inbound.text, 'hola');
   assert.equal(inbound.channel, 'telegram');
-  // "hola" starts a check-in: greeting then the weight question.
+  // "hola" starts a check-in: greeting then the red-flag screen (emergencies first).
+  assert.equal(h.lastSent(calls).text, i18n.t('es', 'ask_redflags'));
+  await bot.handleUpdate(h.textUpdate(MARIA_CHAT, 'no'));
   assert.equal(h.lastSent(calls).text, i18n.t('es', 'ask_weight'));
   await bot.handleUpdate(h.textUpdate(MARIA_CHAT, '176'));
   const breath = h.lastSent(calls);
@@ -90,6 +92,7 @@ test('patient text round-trips through handleInbound and renders buttons', async
 test('a button tap answers the callback, locks the message, and advances the check-in', async () => {
   const { bot, calls } = await linkMaria();
   await bot.handleUpdate(h.textUpdate(MARIA_CHAT, '/checkin'));
+  await bot.handleUpdate(h.textUpdate(MARIA_CHAT, 'no'));
   await bot.handleUpdate(h.textUpdate(MARIA_CHAT, '176'));
   const question = h.messageWithButton(calls, 'ci:breath:normal');
   await bot.handleUpdate(h.tapUpdate(MARIA_CHAT, 'ci:breath:normal', question));
@@ -120,7 +123,7 @@ test('a failed edit (message too old) does not break the tap', async () => {
   });
   await bot.handleUpdate(h.textUpdate(MARIA_CHAT, '/start GARCIA1'));
   await bot.handleUpdate(h.tapUpdate(MARIA_CHAT, 'cmd:checkin', { text: 'x', reply_markup: { inline_keyboard: [[{ text: 'Go', callback_data: 'cmd:checkin' }]] } }));
-  assert.equal(h.lastSent(calls).text, i18n.t('es', 'ask_weight'));
+  assert.equal(h.lastSent(calls).text, i18n.t('es', 'ask_redflags'));
 });
 
 test('caregiver text and taps reach handleInbound as role caregiver with the patient id', async () => {
@@ -142,9 +145,9 @@ test('/checkin starts a check-in and logs the prompts', async () => {
   await bot.handleUpdate(h.textUpdate(MARIA_CHAT, '/checkin'));
   const texts = h.sent(calls).map((p) => p.text);
   assert.ok(texts.includes(i18n.t('es', 'greeting', { name: 'Maria' })));
-  assert.equal(texts.at(-1), i18n.t('es', 'ask_weight'));
-  assert.equal(store.getPatient('p1').checkin.state, 'weight');
-  assert.ok(store.listMessages('p1').some((m) => m.text === i18n.t('es', 'ask_weight')));
+  assert.equal(texts.at(-1), i18n.t('es', 'ask_redflags'));
+  assert.equal(store.getPatient('p1').checkin.state, 'redflags');
+  assert.ok(store.listMessages('p1').some((m) => m.text === i18n.t('es', 'ask_redflags')));
 });
 
 test('/help replies in the patient language', async () => {
@@ -192,7 +195,7 @@ test('/language shows every supported language, and a pick switches the next che
   assert.equal(h.lastSent(calls).text, i18n.t('en', 'language_set', { language: 'English' }));
 
   await bot.handleUpdate(h.textUpdate(MARIA_CHAT, '/checkin'));
-  assert.equal(h.lastSent(calls).text, i18n.t('en', 'ask_weight'));
+  assert.equal(h.lastSent(calls).text, i18n.t('en', 'ask_redflags'));
 });
 
 test('a caregiver language pick changes the caregiver, not the patient', async () => {

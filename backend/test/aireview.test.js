@@ -46,8 +46,9 @@ afterEach(async () => {
 // Dorothy (Low risk, stable weights): a clean GREEN check-in.
 async function greenCheckin(text = '140') {
   await agent.startCheckin('p5');
+  await agent.handleInbound({ patientId: 'p5', buttonData: 'ci:rf:none' });
   await agent.handleInbound({ patientId: 'p5', text });
-  for (const b of ['ci:breath:normal', 'ci:swell:none', 'ci:rf:none', 'ci:diu:yes']) await agent.handleInbound({ patientId: 'p5', buttonData: b });
+  for (const b of ['ci:breath:normal', 'ci:swell:none', 'ci:diu:yes']) await agent.handleInbound({ patientId: 'p5', buttonData: b });
 }
 const escalating = (extra = {}) => async () => ({
   rulesTier: 'GREEN', aiTier: 'YELLOW', finalTier: 'YELLOW', escalate: true, urgent: false, readmissionRisk: 'moderate',
@@ -83,8 +84,9 @@ test('reviewer never runs when the rules already escalated (YELLOW/RED)', async 
   aireview.setReviewer(async () => { calls++; return null; });
   await agent.handleInbound({ patientId: 'p5', text: 'chest pain' }); // RED, unprompted
   await agent.startCheckin('p1'); // Maria: weight trend -> YELLOW
+  await agent.handleInbound({ patientId: 'p1', buttonData: 'ci:rf:none' });
   await agent.handleInbound({ patientId: 'p1', text: '177' });
-  for (const b of ['ci:breath:normal', 'ci:orth:no', 'ci:swell:none', 'ci:rf:none', 'ci:diu:yes', 'ci:spo2:none']) await agent.handleInbound({ patientId: 'p1', buttonData: b });
+  for (const b of ['ci:breath:normal', 'ci:orth:no', 'ci:swell:none', 'ci:diu:yes', 'ci:spo2:none']) await agent.handleInbound({ patientId: 'p1', buttonData: b });
   await aireview.flushReviews();
   assert.equal(store.getPatient('p1').lastTier, 'YELLOW');
   assert.equal(calls, 0);
@@ -129,9 +131,10 @@ test('the patient reply does not wait for the reviewer', async () => {
 test('reviewer receives the English text of recent patient messages (not button noise)', async () => {
   let got;
   aireview.setReviewer(async (_p, input) => { got = input; return null; });
-  await greenCheckin('140, slept in my recliner last night');
+  // (a recliner is now caught by the rules as orthopnea, so use something only the reviewer reads)
+  await greenCheckin('140, a bit more tired than usual');
   await aireview.flushReviews();
   assert.equal(got.rules.tier, 'GREEN');
-  assert.ok(got.messages.some((m) => /recliner/.test(m.text)));
+  assert.ok(got.messages.some((m) => /tired/.test(m.text)));
   assert.ok(got.messages.every((m) => !m.text.startsWith('[')));
 });

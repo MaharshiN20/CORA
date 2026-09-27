@@ -80,26 +80,89 @@ function clauseFlags(clause) {
   return found;
 }
 
+// Orthopnea = needing MORE pillows than usual, or sleeping propped up / in a recliner.
+// A bare pillow count ("my usual 2 pillows") is the patient's baseline, not a symptom.
+const ORTHOPNEA =
+  /\b(?:more|extra|additional|m[aá]s)\b(?:\s+\w+){0,2}\s+(?:pillows?|almohadas?)\b|\brecliner\b|\bsleep\w* (?:sitting )?up\b|\bslept (?:sitting )?up\b|\bsit(?:ting)? up to breathe?\b|\bpropped up\b|\bsill[oó]n\b|\breclinable\b|\bdorm\w* sentad[oa]\b|\bwoke up (?:short of breath|gasping|can'?t breathe)|\bme despert[eé] sin aire\b|\bsin aire en la noche\b/i;
+// "Slept fine / same as usual": means no to the pillows question.
+const BASELINE = /\b(?:usual|normal|same|fine|good|ok|okay|as always|like always|lo normal|como siempre|igual|bien)\b/i;
+
 const KEYWORDS = {
-  swellingWorse: /(more|worse|really) swol|swelling.*(worse|more)|puffy|hinchad[oa]s?|hinchaz[oó]n.*(peor|m[aá]s)|m[aá]s hinchad/i,
+  swellingWorse:
+    /(more|worse|really|very|so) swol|swelling.*(worse|more)|\b(feet|foot|ankles?|legs?)\b (are |is |look |looks |feel |feels |got |getting )?(so |really |very |all )?swollen|puffy|balloons?\b|\b(shoes?|socks?|slippers?|rings?)\b.{0,20}\btight|can'?t get (my )?shoes on|hinchad[oa]s?|hinchaz[oó]n.*(peor|m[aá]s)|m[aá]s hinchad|como globos|zapatos.{0,15}apretados/i,
   swellingNone: /no swelling|not swollen|sin hinchaz[oó]n|no est[aá]n hinchad/i,
-  orthopnea: /(\d|two|three|four|dos|tres|cuatro|more|extra|m[aá]s) (pillows|almohadas)|woke up (short of breath|gasping|can'?t breathe)|me despert[eé] sin aire|sin aire en la noche/i,
   breathExertion: /(short of breath|winded|out of breath|breathless).*(walk|stairs|moving)|(walk|stairs).*(short of breath|winded|out of breath)|me falta el aire al caminar|me canso al caminar/i,
   dizzy: /dizzy|lightheaded|mareado|mareada|mareo/i,
-  yes: /^(y|yes|yeah|yep|si|sí|ok|took it|i did|lo tom[eé])\b/i,
-  no: /^(n|no|nope|not yet|forgot|olvid[eé]|todav[ií]a no)\b/i,
+  yes: /^(y|yes|yeah|yep|yup|si|sí|ok|took it|i did|lo tom[eé])\b/i,
+  // "Not yet" (the dose is later today) is not a missed dose.
+  later: /^(not yet|later|haven'?t yet|i will|will take|todav[ií]a no|a[uú]n no|m[aá]s tarde)\b/i,
+  no: /^(n|no|nah|naw|nope|forgot|missed|i didn'?t|didn'?t|olvid[eé]|no la tom[eé])\b/i,
 };
 
+// Weight in lb, or null. A number must stand alone ("2000" is not "200"): an impossible
+// value is re-asked, never "corrected". Number words work too ("one sixty two").
+const toLb = (n, unit) => (/^(kg|kilos?)$/i.test(unit ?? '') ? Math.round(n * 2.2046 * 10) / 10 : n);
+const inRange = (lb) => lb >= 70 && lb <= 500;
+
 export function parseWeight(text) {
-  const m = String(text).replace(',', '.').match(/(\d{2,3}(?:\.\d)?)\s*(lb|lbs|pounds|libras|kg)?/i);
-  if (!m) return null;
-  let lb = parseFloat(m[1]);
-  if (m[2]?.toLowerCase() === 'kg') lb = Math.round(lb * 2.2046 * 10) / 10;
-  return lb >= 70 && lb <= 500 ? lb : null;
+  const s = String(text).replace(/(\d),(\d)/g, '$1.$2');
+  const nums = [...s.matchAll(/(?<![\d.])(\d+(?:\.\d+)?)(?![\d.]*\d)\s*(lb|lbs|pounds|libras|kg|kilos?)?\b/gi)];
+  if (nums.length) {
+    // First plausible number ("slept 3 nights in the recliner, 176 today" -> 176).
+    for (const m of nums) {
+      const lb = toLb(parseFloat(m[1]), m[2]);
+      if (inRange(lb)) return lb;
+    }
+    return null;
+  }
+  const n = wordsToNumber(s);
+  if (n == null) return null;
+  const lb = toLb(n, /\b(kg|kilos?)\b/i.exec(s)?.[1]);
+  return inRange(lb) ? lb : null;
+}
+
+// "one sixty two", "one hundred sixty-two", "two oh five", "ciento sesenta y dos" -> number.
+const UNITS = { zero: 0, oh: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, uno: 1, un: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9 };
+const TEENS = { ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15, dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19 };
+const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, veinte: 20, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90 };
+const HUNDREDS = { cien: 100, ciento: 100, doscientos: 200, trescientos: 300, cuatrocientos: 400 };
+const FILLER = new Set(['y', 'and']);
+const isNumberWord = (w) => w in UNITS || w in TEENS || w in TENS || w in HUNDREDS || w === 'hundred' || FILLER.has(w);
+
+// Below 100 from at most two words ("sixty two", "oh five").
+function small(ws) {
+  if (!ws.length) return 0;
+  if (ws.length === 1) return UNITS[ws[0]] ?? TEENS[ws[0]] ?? TENS[ws[0]] ?? null;
+  if (ws.length === 2 && ws[0] in TENS && ws[1] in UNITS) return TENS[ws[0]] + UNITS[ws[1]];
+  if (ws.length === 2 && ws[0] === 'oh' && ws[1] in UNITS) return UNITS[ws[1]];
+  return null;
+}
+
+export function wordsToNumber(text) {
+  // Longest run of number words, so "about one sixty two I think" works.
+  let best = [];
+  let run = [];
+  for (const w of [...(norm(text).replace(/-/g, ' ').match(/[a-z]+/g) ?? []), '']) {
+    if (w && isNumberWord(w)) run.push(w);
+    else {
+      const core = run.filter((x) => !FILLER.has(x));
+      if (core.length > best.length) best = core;
+      run = [];
+    }
+  }
+  const ws = best;
+  if (!ws.length) return null;
+  let hundreds = 0;
+  let rest = ws;
+  if (ws[0] in HUNDREDS) [hundreds, rest] = [HUNDREDS[ws[0]], ws.slice(1)];
+  else if (ws[0] in UNITS && ws[1] === 'hundred') [hundreds, rest] = [UNITS[ws[0]] * 100, ws.slice(2)];
+  else if (ws[0] in UNITS && UNITS[ws[0]] > 0 && ws.length > 1) [hundreds, rest] = [UNITS[ws[0]] * 100, ws.slice(1)]; // "one sixty two"
+  const tail = small(rest);
+  return tail == null ? null : hundreds + tail;
 }
 
 export function parseSpo2(text) {
-  const m = String(text).match(/\b(\d{2,3})\s*%?/);
+  const m = String(text).match(/(?<![\d.])(\d{2,3})(?![\d.]*\d)\s*%?/);
   const n = m ? parseInt(m[1], 10) : NaN;
   return n >= 50 && n <= 100 ? n : null;
 }
@@ -125,7 +188,7 @@ export function parseFreeText(text) {
   if (rf?.confusion) a.confusion = true;
   if (rf?.orthopnea) a.orthopnea = true; // "can't breathe when I lie down"
   if (!a.breath && KEYWORDS.breathExertion.test(s)) a.breath = 'exertion';
-  if (KEYWORDS.orthopnea.test(s)) a.orthopnea = true;
+  if (hasOrthopnea(s)) a.orthopnea = true;
   if (KEYWORDS.swellingWorse.test(s)) a.swelling = 'worse';
   else if (KEYWORDS.swellingNone.test(s)) a.swelling = 'none';
   if (KEYWORDS.dizzy.test(s)) a.dizzy = true;
@@ -133,7 +196,29 @@ export function parseFreeText(text) {
 }
 
 export const isYes = (text) => KEYWORDS.yes.test(String(text).trim());
-export const isNo = (text) => KEYWORDS.no.test(String(text).trim());
+export const isLater = (text) => KEYWORDS.later.test(String(text).trim());
+export const isNo = (text) => !isLater(text) && KEYWORDS.no.test(String(text).trim());
+
+// Three or more pillows reads as propped up, unless the patient says that's their usual.
+const MANY_PILLOWS = /\b(?:[3-9]|three|four|five|six|tres|cuatro|cinco|seis)\s+(?:pillows?|almohadas?)\b/;
+
+// "extra pillows" / "the recliner" / "3 pillows", unless negated in its clause
+// ("no extra pillows") or described as usual ("my usual 3 pillows").
+function hasOrthopnea(text) {
+  return norm(text)
+    .split(CLAUSE_SPLIT)
+    .some((clause) => {
+      if (!clause) return false;
+      const m = ORTHOPNEA.exec(clause);
+      if (m) return !negated(clause, m.index);
+      const many = MANY_PILLOWS.exec(clause);
+      return !!many && !negated(clause, many.index) && !BASELINE.test(clause);
+    });
+}
+
+// An answer to "more pillows / wake up breathless?" that means no: a plain no, or
+// "nah slept fine on my usual 2 pillows".
+export const isBaselineSleep = (text) => !hasOrthopnea(text) && (isNo(text) || BASELINE.test(norm(text)));
 
 // LLM fallback (Claude / Ollama / LM Studio) for phrasing or languages the keyword lists miss.
 export async function parseWithLLM(text) {

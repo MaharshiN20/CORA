@@ -16,7 +16,8 @@
 //   weights: [{ ts, lb }]  oldest -> newest; the last entry is "today"
 //   answers: {
 //     breath:    'normal' | 'exertion' | 'rest'
-//     orthopnea: boolean   (needs more pillows / wakes up breathless)
+//     orthopnea: boolean   (needs more pillows / sleeps propped up)
+//     pnd:       boolean   (woke up at night short of breath)
 //     swelling:  'none' | 'mild' | 'worse'
 //     chestPain, confusion, fainting, dizzy: boolean
 //     spo2:      number (%), optional
@@ -82,7 +83,7 @@ export function triage({ weights = [], answers = {}, missedDiureticDays = 0 } = 
 
   const d24 = weightChange24h(weights);
   const d7 = weightChange7d(weights);
-  const { breath, orthopnea, swelling, chestPain, confusion, fainting, dizzy, spo2, heartRate } = answers;
+  const { breath, orthopnea, pnd, swelling, chestPain, confusion, fainting, dizzy, spo2, heartRate } = answers;
 
   // ---- RED: emergency, patient told to call 911 ----
   if (chestPain) flag('RED', 'chest_pain', 'Chest pain or pressure');
@@ -96,7 +97,8 @@ export function triage({ weights = [], answers = {}, missedDiureticDays = 0 } = 
     flag('YELLOW', 'weight_24h', `Weight up ${d24} lb in 24h (≥ ${THRESHOLDS.gain24hLb})`);
   if (isNum(d7) && d7 >= THRESHOLDS.gain7dLb)
     flag('YELLOW', 'weight_7d', `Weight up ${d7} lb in 7 days (≥ ${THRESHOLDS.gain7dLb})`);
-  if (orthopnea) flag('YELLOW', 'orthopnea', 'Needs more pillows / wakes up breathless');
+  if (orthopnea) flag('YELLOW', 'orthopnea', 'Needs more pillows / sleeps propped up');
+  if (pnd) flag('YELLOW', 'pnd', 'Woke up at night short of breath (PND)');
   if (swelling === 'worse') flag('YELLOW', 'edema_worse', 'Leg/ankle swelling getting worse');
   if (missedDiureticDays >= THRESHOLDS.missedDiureticDays)
     flag('YELLOW', 'missed_diuretic', `Missed diuretic ${missedDiureticDays} days in a row`);
@@ -106,7 +108,7 @@ export function triage({ weights = [], answers = {}, missedDiureticDays = 0 } = 
     flag('YELLOW', 'hr_abnormal', `Heart rate ${heartRate} bpm`);
 
   // Judgment rules: a symptom that is mild alone but concerning in context.
-  const fluidSigns = flags.some((f) => ['weight_24h', 'weight_7d', 'edema_worse', 'orthopnea'].includes(f.code));
+  const fluidSigns = flags.some((f) => ['weight_24h', 'weight_7d', 'edema_worse', 'orthopnea', 'pnd'].includes(f.code));
   if (breath === 'exertion') {
     if (fluidSigns) flag('YELLOW', 'sob_exertion_fluid', 'More breathless with activity + signs of fluid build-up');
     else advice.add('pace_activity');

@@ -32,12 +32,12 @@ const cgMessages = (id, re) => store.listMessages(id).filter((m) => m.to === 'ca
 test('caregiver proxy check-in: English prompts for a Spanish patient, YELLOW tagged reporter=caregiver', async () => {
   let r = await cg('p1', 'cmd:proxy');
   assert.match(r[0].text, /checking in for Maria/);
-  assert.match(r[1].text, /weight/i); // caregiver's language (en), not Maria's (es)
+  assert.match(r[1].text, /any of these right now/i); // caregiver's language (en), not Maria's (es)
+  await cg('p1', 'ci:rf:none');
   await cg('p1', '177');
   await cg('p1', 'ci:breath:exertion');
   await cg('p1', 'ci:orth:yes');
   await cg('p1', 'ci:swell:worse');
-  await cg('p1', 'ci:rf:none');
   await cg('p1', 'ci:diu:yes');
   r = await cg('p1', 'ci:spo2:none');
   assert.match(r[0].text, /asked Maria's nurse to call/);

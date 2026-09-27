@@ -97,8 +97,8 @@ test('JOIN DEMO_ES enrolls a demo patient on this phone and starts the check-in'
   const demo = store.listPatients().find((p) => p.source === 'demo');
   assert.equal(demo.phone, PHONE);
   assert.equal(demo.language, 'es');
-  assert.equal(demo.checkin.state, 'weight');
-  assert.equal(unescape(messagesIn(res.body).at(-1)), i18n.t('es', 'ask_weight'));
+  assert.equal(demo.checkin.state, 'redflags');
+  assert.ok(unescape(messagesIn(res.body).at(-1)).startsWith(i18n.t('es', 'ask_redflags')));
 });
 
 test('re-JOINing moves the phone: one phone = one person', async () => {
@@ -133,7 +133,7 @@ test('inbound text reaches handleInbound and replies go out over the REST API wi
   assert.equal(res.status, 200);
   assert.equal(messagesIn(res.body).length, 0, 'empty TwiML');
   assert.equal(res.body, '<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
-  assert.equal(posts.at(-1).Body, i18n.t('es', 'ask_weight'));
+  assert.ok(posts.at(-1).Body.startsWith(i18n.t('es', 'ask_redflags')));
   assert.ok(posts.every((p) => p.To === PHONE && p.From === '+15550001111'));
   const inbound = store.listMessages('p1').filter((m) => m.direction === 'in').at(-1);
   assert.equal(inbound.text, 'hola');
@@ -142,7 +142,8 @@ test('inbound text reaches handleInbound and replies go out over the REST API wi
 
 test('a numbered answer becomes that button\'s data', async () => {
   await sms('JOIN GARCIA1');
-  await sms('hola'); // starts the check-in -> weight question
+  await sms('hola'); // starts the check-in -> red-flag screen
+  await sms('no'); // -> weight question
   const breath = await sms('176');
   assert.match(unescape(messagesIn(breath.body).at(-1)), /1️⃣ 😊 Normal/);
   await sms('2');
@@ -174,7 +175,7 @@ test('if the REST API fails, the remaining replies come back as TwiML instead', 
     console.error = err;
   }
   const texts = messagesIn(res.body).map(unescape);
-  assert.equal(texts.at(-1), i18n.t('es', 'ask_weight'));
+  assert.ok(texts.at(-1).startsWith(i18n.t('es', 'ask_redflags')));
   assert.ok(texts.length >= 2, 'greeting + question');
 });
 

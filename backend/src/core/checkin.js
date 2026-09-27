@@ -15,15 +15,19 @@ import * as clock from './clock.js';
 import { applyDiureticAnswer } from './meds.js';
 import { localDayKey } from './planning.js';
 import { queueReview } from './aireview.js';
+import * as companion from './companion.js';
 
-// Order matters. `enabled(plan)` lets risk tier decide how deep the check-in goes.
+// Order matters. Emergencies are screened first, so a patient with chest pain is told to
+// call 911 after one tap instead of after five questions.
+// `enabled(plan)` lets risk tier decide how deep the check-in goes.
 const STEPS = [
+  { id: 'redflags', done: (a) => a.redflagsAsked },
   { id: 'weight', done: (a) => a.weightLb != null },
   { id: 'breath', done: (a) => a.breath != null },
-  { id: 'orthopnea', done: (a) => a.orthopnea != null, enabled: (plan) => plan.askOrthopnea },
+  { id: 'orthopnea', done: (a) => a.orthopnea != null || a.pnd != null, enabled: (plan) => plan.askOrthopnea },
   { id: 'swelling', done: (a) => a.swelling != null },
-  { id: 'redflags', done: (a) => a.redflagsAsked },
-  { id: 'diuretic', done: (a) => a.diureticTaken != null },
+  // "Not yet" (a morning check-in before the dose) answers the question without counting as missed.
+  { id: 'diuretic', done: (a) => a.diureticTaken != null || a.diureticAsked },
   { id: 'spo2', done: (a) => a.spo2Asked, enabled: (plan) => plan.askSpo2 },
 ];
 
@@ -55,7 +59,12 @@ function prompt(p, stepId) {
         [btn(L, 'breath_rest', 'ci:breath:rest')],
       ]);
     case 'orthopnea':
-      return reply(p, 'ask_orthopnea', {}, [[btn(L, 'yes', 'ci:orth:yes'), btn(L, 'no', 'ci:orth:no')]]);
+      // Two separate answers: needing extra pillows (orthopnea) vs waking up breathless (PND).
+      return reply(p, 'ask_orthopnea', {}, [
+        [btn(L, 'orth_pillows', 'ci:orth:pillows')],
+        [btn(L, 'orth_pnd', 'ci:orth:pnd')],
+        [btn(L, 'orth_none', 'ci:orth:no')],
+      ]);
     case 'swelling':
       return reply(p, 'ask_swelling', {}, [
         [btn(L, 'swelling_none', 'ci:swell:none')],
@@ -69,7 +78,11 @@ function prompt(p, stepId) {
         [btn(L, 'rf_none', 'ci:rf:none')],
       ]);
     case 'diuretic':
-      return reply(p, 'ask_diuretic', { med: diureticName(p) }, [[btn(L, 'yes', 'ci:diu:yes'), btn(L, 'no', 'ci:diu:no')]]);
+      return reply(p, 'ask_diuretic', { med: diureticName(p) }, [
+        [btn(L, 'diu_taken', 'ci:diu:yes')],
+        [btn(L, 'diu_later', 'ci:diu:later')],
+        [btn(L, 'diu_missed', 'ci:diu:no')],
+      ]);
     case 'spo2':
       return reply(p, 'ask_spo2', {}, [[btn(L, 'no_device', 'ci:spo2:none')]]);
   }
@@ -113,9 +126,15 @@ function applyButton(a, data) {
       else delete a.weightPending;
       break;
     case 'breath': a.breath = value; break;
-    case 'orth': a.orthopnea = value === 'yes'; break;
+    case 'orth':
+      if (value === 'pnd') a.pnd = true;
+      else a.orthopnea = value === 'yes' || value === 'pillows'; // 'yes' = older buttons still in chats
+      break;
     case 'swell': a.swelling = value; break;
-    case 'diu': a.diureticTaken = value === 'yes'; break;
+    case 'diu':
+      if (value === 'later') a.diureticAsked = true;
+      else a.diureticTaken = value === 'yes';
+      break;
     case 'spo2': a.spo2Asked = true; break;
     case 'rf':
       a.redflagsAsked = true;
@@ -144,11 +163,13 @@ async function applyText(a, text, step) {
     else if (parser.isNo(text)) a.spo2Asked = true;
   } else if (step === 'diuretic') {
     if (parser.isYes(text)) a.diureticTaken = true;
+    else if (parser.isLater(text)) a.diureticAsked = true;
     else if (parser.isNo(text)) a.diureticTaken = false;
   } else if (step === 'orthopnea') {
-    if (parser.isYes(text)) a.orthopnea = true;
-    else if (parser.isNo(text)) a.orthopnea = false;
-  } else if (step === 'redflags' && parser.isNo(text)) {
+    // "nah slept fine on my usual 2 pillows" is a no; "yes, 3 extra pillows" is caught below.
+    if (parser.isBaselineSleep(text)) a.orthopnea = false;
+    else if (parser.isYes(text)) a.orthopnea = true;
+  } else if (step === 'redflags' && (parser.isNo(text) || NONE_OF_THESE.test(text))) {
     a.redflagsAsked = true;
   }
 
@@ -166,7 +187,10 @@ async function applyText(a, text, step) {
     const c = await parser.parseWithLLM(text);
     if (c) {
       textEn = c.textEn ?? null;
-      if (c.weightLb && a.weightLb == null && step === 'weight') a.weightLb = c.weightLb;
+      if (c.weightLb && a.weightLb == null && step === 'weight') {
+        a.weightLb = c.weightLb;
+        delete a.weightPending; // a newly typed weight replaces the one awaiting confirmation
+      }
       for (const k of ['breath', 'orthopnea', 'swelling', 'chestPain', 'dizzy', 'confusion', 'fainting', 'diureticTaken']) {
         if (c[k] != null && a[k] == null) a[k] = c[k];
       }
@@ -176,6 +200,17 @@ async function applyText(a, text, step) {
   }
   return { understood: JSON.stringify(a) !== before, textEn };
 }
+
+const NONE_OF_THESE = /\b(none|nothing|neither|all good|ninguno|ninguna|nada)\b/i;
+
+// Two replies sent as one bubble (an acknowledgement + the next question).
+const combine = (first, second) => ({
+  ...second,
+  text: `${first.text}
+${second.text}`,
+  textEn: `${first.textEn}
+${second.textEn}`,
+});
 
 // Only the fields the emergency rule reads; anything else the LLM returns is ignored here.
 const pickEmergencyFields = (c) => ({
@@ -228,21 +263,34 @@ export async function handle(patient, { text, buttonData }) {
   const a = state.answers;
   let understood = true;
   let textEn = null;
+  const replies = [];
 
   if (buttonData?.startsWith('ci:')) applyButton(a, buttonData);
-  else if (text) ({ understood, textEn } = await applyText(a, text, state.state));
+  else if (text) {
+    ({ understood, textEn } = await applyText(a, text, state.state));
+    // "Can I skip my water pill?" mid-check-in: the nurse gets it (never answered here),
+    // then the check-in carries on.
+    if (companion.DOSING_CHANGE.test(text)) {
+      replies.push(...(await companion.answer(patient, text)).replies);
+      understood = true;
+    }
+  }
   holdImplausibleWeight(patient, a);
 
   // Emergencies never wait for a weight confirmation.
   if (isEmergency(a)) return { replies: await finish(patient, a), textEn };
 
   const next = steps.find((s) => !s.done(a));
-  if (!next) return { replies: await finish(patient, a), textEn };
+  if (!next) return { replies: [...replies, ...(await finish(patient, a))], textEn };
 
   store.updatePatient(patient.id, { checkin: { ...state, state: next.id, answers: a } });
-  const replies = [];
+  const sameStep = next.id === state.state;
   if (next.id === 'weight' && a.weightPending != null) replies.push(weightConfirmPrompt(patient, a));
   else if (!understood && next.id === 'weight') replies.push(reply(patient, 'bad_weight'));
+  // Never re-send the identical question: say we noted what they told us, or that we
+  // didn't catch it (and point at the buttons).
+  else if (!understood) replies.push(combine(reply(patient, 'didnt_catch'), prompt(patient, next.id)));
+  else if (sameStep && text && !replies.length) replies.push(combine(reply(patient, 'noted'), prompt(patient, next.id)));
   else replies.push(prompt(patient, next.id));
   return { replies, textEn };
 }

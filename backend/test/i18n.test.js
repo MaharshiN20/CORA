@@ -24,6 +24,7 @@ const XX = {
   strings: {
     greeting: 'XX-morning {name}! 💙',
     ask_weight: 'XX-weight?',
+    ask_redflags: 'XX-emergency?',
     advice_header: 'XX-tips:',
     advice_low_sodium: 'XX-low-salt',
   },
@@ -61,7 +62,7 @@ test('end to end: a patient in a generated language gets a translated check-in o
   store.updatePatient('p5', { language: 'xx' });
   const r = await agent.startCheckin('p5');
   assert.equal(r[0].text, 'XX-morning Dorothy! 💙');
-  assert.equal(r[1].text, 'XX-weight?');
+  assert.match(r[1].text, /^XX-emergency\?/); // red-flag screen comes first
   assert.match(r[0].textEn, /^Good morning Dorothy/); // English twin kept for the dashboard
 });
 

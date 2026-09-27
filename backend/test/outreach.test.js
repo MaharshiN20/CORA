@@ -61,7 +61,7 @@ test('+2h: patient reminder re-asks the current question (in their language)', a
   await advanceBy(2 * clock.HOUR);
   assert.equal(reminders('p5').length, 1);
   const last = store.listMessages('p5').filter((m) => m.to === 'patient').at(-1);
-  assert.match(last.text, /weight/i); // current step re-asked
+  assert.match(last.text, /any of these right now/i); // current step (the red-flag screen) re-asked
   const maria = store.listMessages('p1').filter((m) => m.to === 'patient' && /solo quería saber/.test(m.text));
   assert.equal(maria.length, 1);
   assert.equal(cgPings('p5').length, 0);

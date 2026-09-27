@@ -86,15 +86,15 @@ export async function runE2E({ log = console.log } = {}) {
     await step('09:00: scheduled check-ins start (Maria in Spanish)', async () => {
       await advanceTo('09:00');
       const maria = await get('/api/patients/p1');
-      expect(maria.checkin.state === 'weight', `Maria's check-in state is ${maria.checkin.state}`);
+      expect(maria.checkin.state === 'redflags', `Maria's check-in state is ${maria.checkin.state}`);
       expect(maria.messages.some((m) => /Buenos días Maria/.test(m.text)), 'no Spanish greeting');
     });
 
-    await step('Maria answers in Spanish: weight, pillows, swollen ankles', async () => {
+    await step('Maria answers in Spanish: no red flags, weight, pillows, swollen ankles', async () => {
+      await sim('p1', { buttonData: 'ci:rf:none' });
       await sim('p1', { text: '177 libras' });
       await sim('p1', { text: 'dormí con tres almohadas y los tobillos están más hinchados' });
       await sim('p1', { buttonData: 'ci:breath:exertion' });
-      await sim('p1', { buttonData: 'ci:rf:none' });
       await sim('p1', { buttonData: 'ci:diu:yes' });
       const last = await sim('p1', { text: '94' });
       expect(/enfermera/.test(last[0].text), `unexpected closing reply: ${last[0].text}`);

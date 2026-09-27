@@ -55,10 +55,10 @@ export function rulesPredict(parser, text, step) {
     if (n) a.spo2 = n;
   } else if (step === 'diuretic') {
     if (parser.isYes(text)) a.diureticTaken = true;
-    else if (parser.isNo(text)) a.diureticTaken = false;
+    else if (parser.isNo(text)) a.diureticTaken = false; // "not yet" (isLater) leaves it unset
   } else if (step === 'orthopnea') {
-    if (parser.isYes(text)) a.orthopnea = true;
-    else if (parser.isNo(text)) a.orthopnea = false;
+    if (parser.isBaselineSleep(text)) a.orthopnea = false;
+    else if (parser.isYes(text)) a.orthopnea = true;
   }
   for (const [k, v] of Object.entries(parser.parseFreeText(text))) if (a[k] === undefined) a[k] = v;
   return normalize(a);

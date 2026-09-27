@@ -49,7 +49,8 @@ test('bad signals raise the live tier and deepen tomorrow\'s check-in', async ()
   const live = risk.scoreRisk(p, signals.getSignals(p));
   assert.notEqual(live.tier, 'Low');
   const r = await agent.startCheckin('p5');
-  assert.match(r[1].text, /weight/i);
+  assert.match(r[1].text, /any of these right now/i);
+  await agent.handleInbound({ patientId: 'p5', buttonData: 'ci:rf:none' });
   await agent.handleInbound({ patientId: 'p5', text: '140' });
   await agent.handleInbound({ patientId: 'p5', buttonData: 'ci:breath:normal' });
   assert.equal(store.getPatient('p5').checkin.state, 'orthopnea'); // Med/High plans ask about pillows; Low didn't

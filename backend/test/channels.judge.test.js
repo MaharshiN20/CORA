@@ -41,8 +41,9 @@ test('a judge runs the whole check-in by taps + free text and a YELLOW alert lan
   assert.equal(patient.language, 'es');
   const texts = h.sent(calls).map((p) => p.text);
   assert.equal(texts[0], i18n.t('es', 'welcome_patient', { name: patient.name.split(' ')[0] }));
-  assert.equal(texts.at(-1), i18n.t('es', 'ask_weight'), 'check-in starts immediately');
+  assert.equal(texts.at(-1), i18n.t('es', 'ask_redflags'), 'check-in starts immediately, emergencies first');
 
+  await bot.handleUpdate(h.tapUpdate(JUDGE, 'ci:rf:none', h.lastSent(calls)));
   await bot.handleUpdate(h.textUpdate(JUDGE, '179'));
   for (let i = 0; i < 10; i++) {
     const last = h.lastSent(calls);
@@ -71,7 +72,7 @@ test('/start DEMO_<LANG> enrolls a demo patient in every supported language', as
     assert.match(link.patient.linkCode, /^DEMO[A-Z0-9]{5}$/);
     // No LLM in tests: non-native languages use their generated template translation
     // (src/core/i18n-generated, P2-11) when one exists, otherwise the English template.
-    const expected = native ? i18n.t(code, 'ask_weight') : await i18n.localize(code, i18n.t('en', 'ask_weight'));
+    const expected = native ? i18n.t(code, 'ask_redflags') : await i18n.localize(code, i18n.t('en', 'ask_redflags'));
     assert.equal(h.lastSent(calls).text, expected, code);
   }
   assert.equal(demoPatients().length, enroll.languages().length);
@@ -101,7 +102,7 @@ test('an already-linked chat sending /start DEMO gets a fresh demo patient and l
   assert.notEqual(second.id, first.id);
   assert.equal(second.language, 'es');
   assert.equal(store.getPatient(first.id).chatId, null);
-  assert.equal(second.checkin.state, 'weight', 'fresh patient is mid check-in');
+  assert.equal(second.checkin.state, 'redflags', 'fresh patient is mid check-in');
 });
 
 test('a seeded patient chat that switches to DEMO no longer receives as the seeded patient', async () => {

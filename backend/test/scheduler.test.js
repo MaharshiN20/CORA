@@ -125,6 +125,7 @@ test('a check-in the patient is answering right now is not restarted', async () 
   jumpTo('08:30');
   await jobs.start({ intervalMs: 0 });
   await agent.startCheckin('p5');
+  await agent.handleInbound({ patientId: 'p5', buttonData: 'ci:rf:none' });
   await agent.handleInbound({ patientId: 'p5', text: '140' }); // now on the breath step
   clock.advance(clock.HOUR); // 09:30: the 09:00 check-in comes due
   await jobs.afterAdvance(clock.HOUR);
@@ -138,11 +139,12 @@ test("yesterday's unfinished check-in is abandoned (audited) and a fresh one sta
   jumpTo('08:00');
   await jobs.start({ intervalMs: 0 });
   await agent.startCheckin('p5');
+  await agent.handleInbound({ patientId: 'p5', buttonData: 'ci:rf:none' });
   await agent.handleInbound({ patientId: 'p5', text: '140' }); // stops on breath, never finishes
   clock.advance(clock.DAY + 2 * clock.HOUR); // next day 10:00 (09:00 check-in is ~25h after the stale one)
   await jobs.afterAdvance(clock.DAY + 2 * clock.HOUR);
   const p = store.getPatient('p5');
-  assert.equal(p.checkin.state, 'weight'); // fresh check-in from the top
+  assert.equal(p.checkin.state, 'redflags'); // fresh check-in from the top
   const abandoned = store.listAudit('p5').find((e) => e.type === 'checkin_abandoned');
   assert.equal(abandoned.data.partial.weightLb, 140);
 });

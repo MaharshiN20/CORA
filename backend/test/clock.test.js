@@ -23,10 +23,10 @@ const say = (id, text) => agent.handleInbound({ patientId: id, text });
 
 async function lowRiskCheckin(id, lb) {
   await agent.startCheckin(id);
+  await tap(id, 'ci:rf:none');
   await say(id, String(lb));
   await tap(id, 'ci:breath:normal');
   await tap(id, 'ci:swell:none');
-  await tap(id, 'ci:rf:none');
   await tap(id, 'ci:diu:yes');
 }
 

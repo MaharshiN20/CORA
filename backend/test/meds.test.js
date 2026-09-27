@@ -101,6 +101,7 @@ test('med buttons work mid-check-in without disturbing it', async () => {
   await advanceTo('08:00');
   const took = lastOut('p5').buttons.flat().find((b) => b.data.startsWith('med:all:')).data;
   await agent.startCheckin('p5');
+  await tap('p5', 'ci:rf:none');
   await agent.handleInbound({ patientId: 'p5', text: '140' });
   await tap('p5', took);
   assert.equal(store.getPatient('p5').checkin.state, 'breath');
@@ -110,8 +111,9 @@ test('check-in water-pill answer merges into today\'s reminder dose (no duplicat
   await advanceTo('08:00');
   const before = store.getPatient('p5').doses.length;
   await advanceTo('09:00'); // scheduled check-in
-  for (const x of ['140']) await agent.handleInbound({ patientId: 'p5', text: x });
-  for (const b of ['ci:breath:normal', 'ci:swell:none', 'ci:rf:none', 'ci:diu:yes']) await tap('p5', b);
+  await tap('p5', 'ci:rf:none');
+  await agent.handleInbound({ patientId: 'p5', text: '140' });
+  for (const b of ['ci:breath:normal', 'ci:swell:none', 'ci:diu:yes']) await tap('p5', b);
   const p = store.getPatient('p5');
   assert.equal(p.doses.length, before);
   assert.equal(p.doses.find((d) => d.diuretic).taken, true);

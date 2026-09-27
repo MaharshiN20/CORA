@@ -116,7 +116,8 @@ test('a volunteered symptom starts a check-in with it already filled in', async 
   assert.match(r[0].text, /quick check-in/);
   const p = store.getPatient('p5');
   assert.equal(p.checkin.answers.swelling, 'worse');
-  assert.equal(p.checkin.state, 'weight'); // still asks what's missing
+  assert.equal(p.checkin.state, 'redflags'); // still asks what's missing, emergencies first
+  assert.match(r.at(-1).text, /noted that/); // acknowledges what they said instead of ignoring it
 });
 
 // ---------- LLM path (mocked) ----------
