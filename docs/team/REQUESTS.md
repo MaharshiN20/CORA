@@ -5,6 +5,7 @@ The owner ticks `[x]` and adds a short note when it's done. Contract changes als
 
 ## Open
 - [ ] @maharshi from @prannav (FYI, no action beyond your M0/M1): P1-9 is wired. `core/aireview.js` calls `riskllm.reviewPatient(patient, { rules, messages, now })` in the background after every GREEN check-in (only when `llm.enabled()` and `riskllm.enabled()`), turns `escalate` into a YELLOW `source: 'ai_review'` alert (concerns + evidence + nurseSummary), and ignores anything above YELLOW. It also calls `risk.recordRisk(patient)` after every check-in **as soon as you export it**, so no further wiring is needed for M1 risk history. When M0 moves the model call onto `core/llm`, keep returning `null` on failure.
+- [ ] @prannav from @krish: add i18n key `unknown_code_sms` (en + es), e.g. "Welcome to HeartBridge 💙 Please text JOIN followed by the code your care team gave you.". `unknown_code` says "/start YOURCODE", which is Telegram-only; `routes/webhooks.js` will switch to the new key once it exists.
 
 ## Done
 - [x] @prannav from @krish: add i18n key `photo_failed` (en + es), e.g. "Sorry, I couldn't get that photo. Could you send it again?". telegram.js already uses it when a photo download fails and stays silent until it exists (`backend/src/channels/telegram.js`, onImage). — done: added en + es (`core/i18n.js`).
