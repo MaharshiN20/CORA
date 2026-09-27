@@ -84,7 +84,7 @@ export default function AlertCard({ alert, patient, now, update = api.updateAler
         {alert.assignee && <span>· {alert.assignee}</span>}
         <span className="ml-auto flex gap-2">
           {next && !resolving && (
-            <Button onClick={advance} disabled={busy} variant={next.status === 'resolved' ? 'ghost' : 'primary'}>
+            <Button onClick={advance} disabled={busy}>
               {next.label}
             </Button>
           )}

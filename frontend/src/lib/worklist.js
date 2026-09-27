@@ -1,5 +1,6 @@
 // Nurse worklist logic, kept out of components so it's unit-tested (worklist.test.js).
 // Alert shape: docs/CONTRACTS.md §3 (alerts collection).
+import { languageName } from './format.js';
 
 export const TIER_RANK = { RED: 0, YELLOW: 1, INFO: 2 };
 
@@ -79,4 +80,12 @@ export const OUTCOMES = [
 export function resolvePatch(outcome, note, by = 'nurse') {
   if (!OUTCOMES.some((o) => o.value === outcome)) throw new Error('Pick an outcome to resolve');
   return { status: 'resolved', outcome, by, ...(note?.trim() && { note: note.trim() }) };
+}
+
+// What actually happened to a nurse message (the API says; the UI must not claim more).
+export function messageOutcome({ delivered, translated, language } = {}) {
+  const notes = [];
+  if (translated === false) notes.push(`⚠ sent in English: no translator for ${languageName(language)} right now`);
+  if (!delivered) notes.push('logged in the chat; patient not on Telegram/SMS yet');
+  return notes.length ? { tone: 'warn', text: notes.join(' · ') } : { tone: 'ok', text: translated ? `Sent ✓ (translated to ${languageName(language)})` : 'Sent ✓' };
 }

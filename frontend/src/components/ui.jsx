@@ -1,5 +1,6 @@
 // Small shared UI pieces. Tier colors are the same everywhere: RED/High = red,
 // YELLOW/Med = amber, GREEN/Low = green, INFO = slate.
+import { useState } from 'react';
 import { kindOf } from '../lib/worklist.js';
 
 const TIER_STYLE = {
@@ -71,6 +72,36 @@ export function Button({ variant = 'primary', className = '', ...props }) {
     subtle: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
   };
   return <button className={`rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed ${styles[variant]} ${className}`} {...props} />;
+}
+
+// A button for a request: disabled while it runs, and a failure is shown next to it instead
+// of becoming an unhandled promise rejection.
+export function AsyncButton({ onClick, children, disabled, ...props }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onClick();
+    } catch (e) {
+      setError(e.message || 'Something went wrong');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <span className="inline-flex flex-col items-end">
+      <Button {...props} disabled={busy || disabled} onClick={run}>
+        {children}
+      </Button>
+      {error && (
+        <span role="alert" className="mt-1 max-w-56 text-right text-xs text-red-700">
+          {error}
+        </span>
+      )}
+    </span>
+  );
 }
 
 export const TREND_ICON = { up: '↑', down: '↓', flat: '→' };

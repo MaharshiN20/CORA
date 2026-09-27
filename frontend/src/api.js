@@ -31,9 +31,11 @@ export const api = {
   patient: (id) => req('GET', `/patients/${id}`),
   alerts: () => req('GET', '/alerts'),
   updateAlert: (id, patch) => req('PATCH', `/alerts/${id}`, patch),
+  applyProtocol: (alertId, by = 'Nurse') => req('POST', `/alerts/${alertId}/protocol`, { by }), // standing order (HF-02)
   startCheckin: (id) => req('POST', `/patients/${id}/checkin`),
   simulate: (id, body) => req('POST', `/patients/${id}/simulate`, body), // { text?, buttonData?, role? }
-  message: (id, text) => req('POST', `/patients/${id}/message`, { text, from: 'Nurse' }),
+  message: (id, text) => req('POST', `/patients/${id}/message`, { text, from: 'Nurse' }), // -> { delivered, translated, language }
+  template: (id, template, extra = {}) => req('POST', `/patients/${id}/message`, { template, from: 'Nurse', ...extra }), // 'ask_bp' | 'call_scheduled'
   pickedUp: (id, med) => req('POST', `/patients/${id}/prescriptions/${encodeURIComponent(med)}/picked-up`, { by: 'dashboard' }),
   join: () => req('GET', '/join'),
   // demo console
@@ -42,10 +44,12 @@ export const api = {
   demoReset: () => req('POST', '/demo/reset'),
   scenarios: () => req('GET', '/demo/scenarios'),
   runScenario: (name) => req('POST', `/demo/scenario/${encodeURIComponent(name)}`),
+  jobs: (params = {}) => req('GET', `/demo/jobs${qs(params)}`),
   // EHR import (M5)
   fhirSearch: (name) => req('GET', `/fhir/search${qs({ name })}`),
   fhirPreview: (fhirId) => req('GET', `/fhir/preview/${encodeURIComponent(fhirId)}`),
-  fhirImport: (fhirPatientId) => req('POST', '/fhir/import', { fhirPatientId }),
+  fhirImport: (fhirPatientId, { override } = {}) => req('POST', '/fhir/import', { fhirPatientId, ...(override && { override: true }) }),
+  fhirExport: (patientId) => req('GET', `/fhir/export/${encodeURIComponent(patientId)}`),
   // insights (M2)
   insight: (name, params = {}) => req('GET', `/insights/${name}${qs(params)}`),
 };

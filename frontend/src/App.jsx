@@ -15,7 +15,7 @@ import Join from './pages/Join.jsx';
 const HealthContext = createContext(null);
 export const useHealth = () => useContext(HealthContext);
 
-const LLM_NAMES = { claude: 'Claude', ollama: 'Ollama', lmstudio: 'LM Studio' };
+const LLM_NAMES = { claude: 'Claude', gemini: 'Gemini', ollama: 'Ollama', lmstudio: 'LM Studio' };
 export function llmLabel(llm) {
   if (!llm || llm.provider === 'none') return 'AI: rules only';
   const model = llm.provider === 'claude' || !llm.model ? '' : ` · ${llm.model.split(/[/:]/).find(Boolean)}`;
@@ -60,7 +60,8 @@ const NAV = [
 ];
 
 export default function App() {
-  const { data: health } = useLive(() => api.health().catch(() => ({ ok: false })));
+  // Polled as well as live: a backend restart shows up (and recovers) without a reload.
+  const { data: health } = useLive(() => api.health().catch(() => ({ ok: false, offline: true })), [], { pollMs: 10000 });
   const [projector, setProjector] = useProjector();
   const { pathname } = useLocation();
   const bare = pathname === '/join'; // full-screen QR wall for judges
@@ -90,6 +91,11 @@ export default function App() {
               </div>
             </div>
           </header>
+        )}
+        {!bare && health?.offline && (
+          <div role="alert" className="bg-red-600 px-5 py-1.5 text-center text-sm font-medium text-white">
+            Can't reach the HeartBridge server. Retrying… (the page will catch up by itself)
+          </div>
         )}
         <main className={bare ? '' : 'mx-auto max-w-[1400px] px-5 py-5'}>
           <Routes>

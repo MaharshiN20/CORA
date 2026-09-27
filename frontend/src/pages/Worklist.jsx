@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 import { api } from '../api.js';
 import { useLive, useNow } from '../hooks.js';
 import { useHealth } from '../App.jsx';
-import { sortWorklist, filterWorklist, KINDS, TIER_RANK } from '../lib/worklist.js';
+import { sortWorklist, filterWorklist, messageOutcome, KINDS, TIER_RANK } from '../lib/worklist.js';
 import { languageName } from '../lib/format.js';
 import AlertCard from '../components/AlertCard.jsx';
 import ImportDialog from '../components/ImportDialog.jsx';
@@ -118,13 +118,12 @@ function MessageBox({ patients }) {
   const send = async (e) => {
     e.preventDefault();
     if (!patientId || !text.trim()) return;
-    setStatus('sending');
+    setStatus({ kind: 'sending' });
     try {
-      await api.message(patientId, text.trim());
+      setStatus({ kind: 'done', ...messageOutcome(await api.message(patientId, text.trim())) });
       setText('');
-      setStatus('sent');
     } catch (err) {
-      setStatus(err.status === 404 ? 'Messaging is not available on this backend yet.' : err.message);
+      setStatus({ kind: 'error', text: err.status === 404 ? 'Messaging is not available on this backend yet.' : err.message });
     }
   };
   return (
@@ -140,8 +139,8 @@ function MessageBox({ patients }) {
         </select>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder="Written in English, sent in the patient's language" className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
         <div className="flex items-center gap-2">
-          <Button disabled={!patientId || !text.trim() || status === 'sending'}>Send</Button>
-          {status && status !== 'sending' && <span className={`text-xs ${status === 'sent' ? 'text-emerald-700' : 'text-red-700'}`}>{status === 'sent' ? 'Sent ✓' : status}</span>}
+          <Button disabled={!patientId || !text.trim() || status?.kind === 'sending'}>Send</Button>
+          {status && status.kind !== 'sending' && <span className={`text-xs ${status.tone === 'ok' ? 'text-emerald-700' : status.tone === 'warn' ? 'text-amber-700' : 'text-red-700'}`}>{status.text}</span>}
         </div>
       </form>
     </Card>

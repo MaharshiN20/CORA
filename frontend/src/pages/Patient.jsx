@@ -3,9 +3,11 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { api } from '../api.js';
-import { useLive } from '../hooks.js';
+import { useLive, useNow } from '../hooks.js';
+import { useHealth } from '../App.jsx';
+import { formatDuration } from '../lib/worklist.js';
 import { languageName, shortDate, timeOf, pct } from '../lib/format.js';
-import { Card, Empty, TierBadge, Button, KindBadge, TREND_ICON } from '../components/ui.jsx';
+import { Card, Empty, TierBadge, Button, AsyncButton, KindBadge, TREND_ICON } from '../components/ui.jsx';
 import PhoneSimulator from '../components/PhoneSimulator.jsx';
 
 const DAY = 86400000;
@@ -21,7 +23,7 @@ export default function Patient() {
   return (
     <div className="space-y-4">
       <Header p={p} />
-      <div className="grid gap-4 xl:grid-cols-[1fr_26rem]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
         <div className="min-w-0 space-y-4">
           <RiskCard p={p} />
           <WeightChart p={p} />
@@ -37,11 +39,32 @@ export default function Patient() {
           </div>
         </div>
         <div className="space-y-4">
-          <Card title="Conversation" action={<Button variant="ghost" onClick={() => api.startCheckin(p.id)}>▶ Start check-in</Button>}>
+          <Card title="Conversation" action={<AsyncButton variant="ghost" onClick={() => api.startCheckin(p.id)}>▶ Start check-in</AsyncButton>}>
             <PhoneSimulator patient={p} messages={p.messages ?? []} role={role} onRoleChange={setRole} />
           </Card>
         </div>
       </div>
+    </div>
+  );
+}
+
+// The non-response ladder, made visible: "No reply yet. Priya will be asked to check in in
+// 01:59:32". Counts down on the demo clock, so "+6h" on the Demo page visibly fires it.
+const RUNG_LABEL = {
+  1: (p) => `Reminder to ${p.name.split(' ')[0]}`,
+  2: (p) => (p.caregiver?.name ? `${p.caregiver.name.split(' ')[0]} (${p.caregiver.relation ?? 'caregiver'}) asked to check in` : 'Caregiver asked to check in'),
+  3: () => 'Nurse task: unreachable',
+};
+function SilentAlarm({ p }) {
+  const health = useHealth();
+  const now = useNow(1000, health?.demoOffsetMs ?? 0);
+  const { data: jobs } = useLive(() => api.jobs({ patientId: p.id, kind: 'outreach_step', status: 'pending' }).catch(() => []), [p.id]);
+  const next = (jobs ?? []).find((j) => Date.parse(j.dueAt) > now - 60_000);
+  if (!next) return null;
+  const label = RUNG_LABEL[next.payload?.rung]?.(p) ?? 'Next outreach step';
+  return (
+    <div className="w-full rounded-lg bg-amber-50 px-3 py-1.5 text-sm text-amber-900" role="status">
+      📵 No reply to today's check-in yet · <b>{label}</b> in <span className="font-mono tabular-nums">{formatDuration(Math.max(0, Date.parse(next.dueAt) - now))}</span>
     </div>
   );
 }
@@ -57,6 +80,7 @@ function Header({ p }) {
         </h2>
         <div className="text-sm text-slate-500">
           {p.age != null ? `${p.age}y` : 'age unknown'} · {languageName(p.language)} · day {s.daysSinceDischarge ?? '—'} since discharge ({shortDate(p.dischargedAt)}) · dry weight {p.dryWeightLb ?? '—'} lb
+          {p.contactPhone && <> · 📞 {p.contactPhone}</>}
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -79,6 +103,7 @@ function Header({ p }) {
           <div className="text-slate-400">none</div>
         )}
       </div>
+      <SilentAlarm p={p} />
     </div>
   );
 }
@@ -135,7 +160,7 @@ function WeightChart({ p }) {
   );
 }
 
-const ANSWER_LABELS = { weightLb: (v) => `${v} lb`, breath: (v) => `breath: ${v}`, orthopnea: (v) => (v ? 'extra pillows' : null), swelling: (v) => `swelling: ${v}`, chestPain: (v) => (v ? 'chest pain' : null), dizzy: (v) => (v ? 'dizzy' : null), confusion: (v) => (v ? 'confused' : null), fainting: (v) => (v ? 'fainted' : null), diureticTaken: (v) => (v ? 'took water pill' : 'missed water pill'), spo2: (v) => `SpO₂ ${v}%` };
+const ANSWER_LABELS = { weightLb: (v) => `${v} lb`, breath: (v) => `breath: ${v}`, orthopnea: (v) => (v ? 'extra pillows' : null), pnd: (v) => (v ? 'woke up breathless' : null), swelling: (v) => `swelling: ${v}`, chestPain: (v) => (v ? 'chest pain' : null), dizzy: (v) => (v ? 'dizzy' : null), confusion: (v) => (v ? 'confused' : null), fainting: (v) => (v ? 'fainted' : null), diureticTaken: (v) => (v ? 'took water pill' : 'missed water pill'), spo2: (v) => `SpO₂ ${v}%` };
 const summarize = (a = {}) => Object.entries(ANSWER_LABELS).map(([k, f]) => (a[k] != null ? f(a[k]) : null)).filter(Boolean);
 
 function CheckinTimeline({ p }) {
@@ -236,7 +261,9 @@ export function adherenceGrid(doses = [], meds = [], endMs, days = 14) {
 const CELL = { taken: 'bg-emerald-500', missed: 'bg-red-500', unanswered: 'bg-slate-300', none: 'bg-slate-100' };
 
 function AdherenceHeatmap({ p }) {
-  const end = p.signals?.lastCheckinAt ? Math.max(Date.now(), Date.parse(p.signals.lastCheckinAt)) : Date.now();
+  const health = useHealth();
+  const today = Date.now() + (health?.demoOffsetMs ?? 0); // demo clock, like the rest of the app
+  const end = p.signals?.lastCheckinAt ? Math.max(today, Date.parse(p.signals.lastCheckinAt)) : today;
   const grid = adherenceGrid(p.doses, p.meds, end);
   const rate = p.signals?.adherence7d;
   return (
@@ -289,9 +316,11 @@ function Prescriptions({ p }) {
               ) : (
                 <>
                   <span className="font-semibold text-red-700">⚠ not picked up</span>
-                  <Button variant="subtle" className="ml-auto !px-2 !py-0.5 text-xs" onClick={() => api.pickedUp(p.id, rx.med)}>
-                    Mark picked up
-                  </Button>
+                  <span className="ml-auto">
+                    <AsyncButton variant="subtle" className="!px-2 !py-0.5 text-xs" onClick={() => api.pickedUp(p.id, rx.med)}>
+                      Mark picked up
+                    </AsyncButton>
+                  </span>
                 </>
               )}
               {rx.barrier && <span className="w-full text-xs text-amber-800">Barrier: {rx.barrier}</span>}
