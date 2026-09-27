@@ -7,6 +7,7 @@ import { handleInbound, startCheckin } from '../core/agent.js';
 import { createPatient, languages } from '../core/enroll.js';
 import { getSignals } from '../core/signals.js';
 import { adherence } from '../core/meds.js';
+import { markPickedUp } from '../core/pharmacy.js';
 import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
 
@@ -66,6 +67,17 @@ api.patch('/alerts/:id', (req, res) => {
   if (!a) return res.status(404).json({ error: 'not found' });
   store.audit('nurse_action', a.patientId, { alertId: a.id, ...patch });
   res.json(a);
+});
+
+// ---- pharmacy ----
+
+// POST /api/patients/:id/prescriptions/:med/picked-up { by? } -> updated prescription
+// Stand-in for a pharmacy fill feed; also the dashboard's "mark picked up" button.
+api.post('/patients/:id/prescriptions/:med/picked-up', (req, res) => {
+  if (!store.getPatient(req.params.id)) return res.status(404).json({ error: 'patient not found' });
+  const rx = markPickedUp(req.params.id, req.params.med, { by: req.body?.by ?? 'dashboard' });
+  if (!rx) return res.status(404).json({ error: 'prescription not found' });
+  res.json(rx);
 });
 
 // ---- device readings (virtual scale / pulse-ox, later Withings) ----

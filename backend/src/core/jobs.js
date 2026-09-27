@@ -17,6 +17,7 @@ import { scoreRisk } from './risk.js';
 import { occurrences, isMonitored, allPlanners } from './planning.js';
 // Feature modules register their job kinds + planners on import.
 import './meds.js';
+import './pharmacy.js';
 
 const HORIZON_MS = 48 * clock.HOUR;
 const TICK_MS = 30_000;

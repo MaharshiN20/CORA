@@ -64,6 +64,16 @@ const STRINGS = {
     med_logged_missed: 'Got it, {med} not taken today.',
     med_missed_other: "If you remember soon, take it now. If it's almost time for the next dose, skip it. Don't double up. Ask your pharmacist or nurse if you're unsure.",
     med_already: 'Already logged 👍',
+    // --- refills (core/pharmacy.js) ---
+    rx_nudge: "💊 Our records show your {med} prescription hasn't been picked up yet. It's important for your heart. Is something getting in the way?",
+    rx_picked: '✅ I picked it up',
+    rx_ride: '🚗 I need a ride',
+    rx_cost: '💲 It costs too much',
+    rx_other: '❓ Something else',
+    rx_thanks: 'Wonderful, thank you! ✅ Take your {med} as prescribed.',
+    rx_help_ride: "Thanks for telling me. 🚗 Most pharmacies can deliver or mail your {med}, often for free. Call the number on your prescription label and ask for delivery. I've also let your care team know so they can help.",
+    rx_help_cost: "Thanks for telling me. 💲 There are ways to lower the price of {med}: ask your pharmacist for a generic or a discount program, and Medicare 'Extra Help' may cover it. I've asked your care team to help you with this.",
+    rx_help_other: "Thanks for letting me know. A nurse from your care team will reach out to help you get your {med}.",
   },
   es: {
     greeting: '¡Buenos días {name}! 💙 Es hora de su chequeo diario del corazón. Toma como un minuto.',
@@ -124,6 +134,15 @@ const STRINGS = {
     med_logged_missed: 'Entendido, hoy no tomó {med}.',
     med_missed_other: 'Si se acuerda pronto, tómela ahora. Si ya casi es hora de la siguiente dosis, sáltela. No doble la dosis. Pregunte a su farmacéutico o enfermera si tiene dudas.',
     med_already: 'Ya está anotado 👍',
+    rx_nudge: '💊 Nuestros registros muestran que aún no ha recogido su receta de {med}. Es importante para su corazón. ¿Hay algo que se lo impide?',
+    rx_picked: '✅ Ya la recogí',
+    rx_ride: '🚗 Necesito transporte',
+    rx_cost: '💲 Cuesta demasiado',
+    rx_other: '❓ Otra cosa',
+    rx_thanks: '¡Excelente, gracias! ✅ Tome su {med} como se lo recetaron.',
+    rx_help_ride: 'Gracias por decírmelo. 🚗 La mayoría de las farmacias pueden entregar o enviar su {med} por correo, muchas veces gratis. Llame al número de la etiqueta de su receta y pida entrega a domicilio. También avisé a su equipo médico para que le ayuden.',
+    rx_help_cost: "Gracias por decírmelo. 💲 Hay maneras de bajar el precio de {med}: pida a su farmacéutico un genérico o un programa de descuento, y la 'Ayuda Adicional' de Medicare puede cubrirlo. Le pedí a su equipo médico que le ayude con esto.",
+    rx_help_other: 'Gracias por avisarme. Una enfermera de su equipo médico se comunicará para ayudarle a conseguir su {med}.',
   },
 };
 

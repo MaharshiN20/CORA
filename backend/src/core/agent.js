@@ -22,6 +22,7 @@
 import * as store from '../store.js';
 import * as checkin from './checkin.js';
 import * as meds from './meds.js';
+import * as pharmacy from './pharmacy.js';
 import { t, localize, toEnglish, hasNative } from './i18n.js';
 
 const START_WORDS = /^\/?(check-?in|start|chequeo|empezar|hola|hi|hello)\b/i;
@@ -47,6 +48,8 @@ export async function handleInbound({ patientId, role = 'patient', channel, text
   } else if (buttonData?.startsWith('med:')) {
     // Medication confirmations work any time, even in the middle of a check-in.
     replies = meds.handleButton(patient, buttonData);
+  } else if (buttonData?.startsWith('rx:')) {
+    replies = pharmacy.handleButton(patient, buttonData);
   } else if (buttonData === 'cmd:checkin') {
     replies = checkin.start(patient);
   } else if (checkin.isActive(patient)) {

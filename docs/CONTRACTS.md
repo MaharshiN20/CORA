@@ -26,7 +26,7 @@ Button = { label, data }                     // data ≤ 64 bytes, returned as b
 - Render `text` and `buttons` (rows). **Ignore `textEn`**; it's the English copy for the dashboard.
 - `urgent: true` → emergency styling (bold, 🚨, pinned if possible).
 - `voice: true` → also send a TTS voice note of `text` (the patient enabled voice mode).
-- Button data prefixes the core emits: `ci:*` (check-in), `cmd:checkin`, `med:*` (medication confirmations, work any time), and later `rx:*`, `sdoh:*`, `lesson:*`, `lang:*`. Pass every one through untouched.
+- Button data prefixes the core emits: `ci:*` (check-in), `cmd:checkin`, `med:*` (medication confirmations, work any time), `rx:*` (refill barriers), and later `sdoh:*`, `lesson:*`, `lang:*`. Pass every one through untouched.
 - Caregiver messages: call `handleInbound({ role: 'caregiver', patientId })` with the *patient's* id (proxy check-in, coming: P1-7).
 
 ### Outbound: `channels/index.js` (Krish owns the implementation, core calls it)
@@ -97,11 +97,11 @@ The patient object (from `GET /api/patients/:id`, which also adds `signals`, `ad
   doses: [{ id, ts, med, dose, diuretic, taken: true|false|null, source: 'reminder'|'checkin', reminderId?, respondedAt?, confirmedBy? }],
                                          // taken=null = unanswered reminder (never counted as missed)
   meds: [{ name, dose, times, diuretic? }],
-  prescriptions: [{ med, expectedPickup, pickedUpAt, barrier? /* coming: P1-4 */ }],
+  prescriptions: [{ med, expectedPickup, pickedUpAt, barrier?: 'transport'|'cost'|'other', barrierAt?, nudges?: [iso], escalatedAt? }],
   checkin: { state, answers }, checkins: [{ ts, answers, tier, flags, weight }],
   caregiver: { name, relation, language, chatId },
   dischargeInstructions,                 // coming: P2-8
-  sdoh?: { flags: string[], answers },   // coming: P2-10
+  sdoh?: { flags: string[], answers },   // flags so far: 'transportation', 'medication_cost' (from refill barriers); full screen P2-10
   lessons?: { score, completed: [] },    // coming: P2-9
   source: 'seed' | 'demo' | 'fhir' | 'manual',
 }
@@ -110,7 +110,7 @@ Other collections:
 | Collection | Shape |
 |---|---|
 | `messages` | `{ id, ts, patientId, direction: 'in'\|'out', from?, to: 'patient'\|'caregiver'\|'nurse', text, textEn?, buttons?, channel? }` |
-| `alerts` (nurse worklist) | `{ id, ts, patientId, kind, tier: 'RED'\|'YELLOW'\|'INFO', title, reasons[], status, dueBy, assignee, outcome, note?, history: [{ ts, status, by }], source?, priority? }` |
+| `alerts` (nurse worklist) | `{ id, ts, patientId, kind, tier: 'RED'\|'YELLOW'\|'INFO', title, reasons[], status, dueBy, assignee, outcome, note?, history: [{ ts, status, by }], source?, priority?, med?, barrier? }`. Refill tasks carry `med` + `barrier` (`transport\|cost\|other\|no_response`) |
 | `audit` | `{ id, ts, type, patientId, data }`. Types include `triage`, `escalation`, `nurse_action`, `enroll`, `device_reading`, `photo_received`, later `outreach`, `refill_nudge`, `llm_parse` |
 | `readings` | `{ id, ts, patientId, type: 'weight'\|'spo2'\|'hr', value, source: 'self'\|'device'\|'caregiver', device? }` |
 | custom | `store.collection('<name>')` for lane-owned data (e.g. Maharshi's `cohort`). Call `store.persist()` after mutating |
@@ -135,6 +135,7 @@ Other collections:
 | `POST /api/patients/:id/checkin` | P | start a check-in (sends via channel) |
 | `POST /api/patients/:id/simulate` | P | `{ text?, buttonData?, role?, photo? }` → `Reply[]` (dashboard phone simulator) |
 | `POST /api/patients/:id/message` | P | coming: P1-6. Nurse → patient `{ text }` |
+| `POST /api/patients/:id/prescriptions/:med/picked-up` | P | `{ by? }` → updated prescription; resolves open refill tasks (pharmacy-feed stand-in / dashboard button) |
 | `GET /api/alerts` | P | worklist, newest first |
 | `PATCH /api/alerts/:id` | P | `{ status?, outcome?, assignee?, note?, by? }` |
 | `POST /api/devices/readings` | P | `{ patientId, type, value, device?, ts? }` → 201 (triage on readings, coming: P3-14) |
