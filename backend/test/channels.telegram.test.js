@@ -126,6 +126,22 @@ test('a failed edit (message too old) does not break the tap', async () => {
   assert.equal(h.lastSent(calls).text, i18n.t('es', 'ask_redflags'));
 });
 
+test('a stale tap (Telegram rejects the callback answer) still counts as the answer', async () => {
+  const { bot, calls } = h.makeBot({
+    results: {
+      answerCallbackQuery: () => {
+        throw new Error('Bad Request: query is too old and response timeout expired or query ID is invalid');
+      },
+    },
+  });
+  await bot.handleUpdate(h.textUpdate(MARIA_CHAT, '/start GARCIA1'));
+  await bot.handleUpdate(h.textUpdate(MARIA_CHAT, '/checkin'));
+  await bot.handleUpdate(h.tapUpdate(MARIA_CHAT, 'ci:rf:none', h.messageWithButton(calls, 'ci:rf:none')));
+  assert.equal(store.getPatient('p1').checkin.answers.redflagsAsked, true);
+  assert.ok(calls.some((c) => c.method === 'editMessageText'), 'the tapped message is still locked');
+  assert.equal(h.lastSent(calls).text, i18n.t('es', 'ask_weight'));
+});
+
 test('caregiver text and taps reach handleInbound as role caregiver with the patient id', async () => {
   const { bot, calls } = h.makeBot();
   await bot.handleUpdate(h.textUpdate(SOFIA_CHAT, '/start CG_GARCIA1'));

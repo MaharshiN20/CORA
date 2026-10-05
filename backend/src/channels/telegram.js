@@ -406,7 +406,9 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
 
   // --- Inline button taps ---
   dm.on('callback_query:data', async (ctx) => {
-    await ctx.answerCallbackQuery();
+    // A tap can outlive its query (bot restarted, a slow reply before it): Telegram then
+    // rejects the answer, but the patient's choice still has to count.
+    await ctx.answerCallbackQuery().catch(() => {});
     const link = store.findByChatId(ctx.chat.id);
     if (!link) return;
     await lockTappedMessage(ctx);
