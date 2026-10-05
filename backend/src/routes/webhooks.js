@@ -13,7 +13,7 @@ import { handleInbound, startCheckin } from '../core/agent.js';
 import { enrollDemoPatient, isSupportedLanguage } from '../core/enroll.js';
 import { t, localize } from '../core/i18n.js';
 import * as twilio from '../channels/twilio.js';
-import { renderNumbered, remember, resolve, normalizePhone } from '../channels/options.js';
+import { remember, resolve, normalizePhone } from '../channels/options.js';
 import { transcribe } from '../integrations/speech.js';
 
 export const webhooks = Router();
@@ -150,10 +150,11 @@ async function deliver(channel, phone, replies, language) {
       }
     }
   }
-  const rest = replies.slice(i).map((r) => renderNumbered(r));
+  // Rendered like the REST path (urgent styling, numbered options, length cap).
+  const rest = replies.slice(i).map((r) => twilio.bodyFor(channel, r));
   const menu = rest.findLast((r) => r.options.length);
   if (menu) remember(phone, menu.options);
-  return rest.map((r) => r.body);
+  return rest.map((r) => r.text);
 }
 
 function handler(channel) {

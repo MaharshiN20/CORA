@@ -16,7 +16,8 @@ const hasCreds = () => Boolean(creds().sid && creds().token);
 const whatsappAddr = (n) => `whatsapp:${normalizePhone(n)}`;
 
 // SMS has no formatting; WhatsApp renders *bold*. Both get the 🚨 so it stands out on a lock screen.
-function bodyFor(channel, reply) {
+// Exported for the webhook's TwiML replies, so both ways of answering render the same.
+export function bodyFor(channel, reply) {
   const { body, options } = renderNumbered(reply);
   let text = body;
   if (reply.urgent) {

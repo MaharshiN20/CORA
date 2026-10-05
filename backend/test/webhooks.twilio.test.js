@@ -182,6 +182,17 @@ test('if the REST API fails, the remaining replies come back as TwiML instead', 
   assert.ok(texts.length >= 2, 'greeting + question');
 });
 
+test('an urgent reply keeps its emergency styling when it rides back in TwiML', async () => {
+  await sms('JOIN GARCIA1');
+  const viaSms = await sms('tengo dolor de pecho');
+  assert.deepEqual(messagesIn(viaSms.body).map(unescape), [i18n.t('es', 'red_interrupt')], 'SMS: 🚨, no markup');
+
+  store.reset();
+  await post('whatsapp', { From: `whatsapp:${PHONE}`, Body: 'JOIN GARCIA1' });
+  const viaWhatsapp = await post('whatsapp', { From: `whatsapp:${PHONE}`, Body: 'tengo dolor de pecho' });
+  assert.deepEqual(messagesIn(viaWhatsapp.body).map(unescape), [`*${i18n.t('es', 'red_interrupt')}*`], 'WhatsApp: bold, like the REST path');
+});
+
 // ---------- media ----------
 test('an MMS / WhatsApp image is downloaded with Twilio auth and handed to the core as a photo', async () => {
   await sms('JOIN GARCIA1');
