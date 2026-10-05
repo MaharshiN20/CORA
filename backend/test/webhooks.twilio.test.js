@@ -111,13 +111,16 @@ test('re-JOINing moves the phone: one phone = one person', async () => {
 test('JOIN with an unknown code does not link', async () => {
   await sms('JOIN GARCIA1');
   const res = await sms('JOIN NOPE');
-  assert.deepEqual(messagesIn(res.body).map(unescape), [i18n.t('en', 'unknown_code')]);
+  assert.deepEqual(messagesIn(res.body).map(unescape), [i18n.t('en', 'unknown_code_sms')]);
   assert.equal(store.getPatient('p1').phone, PHONE, 'existing link kept');
 });
 
 test('an unlinked phone is asked for a code and nothing reaches the core', async () => {
   const res = await sms('hola');
-  assert.deepEqual(messagesIn(res.body).map(unescape), [i18n.t('en', 'unknown_code')]);
+  const [text] = messagesIn(res.body).map(unescape);
+  assert.equal(text, i18n.t('en', 'unknown_code_sms'));
+  assert.match(text, /JOIN/);
+  assert.doesNotMatch(text, /\/start/, 'no Telegram-only instructions over SMS');
   assert.ok(store.listMessages('p1').every((m) => m.direction !== 'in'));
 });
 

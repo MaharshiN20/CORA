@@ -169,11 +169,11 @@ function handler(channel) {
       if (joinMatch) {
         const joined = await join(joinMatch[1], phone, channel);
         if (joined) ({ link, replies } = joined);
-        else replies = [{ text: t('en', 'unknown_code') }];
+        else replies = [{ text: t('en', 'unknown_code_sms') }];
         if (link) for (const r of replies) store.addMessage({ patientId: link.patient.id, direction: 'out', to: link.role, text: r.text, textEn: r.textEn, buttons: r.buttons, channel });
       } else {
         link = findByPhone(phone);
-        replies = link ? await inbound(link, phone, channel, body) : [{ text: t('en', 'unknown_code') }];
+        replies = link ? await inbound(link, phone, channel, body) : [{ text: t('en', 'unknown_code_sms') }];
       }
       const leftover = await deliver(channel, phone, replies, link ? langOf(link) : 'en');
       res.type('text/xml').send(twiml(leftover));
