@@ -175,6 +175,13 @@ function unlinkChat(chatId) {
   }
 }
 
+// The latest link wins: linking here also moves proactive messages (check-ins, reminders)
+// to Telegram, the same way JOIN over SMS does in routes/webhooks.js. The phone stays as a fallback.
+function preferTelegram({ role, patient }) {
+  if (role === 'caregiver') store.updatePatient(patient.id, { caregiver: { ...patient.caregiver, channel: 'telegram' } });
+  else store.updatePatient(patient.id, { channel: 'telegram' });
+}
+
 // The /language picker. Two per row keeps native names readable on a phone.
 function languageButtons() {
   const buttons = languages().map((l) => ({ label: l.nativeName, data: `lang:${l.code}` }));
@@ -295,6 +302,7 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
     if (!store.getPatientByCode(code.replace(/^CG_/i, ''))) return ctx.reply(t(guessLang(ctx), 'unknown_code'));
     unlinkChat(ctx.chat.id); // one chat = one person; re-linking moves it
     const link = store.linkChat(code, ctx.chat.id);
+    preferTelegram(link);
     store.audit('channel_link', link.patient.id, { channel: 'telegram', role: link.role });
     await welcome(ctx, link);
   });

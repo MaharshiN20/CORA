@@ -66,6 +66,20 @@ test('/start CG_ code links the caregiver, welcomed in the caregiver language', 
   assert.equal(h.lastSent(calls).text, i18n.t('en', 'welcome_caregiver', { name: 'Maria' }));
 });
 
+test('linking on Telegram makes it the preferred channel; an SMS-linked phone stays as the fallback', async () => {
+  const p = store.getPatient('p1');
+  store.updatePatient('p1', { phone: '+14045550100', channel: 'sms', caregiver: { ...p.caregiver, phone: '+14045550101', channel: 'whatsapp' } });
+  const { bot } = h.makeBot();
+  await bot.handleUpdate(h.textUpdate(MARIA_CHAT, '/start GARCIA1'));
+  assert.equal(store.getPatient('p1').channel, 'telegram');
+  assert.equal(store.getPatient('p1').phone, '+14045550100');
+  assert.equal(store.getPatient('p1').caregiver.channel, 'whatsapp', "the caregiver's own preference is untouched");
+
+  await bot.handleUpdate(h.textUpdate(SOFIA_CHAT, '/start CG_GARCIA1'));
+  assert.equal(store.getPatient('p1').caregiver.channel, 'telegram');
+  assert.equal(store.getPatient('p1').caregiver.phone, '+14045550101');
+});
+
 // ---------- text + buttons ----------
 test('unlinked text asks for a code instead of reaching the core', async () => {
   const { bot, calls } = h.makeBot();
