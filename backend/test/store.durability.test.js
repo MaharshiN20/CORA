@@ -48,7 +48,7 @@ test('flush writes atomically (no .tmp left), keeps a .bak of the previous file'
   store.flush();
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).patients[0].name, 'After');
   assert.equal(JSON.parse(fs.readFileSync(`${file}.bak`, 'utf8')).patients[0].name, 'Before');
-  assert.equal(fs.existsSync(`${file}.tmp`), false);
+  assert.deepEqual(fs.readdirSync(path.dirname(file)).filter((f) => f.endsWith('.tmp')), [], 'no temp file left behind');
 });
 
 test('mutations are debounced: many writes become one file write', async () => {
@@ -59,4 +59,25 @@ test('mutations are debounced: many writes become one file write', async () => {
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).patients[0].name, 'x', 'not written yet');
   store.flush();
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).patients[0].name, 'n19');
+});
+
+test('resolveDbFile: HEARTBRIDGE_DB wins; under node --test the default is a temp file, never the real data/db.json', async () => {
+  const { resolveDbFile } = await openStore(tmpDb());
+  assert.equal(resolveDbFile({ HEARTBRIDGE_DB: '/x/y.json', NODE_TEST_CONTEXT: 'child' }), '/x/y.json');
+  const underTest = resolveDbFile({ NODE_TEST_CONTEXT: 'child-v8' });
+  assert.ok(underTest.startsWith(os.tmpdir()), underTest);
+  assert.match(path.basename(underTest), /^heartbridge-test-default-\d+\.json$/);
+  const real = resolveDbFile({});
+  assert.ok(real.endsWith(path.join('data', 'db.json')), real);
+});
+
+test('this very test process is protected: with no HEARTBRIDGE_DB set, the store opens a temp file', async () => {
+  const saved = process.env.HEARTBRIDGE_DB;
+  delete process.env.HEARTBRIDGE_DB;
+  try {
+    const store = await import(`../src/store.js?protected=${process.pid}-${Date.now()}`);
+    assert.ok(store.resolveDbFile().startsWith(os.tmpdir()));
+  } finally {
+    process.env.HEARTBRIDGE_DB = saved;
+  }
 });

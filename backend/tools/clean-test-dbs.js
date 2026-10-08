@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const OURS = /^heartbridge-[\w.-]+?(\.json(\.bak|\.tmp|\.corrupt)?)?$/;
+const OURS = /^heartbridge-[\w.-]+?(\.json(\.bak|\.corrupt|(\.\d+)?\.tmp)?)?$/;
 
 // -> number of entries removed.
 export function cleanTestDbs(dir = os.tmpdir(), olderThanMs = 60 * 60 * 1000, now = Date.now()) {

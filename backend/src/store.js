@@ -3,6 +3,7 @@
 // never touch the file, so this can be swapped for SQLite later without changes.
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
 import { buildSeed } from './seed.js';
@@ -10,7 +11,16 @@ import * as clock from './core/clock.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '..', 'data');
-const DB_FILE = process.env.HEARTBRIDGE_DB || path.join(DATA_DIR, 'db.json');
+// Which file the store lives in. HEARTBRIDGE_DB wins. Under `node --test` (which sets
+// NODE_TEST_CONTEXT in every test process) the default is a private temp file instead of the real
+// data/db.json: a test that forgets to set HEARTBRIDGE_DB must never read, overwrite or race on a
+// developer's database (a dozen test processes run in parallel).
+export function resolveDbFile(env = process.env) {
+  if (env.HEARTBRIDGE_DB) return env.HEARTBRIDGE_DB;
+  if (env.NODE_TEST_CONTEXT) return path.join(os.tmpdir(), `heartbridge-test-default-${process.pid}.json`);
+  return path.join(DATA_DIR, 'db.json');
+}
+const DB_FILE = resolveDbFile();
 
 // Collections every db has. Older db.json files get missing ones added on load.
 const DEFAULT_COLLECTIONS = ['patients', 'messages', 'alerts', 'audit', 'readings', 'jobs'];
@@ -19,7 +29,7 @@ const DEFAULT_COLLECTIONS = ['patients', 'messages', 'alerts', 'audit', 'reading
 export const events = new EventEmitter();
 
 const BAK_FILE = `${DB_FILE}.bak`;
-const TMP_FILE = `${DB_FILE}.tmp`;
+const TMP_FILE = `${DB_FILE}.${process.pid}.tmp`; // per process: two processes on one file never share a temp
 const SAVE_DEBOUNCE_MS = 250; // a burst of mutations (one inbound message makes many) is one write
 const BACKUP_EVERY_MS = 30_000;
 
