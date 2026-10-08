@@ -64,6 +64,7 @@ export const api = {
   patient: (id) => req('GET', `/patients/${id}`),
   alerts: () => req('GET', '/alerts'),
   updateAlert: (id, patch) => req('PATCH', `/alerts/${id}`, patch),
+  updateAlerts: (body) => req('PATCH', '/alerts', body), // bulk: { ids, status?: 'acknowledged', assignee?, by } -> { results, updated, failed }
   applyProtocol: (alertId, by = 'Nurse') => req('POST', `/alerts/${alertId}/protocol`, { by }), // standing order (HF-02)
   startCheckin: (id) => req('POST', `/patients/${id}/checkin`),
   simulate: (id, body) => req('POST', `/patients/${id}/simulate`, body), // { text?, buttonData?, role? }

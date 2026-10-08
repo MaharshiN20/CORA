@@ -3,6 +3,7 @@
 //
 //   sendNurseMessage(patientId, { text | template: 'call_scheduled', time?, from? })
 //   notifyAck(alert, by)   // "Nurse Kim saw your update" when an alert is acknowledged
+//   notifyAckMany(alerts, by)   // the same for a bulk acknowledge: one message per patient
 import * as store from '../store.js';
 import * as clock from './clock.js';
 import * as channels from '../channels/index.js';
@@ -50,8 +51,11 @@ export async function sendNurseMessage(patientId, { text, template, time, from }
   return { delivered, translated, language: p.language, text: msg.text, textEn: msg.textEn };
 }
 
+// Does acknowledging this alert tell the patient? Once per alert, and only where they are waiting on us.
+const wantsAckNotice = (alert) => !!alert && !alert.patientNotifiedAt && alert.tier !== 'INFO' && ACK_NOTIFY_KINDS.has(alert.kind);
+
 export async function notifyAck(alert, by) {
-  if (!alert || alert.patientNotifiedAt || alert.tier === 'INFO' || !ACK_NOTIFY_KINDS.has(alert.kind)) return null;
+  if (!wantsAckNotice(alert)) return null;
   const p = store.getPatient(alert.patientId);
   if (!p) return null;
   const nurse = by?.trim() || 'Your nurse';
@@ -60,4 +64,24 @@ export async function notifyAck(alert, by) {
   store.updateAlert(alert.id, { patientNotifiedAt: clock.nowISO() });
   store.audit('nurse_ack_notice', p.id, { alertId: alert.id, nurse, delivered });
   return { delivered };
+}
+
+// Several alerts acknowledged in one go (the bulk action). A patient with three of them must not
+// get "<nurse> saw your update" three times in a row: each patient hears it once, and every alert
+// that message covers is stamped, so none of them is ever notified again. -> messages sent.
+export async function notifyAckMany(alerts, by) {
+  const byPatient = new Map();
+  for (const a of alerts) {
+    if (!wantsAckNotice(a)) continue;
+    if (!byPatient.has(a.patientId)) byPatient.set(a.patientId, []);
+    byPatient.get(a.patientId).push(a);
+  }
+  let sent = 0;
+  for (const [first, ...rest] of byPatient.values()) {
+    if (!(await notifyAck(first, by))) continue;
+    sent++;
+    const at = store.getAlert(first.id).patientNotifiedAt;
+    for (const a of rest) store.updateAlert(a.id, { patientNotifiedAt: at });
+  }
+  return sent;
 }

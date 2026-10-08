@@ -97,7 +97,7 @@
   - `evals/` only measures the language parser. Add `evals/risk-cases.jsonl` (about 40 labelled trajectories: weight creep, recliner, missed refills, stable controls, plus injection attempts) and a scorer that reports escalation precision/recall and checks the invariants that must always hold: never lowers a tier, never returns RED, unknown tiers never escalate. A deterministic `call` stub drives it offline in `npm test`; `npm run eval -- --risk` runs it against real providers.
   - **Accept:** an offline test that enforces the invariants on the whole case file; README section.
 
-- [ ] **K14. Bulk alert actions**
+- [x] **K14. Bulk alert actions**
   - Dashboard: checkboxes on cards and "Acknowledge selected" / "Assign selected to me" (INFO and YELLOW only; RED is never bulk-actioned). Backend: `PATCH /api/alerts` with `{ ids, status?, assignee?, by }`, max 50 ids, same validation and audit rows (`nurse_action`) as the single-alert PATCH, patient ack notices sent once per alert. Partial failures reported per id.
   - **Accept:** backend tests (RED refused, unknown id reported, audit rows written) and Vitest for selection + the request body.
 

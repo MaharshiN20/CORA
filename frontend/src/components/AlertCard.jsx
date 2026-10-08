@@ -7,7 +7,7 @@ import { Phone } from 'lucide-react';
 import { api } from '../api.js';
 import { useNow } from '../hooks.js';
 import { useHealth } from '../App.jsx';
-import { sla, nextAction, OUTCOMES, resolvePatch, aiOf } from '../lib/worklist.js';
+import { sla, nextAction, OUTCOMES, resolvePatch, aiOf, bulkable } from '../lib/worklist.js';
 import { readNurse, nurseBy } from '../lib/nurse.js';
 import { timeOf, languageName } from '../lib/format.js';
 import { TierBadge, KindBadge, Button } from './ui.jsx';
@@ -96,7 +96,8 @@ export function VitalsStrip({ patient, tier }) {
   );
 }
 
-function AlertCard({ alert, patient, now, update = api.updateAlert, highlight = false }) {
+// onSelect(id, checked) turns on the bulk-action checkbox. RED cards never get one.
+function AlertCard({ alert, patient, now, update = api.updateAlert, highlight = false, selected = false, onSelect }) {
   const [resolving, setResolving] = useState(false);
   const [outcome, setOutcome] = useState('');
   const [note, setNote] = useState('');
@@ -138,6 +139,15 @@ function AlertCard({ alert, patient, now, update = api.updateAlert, highlight = 
         {patient?.name ?? alert.patientId}: {alert.title ?? alert.kind}
       </p>
       <div className="flex flex-wrap items-center gap-2">
+        {onSelect && bulkable(alert) && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={(e) => onSelect(alert.id, e.target.checked)}
+            aria-label={`Select the ${alert.tier} alert for ${patient?.name ?? alert.patientId}`}
+            className="h-4 w-4 cursor-pointer accent-blue-600 projector:hidden"
+          />
+        )}
         <TierBadge tier={alert.tier} />
         <KindBadge alert={alert} />
         {patient ? (

@@ -1,12 +1,12 @@
 // Worklist: every open alert and task, most urgent first (tier -> SLA -> risk), with live
 // SLA countdowns and the Acknowledge -> Contacted -> Resolve flow. Side panel: patients.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Siren } from 'lucide-react';
 import { Link } from 'react-router';
 import { api } from '../api.js';
 import { useLive, useNow, useNurse } from '../hooks.js';
 import { useHealth } from '../App.jsx';
-import { sortWorklist, filterWorklist, messageOutcome, stabilize, silentPatients, KINDS, TIER_RANK, SORTS } from '../lib/worklist.js';
+import { sortWorklist, filterWorklist, messageOutcome, stabilize, silentPatients, bulkable, bulkBodies, bulkOutcome, KINDS, TIER_RANK, SORTS } from '../lib/worklist.js';
 import { canNotify, notifyPermission, enableNotifications, notifyRed, titleFor } from '../lib/notify.js';
 import { languageName } from '../lib/format.js';
 import AlertCard from '../components/AlertCard.jsx';
@@ -80,6 +80,35 @@ export default function Worklist() {
   }, [reds.length]);
   const filtering = kind !== 'all' || tier !== 'all' || status !== 'all' || assignee !== 'all' || q.trim() !== '';
 
+  // Bulk actions: checkboxes on the routine (YELLOW / INFO) cards. Only what is selected AND on
+  // screen is ever acted on, so a filter can't hide an alert that is about to be changed.
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulk, setBulk] = useState(null); // { busy } | { tone, text }
+  const toggle = useCallback((id, on) => {
+    setBulk(null);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  const selectable = shown.filter(bulkable);
+  const chosen = selectable.filter((a) => selected.has(a.id));
+  const runBulk = async (action) => {
+    setBulk({ busy: true });
+    try {
+      const responses = [];
+      for (const body of bulkBodies(chosen, action, me)) responses.push(await api.updateAlerts(body));
+      const { failedIds, ...outcome } = bulkOutcome(responses);
+      setBulk(outcome);
+      setSelected(new Set(failedIds));
+      reload();
+    } catch (e) {
+      setBulk({ tone: 'error', text: e.message });
+    }
+  };
+
   if (!data) return error ? <ErrorNotice what="the worklist" error={error} onRetry={reload} /> : <Empty>Loading worklist…</Empty>;
 
   return (
@@ -137,6 +166,16 @@ export default function Worklist() {
             </select>
           </div>
         </div>
+        {selectable.length > 0 && (
+          <BulkBar
+            total={selectable.length}
+            chosen={chosen}
+            me={me}
+            state={bulk}
+            onAll={(on) => (setBulk(null), setSelected(on ? new Set(selectable.map((a) => a.id)) : new Set()))}
+            onRun={runBulk}
+          />
+        )}
         {shown.length === 0 ? (
           <Card>
             <Empty>{open.length ? 'Nothing matches these filters.' : '🎉 Nothing needs attention right now.'}</Empty>
@@ -151,7 +190,7 @@ export default function Worklist() {
         ) : (
           <div className="space-y-3 projector:grid projector:grid-cols-2 projector:items-start projector:gap-3 projector:space-y-0">
             {shown.map((a) => (
-              <AlertCard key={a.id} alert={a} patient={patientsById[a.patientId]} highlight={fresh.includes(a.id)} />
+              <AlertCard key={a.id} alert={a} patient={patientsById[a.patientId]} highlight={fresh.includes(a.id)} selected={selected.has(a.id)} onSelect={toggle} />
             ))}
           </div>
         )}
@@ -180,6 +219,45 @@ export default function Worklist() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// Select-all plus the two bulk actions. RED alerts are not counted and have no checkbox: an
+// emergency is acknowledged one at a time, by someone who has read it.
+function BulkBar({ total, chosen, me, state, onAll, onRun }) {
+  const all = useRef(null);
+  const n = chosen.length;
+  useEffect(() => {
+    if (all.current) all.current.indeterminate = n > 0 && n < total;
+  }, [n, total]);
+  const busy = !!state?.busy;
+  const canAck = chosen.some((a) => a.status === 'open');
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm projector:hidden" role="group" aria-label="Bulk actions">
+      <label className="flex cursor-pointer items-center gap-2 text-slate-600">
+        <input ref={all} type="checkbox" className="h-4 w-4 accent-blue-600" checked={n > 0 && n === total} onChange={(e) => onAll(e.target.checked)} aria-label={`Select all ${total} routine alerts shown`} />
+        {n ? `${n} selected` : `Select routine alerts (${total})`}
+      </label>
+      {n > 0 && (
+        <>
+          <Button onClick={() => onRun('acknowledge')} disabled={busy || !canAck} title={canAck ? undefined : 'None of the selected alerts is still open'}>
+            Acknowledge selected
+          </Button>
+          <Button variant="ghost" onClick={() => onRun('assign')} disabled={busy || !me} title={me ? undefined : 'Set your name (top right) first'}>
+            Assign selected to me
+          </Button>
+          <Button variant="subtle" onClick={() => onAll(false)} disabled={busy}>
+            Clear
+          </Button>
+        </>
+      )}
+      {state?.text && (
+        <span role="status" className={`text-xs ${state.tone === 'ok' ? 'text-emerald-700' : state.tone === 'warn' ? 'text-amber-700' : 'text-red-700'}`}>
+          {state.text}
+        </span>
+      )}
+      <span className="ml-auto text-xs text-slate-400">RED alerts are handled one at a time</span>
     </div>
   );
 }

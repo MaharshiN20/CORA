@@ -10,7 +10,7 @@ import { scoreRisk } from '../core/risk.js';
 import { adherence } from '../core/meds.js';
 import { markPickedUp } from '../core/pharmacy.js';
 import { startLadder } from '../core/outreach.js';
-import { sendNurseMessage, notifyAck } from '../core/nurse.js';
+import { sendNurseMessage, notifyAck, notifyAckMany } from '../core/nurse.js';
 import { buildDigest, sendDigest } from '../core/digest.js';
 import { startScreen } from '../core/sdoh.js';
 import * as llm from '../core/llm/index.js';
@@ -148,6 +148,57 @@ api.patch('/alerts/:id', async (req, res) => {
   if (status === 'acknowledged') await notifyAck(a, by ?? assignee);
   if (status === 'resolved' && outcome === 'false_positive' && (a.kind ?? 'triage') === 'triage') clearFalseAlarmTier(a);
   res.json(store.getAlert(a.id));
+});
+
+// PATCH /api/alerts { ids, status?: 'acknowledged', assignee?, by? }
+//   -> { results: [{ id, ok, alert?, unchanged?, error? }], updated, failed }
+// Bulk actions for routine work (the dashboard's "Acknowledge selected" / "Assign selected to me").
+// Deliberately narrower than the single-alert PATCH above:
+//  - a RED alert is refused: an emergency is read and handled one at a time, on its own card;
+//  - only `acknowledged` can be set (contacted and resolved say something about one patient);
+//  - nothing moves backwards: an alert that is already acknowledged or contacted keeps its status.
+// One bad id never fails the rest: every id gets its own result. Each change writes the same
+// `nurse_action` audit row as the single PATCH (plus bulk: true), and a patient is told
+// "<nurse> saw your update" once, however many of their alerts were in the batch.
+const BULK_MAX = 50;
+const isName = (v) => typeof v === 'string' && v.trim() !== '' && v.length <= 80;
+api.patch('/alerts', async (req, res) => {
+  const { ids, status, assignee, by } = req.body ?? {};
+  const bad = (error) => res.status(400).json({ error });
+  if (!Array.isArray(ids) || !ids.length || ids.some((id) => typeof id !== 'string' || !id)) return bad('ids must be a non-empty array of alert ids');
+  if (ids.length > BULK_MAX) return bad(`at most ${BULK_MAX} alerts per request`);
+  if (status !== undefined && !STATUSES.includes(status)) return bad(`status must be one of ${STATUSES}`);
+  if (status !== undefined && status !== 'acknowledged') return bad('only "acknowledged" can be set in bulk; contacted and resolved are done per alert');
+  if (assignee !== undefined && !isName(assignee)) return bad('assignee must be a name of at most 80 characters');
+  if (by !== undefined && !isName(by)) return bad('by must be a name of at most 80 characters');
+  if (status === undefined && assignee === undefined) return bad('nothing to do: give status and/or assignee');
+
+  const results = [];
+  const acknowledged = [];
+  for (const id of new Set(ids)) {
+    const a = store.getAlert(id);
+    const refuse = (error) => results.push({ id, ok: false, error });
+    if (!a) refuse('not found');
+    else if (a.tier === 'RED') refuse('RED alerts are handled one at a time');
+    else if (a.status === 'resolved') refuse('already resolved');
+    else {
+      const patch = {};
+      if (status && a.status === 'open') patch.status = status;
+      if (assignee !== undefined && a.assignee !== assignee.trim()) patch.assignee = assignee.trim();
+      if (!Object.keys(patch).length) {
+        results.push({ id, ok: true, unchanged: true });
+        continue;
+      }
+      if (by !== undefined) patch.by = by.trim();
+      store.updateAlert(id, patch);
+      store.audit('nurse_action', a.patientId, { alertId: id, ...patch, bulk: true });
+      if (patch.status === 'acknowledged') acknowledged.push(a);
+      results.push({ id, ok: true });
+    }
+  }
+  await notifyAckMany(acknowledged, by ?? assignee);
+  for (const r of results) if (r.ok) r.alert = store.getAlert(r.id);
+  res.json({ results, updated: results.filter((r) => r.ok && !r.unchanged).length, failed: results.filter((r) => !r.ok).length });
 });
 
 // A nurse marked a triage alert a false alarm: the patient list shouldn't keep showing that

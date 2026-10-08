@@ -155,6 +155,48 @@ export function resolvePatch(outcome, note, by = 'nurse') {
   return { status: 'resolved', outcome, by, ...(note?.trim() && { note: note.trim() }) };
 }
 
+// ---------- bulk actions (PATCH /api/alerts) ----------
+// Routine work only. A RED is always read and handled on its own card; the API refuses it too.
+export const BULK_MAX = 50; // ids per request
+export const bulkable = (alert) => isOpen(alert) && (alert.tier === 'YELLOW' || alert.tier === 'INFO');
+
+const chunked = (ids, body) => {
+  const out = [];
+  for (let i = 0; i < ids.length; i += BULK_MAX) out.push({ ids: ids.slice(i, i + BULK_MAX), ...body });
+  return out;
+};
+
+// Request bodies for the selected alerts. `me` is the signed-in nurse ('' = nobody yet).
+//   'acknowledge': the ones still open. Like the single card, the nurse takes those nobody owns
+//                  and never takes over one that is assigned, hence two bodies when both exist.
+//   'assign':      everything selected that isn't already theirs. Needs a name.
+export function bulkBodies(alerts, action, me = '') {
+  const picked = alerts.filter(bulkable);
+  const by = me || 'nurse';
+  if (action === 'assign') {
+    if (!me) throw new Error('Set your name (top right) to assign alerts to yourself');
+    return chunked(picked.filter((a) => a.assignee !== me).map((a) => a.id), { assignee: me, by });
+  }
+  const open = picked.filter((a) => a.status === 'open');
+  if (!me) return chunked(open.map((a) => a.id), { status: 'acknowledged', by });
+  return [
+    ...chunked(open.filter((a) => !a.assignee).map((a) => a.id), { status: 'acknowledged', assignee: me, by }),
+    ...chunked(open.filter((a) => a.assignee).map((a) => a.id), { status: 'acknowledged', by }),
+  ];
+}
+
+// What a bulk action really did, from the API's per-alert results.
+// -> { tone, text, failedIds }: failedIds stay selected so the nurse can see which ones.
+export function bulkOutcome(responses) {
+  const results = responses.flatMap((r) => r?.results ?? []);
+  const updated = results.filter((r) => r.ok && !r.unchanged).length;
+  const failed = results.filter((r) => !r.ok);
+  const done = updated ? `${updated} updated` : 'Nothing needed changing';
+  if (!failed.length) return { tone: 'ok', text: done, failedIds: [] };
+  const reasons = [...new Set(failed.map((r) => r.error ?? 'failed'))].join('; ');
+  return { tone: 'warn', text: `${done} · ${failed.length} not changed (${reasons})`, failedIds: failed.map((r) => r.id) };
+}
+
 // What actually happened to a nurse message (the API says; the UI must not claim more).
 export function messageOutcome({ delivered, translated, language } = {}) {
   const notes = [];
