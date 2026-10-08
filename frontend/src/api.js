@@ -1,13 +1,42 @@
 import { io } from 'socket.io-client';
 
-export const socket = io();
+// Access token for servers that set API_TOKEN. Kept in localStorage (asked for once, on the
+// first 401); VITE_API_TOKEN pre-fills it for a single-clinic build. Open servers never ask.
+const TOKEN_KEY = 'hb_token';
+const getToken = () => {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || import.meta.env?.VITE_API_TOKEN || '';
+  } catch {
+    return import.meta.env?.VITE_API_TOKEN || '';
+  }
+};
+const setToken = (t) => {
+  try {
+    localStorage.setItem(TOKEN_KEY, t);
+  } catch {}
+  socket.auth = { token: t };
+  if (socket.disconnected) socket.connect();
+};
 
-async function req(method, path, body) {
+export const socket = io({ auth: (cb) => cb({ token: getToken() }) });
+
+let asked = false;
+async function req(method, path, body, retried = false) {
+  const token = getToken();
   const res = await fetch(`/api${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: { ...(body && { 'Content-Type': 'application/json' }), ...(token && { Authorization: `Bearer ${token}` }) },
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401 && !retried && !asked && typeof window !== 'undefined' && typeof window.prompt === 'function') {
+    asked = true;
+    const t = window.prompt('This HeartBridge server needs an access token:');
+    asked = false;
+    if (t) {
+      setToken(t.trim());
+      return req(method, path, body, true);
+    }
+  }
   if (!res.ok) {
     // Keep the JSON error body ({ error, ... }) so callers can show it or act on it.
     const body = await res.json().catch(() => null);
