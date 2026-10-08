@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router';
 import { api } from './api.js';
-import { useLive } from './hooks.js';
+import { useConnected, useLive } from './hooks.js';
 import { Pill } from './components/ui.jsx';
 import Worklist from './pages/Worklist.jsx';
 import Patient from './pages/Patient.jsx';
@@ -63,6 +63,7 @@ export default function App() {
   // Polled as well as live: a backend restart shows up (and recovers) without a reload.
   const { data: health } = useLive(() => api.health().catch(() => ({ ok: false, offline: true })), [], { pollMs: 10000 });
   const [projector, setProjector] = useProjector();
+  const connected = useConnected();
   const { pathname } = useLocation();
   const bare = pathname === '/join'; // full-screen QR wall for judges
 
@@ -93,6 +94,11 @@ export default function App() {
               </div>
             </div>
           </header>
+        )}
+        {!bare && !connected && !health?.offline && (
+          <div role="status" className="bg-amber-500 px-5 py-1.5 text-center text-sm font-medium text-amber-950">
+            Live updates are paused (connection lost). Reconnecting… new alerts may not appear until it is back.
+          </div>
         )}
         {!bare && health?.offline && (
           <div role="alert" className="bg-red-600 px-5 py-1.5 text-center text-sm font-medium text-white">

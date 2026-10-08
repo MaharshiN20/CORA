@@ -71,6 +71,21 @@ export const Stat = ({ label, value, sub, tone = 'slate' }) => (
   </div>
 );
 
+// A load failed. `stale` = we are still showing older data underneath.
+export const ErrorNotice = ({ what, error, onRetry, stale = false }) => (
+  <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+    <span>
+      {stale ? `Couldn't refresh ${what}; showing the last data we have.` : `Couldn't load ${what}.`}
+      {error?.message && <span className="ml-1 text-red-700">({error.message})</span>}
+    </span>
+    {onRetry && (
+      <button onClick={onRetry} className="ml-auto rounded-md bg-red-600 px-3 py-1 font-medium text-white hover:bg-red-700">
+        Retry
+      </button>
+    )}
+  </div>
+);
+
 export const Empty = ({ children }) => <p className="py-6 text-center text-sm text-slate-400">{children}</p>;
 
 export const Pill = ({ ok, label }) => (

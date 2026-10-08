@@ -8,12 +8,31 @@ import { socket } from './api.js';
 //   pollMs: also reload on a timer (health: so a backend restart is noticed without a click).
 // Refetches are coalesced (a burst of changes -> one reload), and every hook reloads when the
 // socket reconnects, so the dashboard recovers by itself after a backend blip.
+//
+// Only the newest request may update the screen (a slow older response used to overwrite fresher
+// data), and a failed refresh keeps showing the last good data with `error` set, so the page can
+// say "couldn't refresh" instead of going blank.
 export function useLive(loader, deps = [], { live = true, pollMs } = {}) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const timer = useRef(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const load = useCallback(() => loader().then((d) => (setData(d), setError(null))).catch(setError), deps);
+  const latest = useRef(0);
+  const load = useCallback(
+    () => {
+      const mine = ++latest.current;
+      return loader()
+        .then((d) => {
+          if (mine !== latest.current) return;
+          setData(d);
+          setError(null);
+        })
+        .catch((e) => {
+          if (mine === latest.current) setError(e);
+        });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    deps,
+  );
 
   useEffect(() => {
     load();
@@ -33,6 +52,25 @@ export function useLive(loader, deps = [], { live = true, pollMs } = {}) {
   }, [load, live, pollMs]);
 
   return { data, error, reload: load };
+}
+
+// Is the live feed connected? True until the socket drops (or fails to connect): the dashboard
+// shows a banner then, since nothing refreshes on its own while it is down.
+export function useConnected() {
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    const up = () => setOn(true);
+    const down = () => setOn(false);
+    socket.on('connect', up);
+    socket.on('disconnect', down);
+    socket.on('connect_error', down);
+    return () => {
+      socket.off('connect', up);
+      socket.off('disconnect', down);
+      socket.off('connect_error', down);
+    };
+  }, []);
+  return on;
 }
 
 // A clock that ticks every `ms` (for SLA countdowns). Accepts an offset so countdowns

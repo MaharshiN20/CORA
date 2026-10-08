@@ -1,10 +1,12 @@
 // One worklist item: tier + kind, reasons, live SLA countdown, and the nurse flow
 // Acknowledge -> Mark contacted -> Resolve (with an outcome picker).
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Link } from 'react-router';
 import { LineChart, Line, ReferenceLine, YAxis } from 'recharts';
 import { Phone } from 'lucide-react';
 import { api } from '../api.js';
+import { useNow } from '../hooks.js';
+import { useHealth } from '../App.jsx';
 import { sla, nextAction, OUTCOMES, resolvePatch, aiOf } from '../lib/worklist.js';
 import { timeOf, languageName } from '../lib/format.js';
 import { TierBadge, KindBadge, Button } from './ui.jsx';
@@ -25,8 +27,11 @@ function slaTone(tier, s) {
   return 'bg-slate-100 text-slate-600';
 }
 
+// Ticks by itself (on the demo clock), so the page doesn't re-render every card each second.
+// `now` is only for tests / callers that want to pin the time.
 export function SlaCountdown({ alert, now }) {
-  const s = sla(alert, now);
+  const own = useNow(now == null ? 1000 : 3_600_000, useHealth()?.demoOffsetMs ?? 0);
+  const s = sla(alert, now ?? own);
   if (!s) return null;
   return (
     <span data-testid="sla" className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${slaTone(alert.tier, s)}`}>
@@ -90,7 +95,7 @@ export function VitalsStrip({ patient, tier }) {
   );
 }
 
-export default function AlertCard({ alert, patient, now, update = api.updateAlert, highlight = false }) {
+function AlertCard({ alert, patient, now, update = api.updateAlert, highlight = false }) {
   const [resolving, setResolving] = useState(false);
   const [outcome, setOutcome] = useState('');
   const [note, setNote] = useState('');
@@ -121,7 +126,10 @@ export default function AlertCard({ alert, patient, now, update = api.updateAler
   };
 
   return (
-    <article id={`alert-${alert.id}`} className={`rounded-xl border border-l-[6px] p-4 shadow-sm transition-shadow ${CARD[alert.tier] ?? CARD.INFO} ${highlight ? 'ring-4 ring-blue-400' : ''}`} aria-label={`${alert.tier} alert`}>
+    <article id={`alert-${alert.id}`} className={`rounded-xl border border-l-[6px] p-4 shadow-sm transition-shadow ${CARD[alert.tier] ?? CARD.INFO} ${highlight ? 'ring-4 ring-blue-400' : ''}`} aria-label={`${alert.tier} alert for ${patient?.name ?? alert.patientId}`}>
+      <p id={`alert-${alert.id}-about`} className="sr-only">
+        {patient?.name ?? alert.patientId}: {alert.title ?? alert.kind}
+      </p>
       <div className="flex flex-wrap items-center gap-2">
         <TierBadge tier={alert.tier} />
         <KindBadge alert={alert} />
@@ -159,12 +167,12 @@ export default function AlertCard({ alert, patient, now, update = api.updateAler
         {alert.assignee && <span>· {alert.assignee}</span>}
         <span className="ml-auto flex gap-2">
           {next && !resolving && (
-            <Button onClick={advance} disabled={busy}>
+            <Button onClick={advance} disabled={busy} aria-describedby={`alert-${alert.id}-about`}>
               {next.label}
             </Button>
           )}
           {alert.status !== 'contacted' && alert.status !== 'resolved' && !resolving && (
-            <Button variant="subtle" onClick={() => setResolving(true)} disabled={busy}>
+            <Button variant="subtle" onClick={() => setResolving(true)} disabled={busy} aria-describedby={`alert-${alert.id}-about`}>
               Resolve…
             </Button>
           )}
@@ -174,7 +182,7 @@ export default function AlertCard({ alert, patient, now, update = api.updateAler
         <div className="mt-3 space-y-2 rounded-lg bg-slate-50 p-3" role="group" aria-label="Resolve">
           <div className="flex flex-wrap gap-2">
             {OUTCOMES.map((o) => (
-              <label key={o.value} className={`cursor-pointer rounded-full px-3 py-1 text-sm ring-1 ${outcome === o.value ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white ring-slate-300'}`}>
+              <label key={o.value} className={`cursor-pointer rounded-full px-3 py-1 text-sm ring-1 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-blue-600 ${outcome === o.value ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white ring-slate-300'}`}>
                 <input type="radio" name={`outcome-${alert.id}`} value={o.value} checked={outcome === o.value} onChange={() => setOutcome(o.value)} className="sr-only" />
                 {o.label}
               </label>
@@ -195,3 +203,7 @@ export default function AlertCard({ alert, patient, now, update = api.updateAler
     </article>
   );
 }
+
+// Memoised: with stable alert objects (lib/worklist.js stabilize) a socket event re-renders only the
+// cards that actually changed.
+export default memo(AlertCard);

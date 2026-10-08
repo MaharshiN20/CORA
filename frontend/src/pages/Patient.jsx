@@ -7,7 +7,7 @@ import { useLive, useNow } from '../hooks.js';
 import { useHealth } from '../App.jsx';
 import { formatDuration } from '../lib/worklist.js';
 import { languageName, shortDate, timeOf, pct } from '../lib/format.js';
-import { Card, Empty, TierBadge, RiskBadge, Button, AsyncButton, KindBadge, TREND_ICON } from '../components/ui.jsx';
+import { Card, Empty, ErrorNotice, TierBadge, RiskBadge, Button, AsyncButton, KindBadge, TREND_ICON } from '../components/ui.jsx';
 import PhoneSimulator from '../components/PhoneSimulator.jsx';
 import { AiBrief } from '../components/AlertCard.jsx';
 import DebugDrawer from '../components/DebugDrawer.jsx';
@@ -17,14 +17,15 @@ const DAY = 86400000;
 
 export default function Patient() {
   const { id } = useParams();
-  const { data: p, error } = useLive(() => api.patient(id), [id]);
+  const { data: p, error, reload } = useLive(() => api.patient(id), [id]);
   const [role, setRole] = useState('patient');
 
   if (error?.status === 404) return <Empty>No patient with id “{id}”. <Link to="/" className="text-blue-700 underline">Back to the worklist</Link></Empty>;
-  if (!p) return <Empty>Loading…</Empty>;
+  if (!p) return error ? <ErrorNotice what="this patient" error={error} onRetry={reload} /> : <Empty>Loading…</Empty>;
 
   return (
     <div className="space-y-4">
+      {error && <ErrorNotice what="this patient" error={error} onRetry={reload} stale />}
       <Header p={p} />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
         <div className="min-w-0 space-y-4">
@@ -292,7 +293,7 @@ function AdherenceHeatmap({ p }) {
                   <th className="pr-3 text-left font-medium text-slate-700">{r.name}</th>
                   {r.cells.map((c, i) => (
                     <td key={i} className="p-0.5">
-                      <div title={`${grid.days[i]}: ${c}`} className={`h-5 w-5 rounded ${CELL[c]}`} />
+                      <div role="img" aria-label={`${r.name}, ${grid.days[i]}: ${c}`} title={`${grid.days[i]}: ${c}`} className={`h-5 w-5 rounded ${CELL[c]}`} />
                     </td>
                   ))}
                 </tr>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sortWorklist, filterWorklist, sla, formatDuration, nextAction, resolvePatch, kindOf, aiOf } from './worklist.js';
+import { sortWorklist, filterWorklist, sla, formatDuration, nextAction, resolvePatch, kindOf, aiOf, stabilize } from './worklist.js';
 
 const T0 = Date.parse('2026-09-26T12:00:00Z');
 const at = (min) => new Date(T0 + min * 60000).toISOString();
@@ -90,5 +90,23 @@ describe('aiOf', () => {
   });
   it('tolerates a missing action list', () => {
     expect(aiOf({ nurseSummary: 'x' }).suggestedActions).toEqual([]);
+  });
+});
+
+describe('stabilize', () => {
+  it('reuses the previous object for an alert that did not change, so memoised cards skip the refetch', () => {
+    const memo = new Map();
+    const first = stabilize(memo, [{ id: 'a', status: 'open' }, { id: 'b', status: 'open' }]);
+    const second = stabilize(memo, [{ id: 'a', status: 'open' }, { id: 'b', status: 'acknowledged' }]);
+    expect(second[0]).toBe(first[0]);
+    expect(second[1]).not.toBe(first[1]);
+    expect(second[1].status).toBe('acknowledged');
+  });
+  it('forgets alerts that are gone, and handles empty / missing lists', () => {
+    const memo = new Map();
+    stabilize(memo, [{ id: 'a' }]);
+    stabilize(memo, []);
+    expect(memo.size).toBe(0);
+    expect(stabilize(memo, undefined)).toEqual([]);
   });
 });

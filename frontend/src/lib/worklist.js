@@ -20,6 +20,24 @@ export const kindOf = (alert) => KINDS[alert.kind ?? 'triage'] ?? { label: alert
 
 export const isOpen = (alert) => alert.status !== 'resolved';
 
+// A refetch returns brand-new objects for every alert, so memoised cards would re-render on every
+// socket event. `memo` (a Map kept in a ref) remembers each alert's last JSON and object: an alert
+// that did not change comes back as the same object. Alerts that are gone are forgotten.
+export function stabilize(memo, list) {
+  const out = [];
+  const seen = new Set();
+  for (const a of list ?? []) {
+    const json = JSON.stringify(a);
+    const prev = memo.get(a.id);
+    const keep = prev && prev.json === json ? prev.obj : a;
+    memo.set(a.id, { json, obj: keep });
+    seen.add(a.id);
+    out.push(keep);
+  }
+  for (const id of [...memo.keys()]) if (!seen.has(id)) memo.delete(id);
+  return out;
+}
+
 // The AI reviewer's brief for the nurse. The API puts these fields directly on the alert
 // (docs/CONTRACTS.md §3, backend/test/alerts.contract.test.js); there is no nested `ai` object.
 // -> null when the alert has no AI brief.

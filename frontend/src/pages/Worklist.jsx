@@ -6,11 +6,11 @@ import { Link } from 'react-router';
 import { api } from '../api.js';
 import { useLive, useNow } from '../hooks.js';
 import { useHealth } from '../App.jsx';
-import { sortWorklist, filterWorklist, messageOutcome, KINDS, TIER_RANK } from '../lib/worklist.js';
+import { sortWorklist, filterWorklist, messageOutcome, stabilize, KINDS, TIER_RANK } from '../lib/worklist.js';
 import { languageName } from '../lib/format.js';
 import AlertCard from '../components/AlertCard.jsx';
 import ImportDialog from '../components/ImportDialog.jsx';
-import { Card, Empty, TierBadge, RiskBadge, Button } from '../components/ui.jsx';
+import { Card, Empty, ErrorNotice, TierBadge, RiskBadge, Button } from '../components/ui.jsx';
 
 const LAST_TIER_RANK = { RED: 0, YELLOW: 1, GREEN: 2 };
 
@@ -41,29 +41,33 @@ function useArrivals(open) {
 const scrollToAlert = (id) => document.getElementById(`alert-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
 export default function Worklist() {
-  const { data } = useLive(async () => {
+  const { data, error, reload } = useLive(async () => {
     const [alerts, patients] = await Promise.all([api.alerts(), api.patients()]);
     return { alerts, patients };
   });
   const health = useHealth();
-  const now = useNow(1000, health?.demoOffsetMs ?? 0);
+  // Coarse: only the "N overdue" counter needs it. Each card's own countdown ticks by itself.
+  const now = useNow(15_000, health?.demoOffsetMs ?? 0);
+  const memo = useRef(new Map());
   const [kind, setKind] = useState('all');
   const [tier, setTier] = useState('all');
 
   const patientsById = useMemo(() => Object.fromEntries((data?.patients ?? []).map((p) => [p.id, p])), [data]);
-  const open = useMemo(() => sortWorklist(data?.alerts ?? [], patientsById), [data, patientsById]);
+  const stableAlerts = useMemo(() => stabilize(memo.current, data?.alerts), [data]);
+  const open = useMemo(() => sortWorklist(stableAlerts, patientsById), [stableAlerts, patientsById]);
   const shown = filterWorklist(open, { kind, tier });
   const counts = Object.fromEntries(['RED', 'YELLOW', 'INFO'].map((t) => [t, open.filter((a) => a.tier === t).length]));
   const overdue = open.filter((a) => Date.parse(a.dueBy) < now).length;
   const reds = open.filter((a) => a.tier === 'RED' && (a.kind ?? 'triage') === 'triage');
-  const redNames = [...new Set(reds.map((a) => patientsById[a.patientId]?.name.split(' ')[0] ?? a.patientId))];
+  const redNames = [...new Set(reds.map((a) => patientsById[a.patientId]?.name?.split(' ')[0] ?? a.patientId))];
   const { fresh, toast, dismiss } = useArrivals(data ? open : null);
 
-  if (!data) return <Empty>Loading worklist…</Empty>;
+  if (!data) return error ? <ErrorNotice what="the worklist" error={error} onRetry={reload} /> : <Empty>Loading worklist…</Empty>;
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem] projector:lg:grid-cols-1">
       <div className="min-w-0 space-y-3">
+        {error && <ErrorNotice what="the worklist" error={error} onRetry={reload} stale />}
         {reds.length > 0 && (
           <button onClick={() => scrollToAlert(reds[0].id)} className="flex w-full items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-left font-semibold text-white shadow-md hover:bg-red-700 projector:text-lg" role="alert">
             <Siren className="animate-pulse" size={20} aria-hidden />
@@ -100,7 +104,7 @@ export default function Worklist() {
         ) : (
           <div className="space-y-3 projector:grid projector:grid-cols-2 projector:items-start projector:gap-3 projector:space-y-0">
             {shown.map((a) => (
-              <AlertCard key={a.id} alert={a} patient={patientsById[a.patientId]} now={now} highlight={fresh.includes(a.id)} />
+              <AlertCard key={a.id} alert={a} patient={patientsById[a.patientId]} highlight={fresh.includes(a.id)} />
             ))}
           </div>
         )}

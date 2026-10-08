@@ -66,6 +66,14 @@ describe('AlertCard outcome flow', () => {
     expect(screen.getByText(/Readmission risk: high/)).toBeInTheDocument();
   });
 
+  it('buttons are described by the patient and alert, so a screen reader can tell the cards apart', () => {
+    renderCard({ ...base, title: 'Chest pain reported' });
+    const btn = screen.getByRole('button', { name: 'Acknowledge' });
+    const description = document.getElementById(btn.getAttribute('aria-describedby'));
+    expect(description).toHaveTextContent('Maria Garcia');
+    expect(description).toHaveTextContent('Chest pain reported');
+  });
+
   it('a plain alert has no AI box', () => {
     renderCard(base);
     expect(screen.queryByText(/Readmission risk/)).not.toBeInTheDocument();
@@ -75,6 +83,18 @@ describe('AlertCard outcome flow', () => {
   it('warns when the nurse-group page for the alert could not be delivered', () => {
     renderCard({ ...base, undelivered: true });
     expect(screen.getByRole('status')).toHaveTextContent(/could not be delivered/);
+  });
+});
+
+describe('SlaCountdown ticks by itself (the page no longer re-renders every card each second)', () => {
+  it('counts down on its own clock when no `now` is passed', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    render(<SlaCountdown alert={base} />);
+    expect(screen.getByTestId('sla')).toHaveTextContent('15m left');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(screen.getByTestId('sla')).toHaveTextContent('14m left');
+    vi.useRealTimers();
   });
 });
 

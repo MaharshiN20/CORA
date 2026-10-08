@@ -1,12 +1,12 @@
 // Impact: is this worth adopting? Engagement, readmissions, nurse load, equity, and dollars.
 // Data: GET /api/insights/* (M2), cohort + live patients, switchable with `source`.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { api } from '../api.js';
 import { useLive } from '../hooks.js';
 import { roi, ROI_DEFAULTS } from '../lib/roi.js';
 import { money, compactMoney, pct, num, minutes, languageName } from '../lib/format.js';
-import { Card, Stat, Empty, Button } from '../components/ui.jsx';
+import { Card, Stat, Empty, ErrorNotice, Button } from '../components/ui.jsx';
 
 const SLA_TIERS = ['RED', 'YELLOW', 'INFO'];
 
@@ -16,30 +16,40 @@ const SOURCES = [
   ['live', 'Live demo'],
 ];
 
+// One bar per tier. No alerts of a tier yet: say so with no bar, instead of a 0% bar that reads as "all missed".
+export function slaBars(alerts) {
+  return SLA_TIERS.map((t) => {
+    const share = alerts.withinSlaByTier?.[t];
+    return share == null ? { tier: `${t} · no data yet`, share: null } : { tier: `${t} · median ${minutes(alerts.medianMinutesToAckByTier?.[t])}`, share };
+  });
+}
+
 export default function Impact() {
   const [source, setSource] = useState('all');
-  const { data, reload } = useLive(async () => {
+  const { data, error, reload } = useLive(async () => {
     const [impact, engagement, equity, roiData] = await Promise.all(['impact', 'engagement', 'equity', 'roi'].map((n) => api.insight(n, { source })));
     return { impact, engagement, equity, roi: roiData };
   }, [source]);
 
-  if (!data) return <Empty>Loading impact…</Empty>;
+  if (!data) return error ? <ErrorNotice what="impact" error={error} onRetry={reload} /> : <Empty>Loading impact…</Empty>;
   const { impact, engagement, equity } = data;
   const r = impact.readmission;
 
   return (
     <div className="space-y-5">
+      {error && <ErrorNotice what="impact" error={error} onRetry={reload} stale />}
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="text-xl font-bold">Impact</h2>
         <div className="flex rounded-lg bg-slate-100 p-0.5">
           {SOURCES.map(([v, label]) => (
-            <button key={v} onClick={() => setSource(v)} className={`rounded-md px-3 py-1 text-sm ${source === v ? 'bg-white font-medium shadow-sm' : 'text-slate-600'}`}>
+            <button key={v} onClick={() => setSource(v)} aria-pressed={source === v} className={`rounded-md px-3 py-1 text-sm ${source === v ? 'bg-white font-medium shadow-sm' : 'text-slate-600'}`}>
               {label}
             </button>
           ))}
         </div>
         <span className="text-sm text-slate-500" title="Readmission rates only count patients whose 30-day outcome is known">
           {impact.patients} patients · {r.engaged.n + r.notEngaged.n} with 30-day outcomes
+          {impact.sampleIsSmall && <span className="ml-1 font-medium text-amber-700">(fewer than 10 known outcomes: too few to read as a rate)</span>}
         </span>
         {source !== 'live' && (
           <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-800" title="Generated cohort for illustration; not real patient outcomes">
@@ -54,7 +64,12 @@ export default function Impact() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Stat label="Readmitted: engaged" value={pct(r.engaged.rate, 1)} sub={`${r.engaged.readmitted}/${r.engaged.n} patients`} tone="green" />
         <Stat label="Readmitted: not engaged" value={pct(r.notEngaged.rate, 1)} sub={`${r.notEngaged.readmitted}/${r.notEngaged.n} patients`} tone="red" />
-        <Stat label="Projected readmissions avoided" value={num(impact.projectedReadmissionsAvoided, 1)} sub="engaged vs not (correlational)" tone="blue" />
+        <Stat
+          label="Projected readmissions avoided"
+          value={num(impact.projectedReadmissionsAvoided, 1)}
+          sub={impact.projectedBasis === 'synthetic' ? 'assumed from the synthetic cohort, not a finding' : impact.projectedBasis === 'observed' ? 'observed in live patients (correlational)' : 'no data yet'}
+          tone="blue"
+        />
         <Stat label="Alerts / nurse / day" value={num(impact.alerts.perNursePerDay, 1)} sub={`precision ${pct(impact.alerts.precision)}`} />
         <Stat label="RED acknowledged" value={minutes(impact.alerts.medianMinutesToAckByTier.RED)} sub={`median · SLA 15 min · ${pct(impact.alerts.withinSlaByTier?.RED)} on time`} tone="violet" />
       </div>
@@ -106,7 +121,7 @@ export default function Impact() {
 
         <Card title="Acknowledged within SLA, by tier (RED 15 min · YELLOW 4 h · INFO 24 h)">
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={SLA_TIERS.map((t) => ({ tier: `${t} · median ${minutes(impact.alerts.medianMinutesToAckByTier[t])}`, share: impact.alerts.withinSlaByTier?.[t] ?? 0 }))} margin={{ left: -10 }}>
+            <BarChart data={slaBars(impact.alerts)} margin={{ left: -10 }}>
               <CartesianGrid stroke="#eef1f6" vertical={false} />
               <XAxis dataKey="tier" tick={{ fontSize: 12 }} />
               <YAxis domain={[0, 1]} tickFormatter={(v) => pct(v)} tick={{ fontSize: 12 }} />
@@ -163,9 +178,12 @@ const FIELDS = [
 
 function RoiCalculator({ measured }) {
   const [inputs, setInputs] = useState(ROI_DEFAULTS);
+  const edited = useRef(new Set());
   useEffect(() => {
-    // Prefill from measured data once it arrives (only fields the data can speak to).
-    setInputs((cur) => ({ ...cur, ...Object.fromEntries(Object.entries(measured ?? {}).filter(([, v]) => v != null)) }));
+    // Prefill from measured data when it arrives, but never over a slider the user has moved
+    // (live data refreshes on every socket event and used to snap their edits back).
+    const fresh = Object.entries(measured ?? {}).filter(([k, v]) => v != null && !edited.current.has(k));
+    setInputs((cur) => ({ ...cur, ...Object.fromEntries(fresh) }));
   }, [measured?.tcmContactRate, measured?.rpmEligibleRate]); // eslint-disable-line react-hooks/exhaustive-deps
   const out = useMemo(() => roi(inputs), [inputs]);
   const d = out.dollars;
@@ -193,7 +211,10 @@ function RoiCalculator({ measured }) {
                 max={max}
                 step={step}
                 value={inputs[key]}
-                onChange={(e) => setInputs({ ...inputs, [key]: Number(e.target.value) })}
+                onChange={(e) => {
+                  edited.current.add(key);
+                  setInputs({ ...inputs, [key]: Number(e.target.value) });
+                }}
                 className="w-full accent-blue-600"
               />
             </label>
