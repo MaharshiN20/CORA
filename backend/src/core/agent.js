@@ -47,7 +47,43 @@ export async function flushTranslations() {
   while (pendingTranslations.size) await Promise.all([...pendingTranslations]);
 }
 
-export async function handleInbound({ patientId, role = 'patient', channel, text, buttonData, voiceTranscript, photo }) {
+// ---------- one thing at a time per patient ----------
+// A check-in is a read-modify-write over the patient record with awaits in the middle (LLM
+// parsing, escalation sends). Two messages arriving together (a double tap, a Twilio retry, a
+// caregiver and a patient at once) would both read the same state and both finish the check-in:
+// two weights, two alerts, two nurse pages, or a finished check-in resurrected. So work for the
+// same patient runs strictly in arrival order; different patients stay fully parallel.
+const lanes = new Map();
+export function withPatientLock(patientId, fn) {
+  const prev = lanes.get(patientId) ?? Promise.resolve();
+  const run = prev.then(fn, fn); // a failure upstream never blocks the next message
+  const tail = run.catch(() => {});
+  lanes.set(patientId, tail);
+  tail.then(() => lanes.get(patientId) === tail && lanes.delete(patientId));
+  return run;
+}
+
+// ---------- duplicate deliveries ----------
+// Channels that retry (Twilio re-posts when we are slow) pass the provider's message id; a repeat
+// gets the first call's replies back instead of being processed twice.
+const DEDUP_TTL_MS = 10 * 60_000;
+const seen = new Map();
+export const resetInboundDedup = () => seen.clear();
+
+export function handleInbound(msg) {
+  const { patientId, channel, messageId } = msg;
+  if (messageId == null) return withPatientLock(patientId, () => processInbound(msg));
+  const key = `${channel}:${patientId}:${messageId}`;
+  const t = performance.now(); // monotonic: pacing, not domain time
+  const hit = seen.get(key);
+  if (hit && t - hit.at < DEDUP_TTL_MS) return hit.promise;
+  if (seen.size > 2000) for (const [k, v] of seen) if (t - v.at >= DEDUP_TTL_MS) seen.delete(k);
+  const promise = withPatientLock(patientId, () => processInbound(msg));
+  seen.set(key, { at: t, promise });
+  return promise;
+}
+
+async function processInbound({ patientId, role = 'patient', channel, text, buttonData, voiceTranscript, photo }) {
   const patient = store.getPatient(patientId);
   if (!patient) return [{ text: 'Sorry, I could not find your record. Ask your care team for your link code.' }];
 
@@ -202,10 +238,12 @@ async function handleCaregiver(patient, { input, buttonData, injection = false }
 
 // Called by the scheduler / dashboard to start a check-in proactively.
 // Returns the first prompt(s); the caller sends them via channels.sendToPatient().
-export async function startCheckin(patientId) {
-  const patient = store.getPatient(patientId);
-  if (!patient) return [];
-  return Promise.all(checkin.start(patient).map((r) => localizeReply(patient.language, r)));
+export function startCheckin(patientId) {
+  return withPatientLock(patientId, async () => {
+    const patient = store.getPatient(patientId);
+    if (!patient) return [];
+    return Promise.all(checkin.start(patient).map((r) => localizeReply(patient.language, r)));
+  });
 }
 
 // Show what the patient tapped ("😊 Normal") rather than the raw callback data.

@@ -15,6 +15,7 @@ handleInbound({
   role = 'patient',                          // 'patient' | 'caregiver'
   channel,                                   // 'telegram' | 'sms' | 'whatsapp' | 'sim'
   text, buttonData, voiceTranscript,         // any one of these…
+  messageId?,                                // provider message id (Twilio MessageSid): a repeat returns the first call's replies
   photo,                                     // …or { base64, mime }  (med-bottle photos, coming: P3-13)
 }) → Promise<Reply[]>
 
@@ -23,6 +24,7 @@ startCheckin(patientId) → Promise<Reply[]>   // proactive start; send each via
 Reply  = { text, buttons?: Button[][], textEn?, urgent?: boolean, voice?: boolean }
 Button = { label, data }                     // data ≤ 64 bytes, returned as buttonData when tapped
 ```
+- Calls for one patient run strictly in arrival order (`withPatientLock`), so a double tap or a webhook retry can't finish a check-in twice. `startCheckin` queues in the same lane.
 - Render `text` and `buttons` (rows). **Ignore `textEn`**; it's the English copy for the dashboard.
 - `urgent: true` → emergency styling (bold, 🚨, pinned if possible).
 - `voice: true` → also send a TTS voice note of `text` (the patient enabled voice mode).

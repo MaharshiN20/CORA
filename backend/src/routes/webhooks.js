@@ -135,7 +135,7 @@ async function downloadMedia(rawUrl) {
 
 // Inbound message (already linked) -> Reply[]
 async function inbound(link, phone, channel, body) {
-  const base = { patientId: link.patient.id, role: link.role, channel };
+  const base = { patientId: link.patient.id, role: link.role, channel, messageId: body.MessageSid };
   const lang = langOf(link);
   const mediaType = body.MediaContentType0 ?? '';
   if (Number(body.NumMedia) > 0 && body.MediaUrl0 && /^(image|audio)\//.test(mediaType)) {
