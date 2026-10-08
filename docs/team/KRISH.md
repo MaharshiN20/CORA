@@ -93,7 +93,7 @@
   - `riskllm` times out with `Promise.race`, but the provider request keeps running. Thread an `AbortSignal` through `core/llm/index.js` `run()` and the providers' `chat(opts)` (`opts.signal`), and have `riskllm/index.js` and `core/aireview.js` abort on timeout. Keep `deadlineMs` behaviour for patient-facing calls.
   - **Accept:** a test with a fake provider that records `signal.aborted` after the timeout; existing `llm.test.js`, `riskllm*.test.js` and `aireview*.test.js` unchanged and green.
 
-- [ ] **K13. Eval set for the AI risk reviewer**
+- [x] **K13. Eval set for the AI risk reviewer**
   - `evals/` only measures the language parser. Add `evals/risk-cases.jsonl` (about 40 labelled trajectories: weight creep, recliner, missed refills, stable controls, plus injection attempts) and a scorer that reports escalation precision/recall and checks the invariants that must always hold: never lowers a tier, never returns RED, unknown tiers never escalate. A deterministic `call` stub drives it offline in `npm test`; `npm run eval -- --risk` runs it against real providers.
   - **Accept:** an offline test that enforces the invariants on the whole case file; README section.
 
