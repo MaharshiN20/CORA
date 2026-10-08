@@ -5,8 +5,10 @@
 //     id, patientId, source: 'cohort' | 'live', language,
 //     dischargedAt, days,                      // days observed (<= 30)
 //     responses: [{ day, responded, recoveredVia: null | 'nudge' | 'caregiver' }],  // day 1..days
-//     alerts: [{ tier, kind, status, outcome, ackMinutes }],   // ackMinutes null if never acked
-//     readmitted: boolean | null,              // null = not known yet (live patients)
+//     alerts: [{ tier, kind, status, outcome, ackMinutes, ageMinutes? }],   // ackMinutes null if never acked;
+//                                              // ageMinutes = how long an unacked live alert has been open
+//     readmitted: boolean | null,              // null = not known yet (live patients: false only once the
+//                                              // 30-day window has passed without a readmission)
 //     refillGapDays, rpmDays,
 //   }
 import * as store from '../store.js';
@@ -42,7 +44,10 @@ export function liveJourney(patient, { alerts = store.listAlerts(), audit = stor
   }
 
   const mine = alerts.filter((a) => a.patientId === patient.id);
-  const readmitted = mine.some((a) => a.outcome === 'readmitted') ? true : null;
+  // A live patient who has not been readmitted *yet* is unknown, not a success: counting them as
+  // "false" made the live rate (and the engaged-vs-not gap) depend on how long the demo had run.
+  const windowClosed = now - discharged >= WINDOW_DAYS * DAY;
+  const readmitted = mine.some((a) => a.outcome === 'readmitted') ? true : windowClosed ? false : null;
   const gaps = (patient.prescriptions ?? [])
     .filter((rx) => rx.expectedPickup)
     .map((rx) => {
@@ -60,14 +65,32 @@ export function liveJourney(patient, { alerts = store.listAlerts(), audit = stor
     dischargedAt: patient.dischargedAt,
     days,
     responses,
-    alerts: mine.map((a) => ({ tier: a.tier, kind: a.kind ?? 'triage', status: a.status, outcome: a.outcome ?? null, ackMinutes: ackMinutes(a) })),
+    alerts: mine.map((a) => {
+      const acked = ackMinutes(a);
+      return {
+        tier: a.tier,
+        kind: a.kind ?? 'triage',
+        status: a.status,
+        outcome: a.outcome ?? null,
+        ackMinutes: acked,
+        ...(acked == null && { ageMinutes: Math.max(0, Math.round((now - Date.parse(a.ts)) / 60000)) }),
+      };
+    }),
     readmitted,
     refillGapDays: gaps.length ? Math.max(...gaps) : 0,
     rpmDays,
   };
 }
 
-export const liveJourneys = () => store.listPatients().map((p) => liveJourney(p));
+// Alerts and audit rows are grouped by patient once, instead of filtered per patient.
+export function liveJourneys() {
+  const alertsBy = new Map();
+  for (const a of store.listAlerts()) (alertsBy.get(a.patientId) ?? alertsBy.set(a.patientId, []).get(a.patientId)).push(a);
+  const auditBy = new Map();
+  for (const e of store.listAudit()) if (e.type === 'outreach_recovered') (auditBy.get(e.patientId) ?? auditBy.set(e.patientId, []).get(e.patientId)).push(e);
+  const now = clock.now();
+  return store.listPatients().map((p) => liveJourney(p, { alerts: alertsBy.get(p.id) ?? [], audit: auditBy.get(p.id) ?? [], now }));
+}
 export const cohortJourneys = () => store.collection('cohort');
 
 export function journeysFor(source = 'all') {

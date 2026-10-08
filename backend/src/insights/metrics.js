@@ -2,6 +2,7 @@
 // metric is tested on small hand-built data with exact answers. Rates are 0..1 and
 // rounded to 3 decimals; anything with no data is null (never a misleading 0).
 import { WINDOW_DAYS } from './journeys.js';
+import { SLA_MS } from '../store.js';
 
 export const ENGAGED_THRESHOLD = 0.6; // answered >= 60% of days = engaged
 const POSITIVE = new Set(['true_positive', 'ed_avoided', 'readmitted']); // the alert was real
@@ -19,6 +20,9 @@ export function median(xs) {
 export const responseRate = (j) => rate(j.responses.filter((r) => r.responded).length, j.responses.length);
 export const isEngaged = (j) => (responseRate(j) ?? 0) >= ENGAGED_THRESHOLD;
 
+// Below this many known outcomes a readmission rate is a handful of patients, not a rate.
+export const MIN_KNOWN_OUTCOMES = 10;
+
 function readmission(js) {
   const known = js.filter((j) => typeof j.readmitted === 'boolean');
   return { n: known.length, readmitted: known.filter((j) => j.readmitted).length, rate: rate(known.filter((j) => j.readmitted).length, known.length) };
@@ -33,7 +37,7 @@ function alertPrecision(alerts) {
 
 // ---------------------------------------------------------------------------
 // GET /impact
-const SLA_MINUTES = { RED: 15, YELLOW: 240, INFO: 1440 }; // same as store.SLA_MS
+export const SLA_MINUTES = Object.fromEntries(Object.entries(SLA_MS).map(([tier, ms]) => [tier, ms / 60000])); // the store's SLAs
 export function impact(js, { nurses = 2, windowDays = WINDOW_DAYS } = {}) {
   const engaged = readmission(js.filter(isEngaged));
   const notEngaged = readmission(js.filter((j) => !isEngaged(j)));
@@ -41,14 +45,28 @@ export function impact(js, { nurses = 2, windowDays = WINDOW_DAYS } = {}) {
   const avoided =
     engaged.rate != null && notEngaged.rate != null ? Math.max(0, r3((notEngaged.rate - engaged.rate) * engaged.n)) : null;
   const alerts = allAlerts(js);
+  const overall = readmission(js);
+  // INFO items (refills, social needs, questions) are tasks, not alerts a nurse races to; load is the
+  // rest, over the days the journeys actually cover (a 3-day-old live patient is not 30 days of data).
+  const actionable = alerts.filter((a) => a.tier !== 'INFO');
+  const observedDays = Math.min(windowDays, Math.max(1, ...js.map((j) => (Number.isFinite(j.days) ? j.days : windowDays))));
+  // An open alert still inside its SLA window has not missed anything yet: leave it out of the
+  // "within SLA" share until it is acknowledged or overdue.
+  const pending = (a) => a.ackMinutes == null && Number.isFinite(a.ageMinutes) && a.ageMinutes <= (SLA_MINUTES[a.tier] ?? Infinity);
   return {
     patients: js.length,
     engagedShare: rate(js.filter(isEngaged).length, js.length),
-    readmission: { engaged, notEngaged, overall: readmission(js) },
+    readmission: { engaged, notEngaged, overall },
+    sampleIsSmall: overall.n < MIN_KNOWN_OUTCOMES,
     projectedReadmissionsAvoided: avoided,
+    // 'synthetic': the cohort is generated with the engaged/not-engaged gap built in, so this is an
+    // assumption, not a finding. 'observed': live patients only.
+    projectedBasis: !js.length ? null : js.some((j) => j.source === 'cohort') ? 'synthetic' : 'observed',
     alerts: {
       total: alerts.length,
-      perNursePerDay: js.length ? r3(alerts.length / (Math.max(1, nurses) * windowDays)) : null,
+      actionable: actionable.length,
+      pendingWithinSla: alerts.filter(pending).length,
+      perNursePerDay: js.length ? r3(actionable.length / (Math.max(1, nurses) * observedDays)) : null,
       medianMinutesToAck: median(alerts.map((a) => a.ackMinutes)),
       medianMinutesToAckByTier: Object.fromEntries(
         ['RED', 'YELLOW', 'INFO'].map((t) => [t, median(alerts.filter((a) => a.tier === t).map((a) => a.ackMinutes))]),
@@ -57,7 +75,7 @@ export function impact(js, { nurses = 2, windowDays = WINDOW_DAYS } = {}) {
       // minutes hides RED's 14 min next to INFO's 9 h; a percentage reads the same for all.
       withinSlaByTier: Object.fromEntries(
         Object.entries(SLA_MINUTES).map(([t, m]) => {
-          const mine = alerts.filter((a) => a.tier === t);
+          const mine = alerts.filter((a) => a.tier === t && !pending(a));
           return [t, rate(mine.filter((a) => a.ackMinutes != null && a.ackMinutes <= m).length, mine.length)];
         }),
       ),
@@ -137,9 +155,29 @@ export const ROI_DEFAULTS = {
 };
 export const RATES = { tcm99495: 220, tcm99496: 298, rpm99454: 52, rpm99457: 52 };
 
+// Sensible bounds for each input. A negative cost or a 300% rate produces nonsense dollars, so
+// out-of-range values are pulled to the nearest bound and reported in `clamped`.
+const ROI_BOUNDS = {
+  discharges: [0, 1e6],
+  readmitRate: [0, 1],
+  costPerReadmit: [0, 1e6],
+  reduction: [0, 1],
+  penaltyPct: [0, 1],
+  medicareRevenue: [0, 1e11],
+  tcmContactRate: [0, 1],
+  tcmHighComplexityShare: [0, 1],
+  rpmEligibleRate: [0, 1],
+};
+
 export function roi(params = {}) {
   const p = { ...ROI_DEFAULTS };
-  for (const [k, v] of Object.entries(params)) if (k in p && Number.isFinite(Number(v)) && v !== '' && v != null) p[k] = Number(v);
+  const clamped = [];
+  for (const [k, v] of Object.entries(params)) {
+    if (!(k in p) || v === '' || v == null || !Number.isFinite(Number(v))) continue;
+    const [lo, hi] = ROI_BOUNDS[k];
+    p[k] = Math.min(hi, Math.max(lo, Number(v)));
+    if (p[k] !== Number(v)) clamped.push(k);
+  }
 
   const baselineReadmissions = p.discharges * p.readmitRate;
   const readmissionsAvoided = baselineReadmissions * p.reduction;
@@ -166,6 +204,7 @@ export function roi(params = {}) {
     },
     eligible: { tcmPatients: round(tcmPatients), rpmPatients: round(rpmPatients) },
     rates: RATES,
+    clamped,
   };
 }
 
