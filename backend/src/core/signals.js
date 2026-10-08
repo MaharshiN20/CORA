@@ -5,7 +5,9 @@
 //   getSignals(patient) -> {
 //     daysSinceDischarge, checkinsCompleted7d, missedCheckins7d, adherence7d (0-1|null), unconfirmedDoses7d,
 //     weightDelta24h, weightDelta7d, openAlerts, openRedAlerts, sdohFlags: string[],
-//     lessonScore (0-1|null), rpmDays30, lastCheckinAt, lastTier
+//     lessonScore (0-1|null), rpmDays30, lastCheckinAt, lastTier,
+//     silentDays (whole days since the last finished check-in, or since discharge if there never
+//     was one; null in the first 3 days after discharge, when silence means nothing yet)
 //   }
 import * as store from '../store.js';
 import * as clock from './clock.js';
@@ -13,6 +15,7 @@ import { weightChange24h, weightChange7d } from './triage.js';
 import { atLocalTime, localDayKey } from './planning.js';
 
 const dayKey = (iso) => iso.slice(0, 10);
+const SILENT_GRACE_DAYS = 3;
 
 export function getSignals(patient) {
   const now = clock.now();
@@ -53,6 +56,10 @@ export function getSignals(patient) {
     ...(patient.weights ?? []).filter((w) => Date.parse(w.ts) >= since30d).map((w) => dayKey(w.ts)),
   ]);
 
+  const lastCheckinMs = Math.max(0, ...(patient.checkins ?? []).map((c) => Date.parse(c.ts)).filter(Number.isFinite));
+  const silentSince = lastCheckinMs || discharged;
+  const silentDays = daysSinceDischarge >= SILENT_GRACE_DAYS ? Math.max(0, Math.floor((now - silentSince) / clock.DAY)) : null;
+
   return {
     daysSinceDischarge,
     checkinsCompleted7d: completedDays,
@@ -68,5 +75,6 @@ export function getSignals(patient) {
     rpmDays30: readingDays.size,
     lastCheckinAt: patient.lastCheckinAt ?? null,
     lastTier: patient.lastTier ?? null,
+    silentDays,
   };
 }

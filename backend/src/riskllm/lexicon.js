@@ -155,19 +155,32 @@ export function normalize(text) {
     .trim();
 }
 
+// Same as normalize(), but sentence/clause punctuation survives as a "|" word so negation can
+// stop there. Phrases never contain "|", so matching is unaffected.
+function normalizeClauses(text) {
+  return String(text ?? '')
+    .split(/[.,;:!?\n]+/)
+    .map((clause) => normalize(clause))
+    .filter(Boolean)
+    .join(' | ');
+}
+
 const COMPILED = LEXICON.map((entry) => ({
   ...entry,
   patterns: entry.phrases.map((p) => ({ re: new RegExp(`(?:^| )(?:${p})(?= |$)`, 'g'), skipNegation: startsNegated(p) })),
 }));
 
+// A negation only reaches to the end of its own clause: "No pain. Swollen ankles" and
+// "no problems but my ankles are swollen" still find the swelling. (normalizeClauses keeps
+// sentence breaks as "|"; "but"/"pero" end a clause too.)
 function negated(norm, index) {
-  const before = norm.slice(0, index).trim().split(' ').slice(-3);
+  const before = norm.slice(0, index).trim().split(/ ?\| ?|\b(?:but|pero|aunque)\b/).pop().trim().split(' ').slice(-3);
   return before.some((w) => NEGATIONS.has(w));
 }
 
 // -> [{ id, category, sign, phrase }] one per lexicon entry that matched (first match wins).
 export function matchCues(text) {
-  const norm = normalize(text);
+  const norm = normalizeClauses(text);
   if (!norm) return [];
   const hits = [];
   for (const entry of COMPILED) {

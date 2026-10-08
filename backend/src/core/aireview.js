@@ -17,17 +17,43 @@ import * as riskllm from '../riskllm/index.js';
 
 let reviewer = (patient, input) => riskllm.reviewPatient(patient, input);
 const pending = new Set();
+const byPatient = new Map(); // patientId -> its in-flight review promise
+
+// A local model can take minutes per review. Three patients finishing check-ins together must not
+// start three model calls at once (or twenty at a cohort's morning rush): at most MAX_CONCURRENT
+// run, the rest wait in order.
+const MAX_CONCURRENT = 2;
+let active = 0;
+const waiting = [];
+async function slot(fn) {
+  if (active >= MAX_CONCURRENT) await new Promise((resolve) => waiting.push(resolve));
+  active++;
+  try {
+    return await fn();
+  } finally {
+    active--;
+    waiting.shift()?.();
+  }
+}
 
 // Test hook: swap the reviewer (e.g. a canned escalate/null result).
 export function setReviewer(fn) {
   reviewer = fn ?? ((patient, input) => riskllm.reviewPatient(patient, input));
 }
 
+// One review per patient at a time: a second check-in finishing while the first is still being
+// reviewed joins it instead of paying for another model call.
 export function queueReview(patientId, rules) {
-  const p = run(patientId, rules)
+  const inflight = byPatient.get(patientId);
+  if (inflight) return inflight;
+  const p = slot(() => run(patientId, rules))
     .catch((err) => console.error('[aireview] failed, rules stand:', err.message))
-    .finally(() => pending.delete(p));
+    .finally(() => {
+      pending.delete(p);
+      byPatient.delete(patientId);
+    });
   pending.add(p);
+  byPatient.set(patientId, p);
   return p;
 }
 
@@ -46,9 +72,18 @@ async function run(patientId, rules) {
   // and only when a model is actually available.
   if (rules.tier !== 'GREEN' || !llm.enabled() || !riskllm.enabled()) return null;
 
+  // A nurse already has an AI-review alert open for this patient: a second one adds nothing.
+  if (store.listAlerts().some((a) => a.patientId === patientId && a.source === 'ai_review' && a.status !== 'resolved')) return null;
+
+  // Only what the patient said since the last review, so one old "slept in the recliner" can't
+  // raise a fresh alert after every GREEN check-in until it scrolls out of the window. The mark is
+  // taken when this review starts, so a message that arrives while the model is thinking is still
+  // seen next time.
+  const lastReview = Date.parse(patient.lastAiReviewAt ?? 0) || 0;
+  store.updatePatient(patientId, { lastAiReviewAt: clock.nowISO() });
   const messages = store
     .listMessages(patientId)
-    .filter((m) => m.direction === 'in' && m.from !== 'caregiver' && m.text && !m.text.startsWith('['))
+    .filter((m) => m.direction === 'in' && m.from !== 'caregiver' && m.text && !m.text.startsWith('[') && Date.parse(m.ts) > lastReview)
     .slice(-12)
     .map((m) => ({ ts: m.ts, text: m.textEn ?? m.text }));
 

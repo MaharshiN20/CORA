@@ -38,9 +38,14 @@ const TIERS = ['GREEN', 'YELLOW', 'RED'];
 export const enabled = () => process.env.RISK_LLM !== 'off';
 
 // Rules are the floor: AI can only move the tier up, and at most to YELLOW.
-export function mergeTier(rulesTier = 'GREEN', aiTier = 'GREEN') {
+// An unknown tier on either side (indexOf -1) must never read as "lower than the AI's": it
+// would turn any AI answer into an escalation. Unknown rules tier -> returned as is; unknown AI
+// tier -> ignored.
+export function mergeTier(rulesTier, aiTier = 'GREEN') {
+  const rules = rulesTier ?? 'GREEN';
+  if (!TIERS.includes(rules) || !TIERS.includes(aiTier)) return rules;
   const capped = aiTier === 'RED' ? 'YELLOW' : aiTier;
-  return TIERS.indexOf(capped) > TIERS.indexOf(rulesTier) ? capped : rulesTier;
+  return TIERS.indexOf(capped) > TIERS.indexOf(rules) ? capped : rules;
 }
 
 export const SYSTEM = `You are the clinical risk reviewer for HeartBridge, a post-discharge program for heart-failure patients. After each daily check-in you review one patient and brief the nurse.

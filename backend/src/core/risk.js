@@ -43,6 +43,10 @@ export const PLANS = {
 };
 
 export const TIER_CUTOFFS = { High: 7, Med: 4 };
+export const SILENT_DAYS = 3; // this many days without a finished check-in floors the tier at Med
+export const DYNAMIC_CAP = 10; // one bad week shows up in several rules; together they stop at this
+const ORDER = ['Low', 'Med', 'High'];
+const atLeast = (tier, floor) => (ORDER.indexOf(tier) >= ORDER.indexOf(floor) ? tier : floor);
 export const tierFor = (score) => (score >= TIER_CUTOFFS.High ? 'High' : score >= TIER_CUTOFFS.Med ? 'Med' : 'Low');
 
 const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
@@ -84,6 +88,13 @@ const DYNAMIC = [
     const names = flags.map((f) => SDOH_LABELS[f] ?? String(f).replace(/_/g, ' '));
     return { label: `Social needs: ${names.join(', ')}`, points: Math.min(2, flags.length) };
   },
+  // Silence is the strongest warning there is: the patients who stop answering are the ones the
+  // research says get readmitted. (Missed check-ins above cap at 3 points and can't carry it.)
+  (s) => {
+    const n = s.silentDays;
+    if (!isNum(n) || n < SILENT_DAYS) return null;
+    return { label: `No check-in for ${plural(n, 'day')}`, points: 3 };
+  },
   (s) => {
     const l = s.lessonScore;
     if (!isNum(l) || l >= 0.5) return null;
@@ -115,9 +126,23 @@ export function scoreRisk(patient, signals, { previousScore = patient.riskScore 
   }
 
   const dynFactors = dynamicFactors(signals);
+  // The same event counts in several rules (a weight spike, the RED alert it caused, the "other
+  // alert" it left): cap the total, with an explicit negative line so the factors still add up.
+  const raw = sum(dynFactors);
+  if (raw > DYNAMIC_CAP) dynFactors.push({ label: `(dynamic factors capped at ${DYNAMIC_CAP})`, points: DYNAMIC_CAP - raw });
   const dynScore = sum(dynFactors);
   const score = baseline.score + dynScore;
-  const tier = tierFor(score);
+  let tier = tierFor(score);
+  // Hysteresis: a patient already Med/High stays there until two points below the cutoff, so a
+  // one-point wobble between two check-ins doesn't flip their plan (1 vs 2 check-ins a day).
+  const saved = patient.riskTier;
+  if (ORDER.indexOf(saved) > ORDER.indexOf(tier)) {
+    const cutoff = TIER_CUTOFFS[saved];
+    if (cutoff != null && score >= cutoff - 1) tier = saved;
+  }
+  // Overrides the arithmetic gets wrong: an open RED alert is High, a silent patient is at least Med.
+  if (signals.openRedAlerts >= 1) tier = atLeast(tier, 'High');
+  else if (isNum(signals.silentDays) && signals.silentDays >= SILENT_DAYS) tier = atLeast(tier, 'Med');
   return {
     score,
     tier,
