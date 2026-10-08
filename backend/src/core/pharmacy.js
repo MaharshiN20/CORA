@@ -127,8 +127,8 @@ export function markPickedUp(patientId, med, { by = 'patient' } = {}) {
   const prescriptions = p.prescriptions.map((r) => (r === rx ? { ...r, pickedUpAt: clock.nowISO() } : r));
   store.updatePatient(p.id, { prescriptions });
   // Close any open refill task for this med.
-  for (const a of store.listAlerts()) {
-    if (a.patientId === p.id && a.kind === 'refill' && a.med === rx.med && a.status !== 'resolved') {
+  for (const a of store.listAlerts(p.id)) {
+    if (a.kind === 'refill' && a.med === rx.med && a.status !== 'resolved') {
       store.updateAlert(a.id, { status: 'resolved', outcome: 'other', note: `Pickup confirmed by ${by}`, by });
     }
   }

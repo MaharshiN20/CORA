@@ -36,7 +36,7 @@ export function buildDigest(patient, lang = patient.caregiver?.language ?? 'en',
   const checkinDays = new Set((patient.checkins ?? []).filter((c) => Date.parse(c.ts) >= since).map((c) => c.ts.slice(0, 10))).size;
 
   const adh = adherence(patient, days);
-  const alerts = store.listAlerts().filter((a) => a.patientId === patient.id && Date.parse(a.ts) >= since && a.tier !== 'INFO');
+  const alerts = store.listAlerts(patient.id).filter((a) => Date.parse(a.ts) >= since && a.tier !== 'INFO');
   const unfilled = (patient.prescriptions ?? []).filter((rx) => !rx.pickedUpAt).map((rx) => rx.med);
 
   const lines = [

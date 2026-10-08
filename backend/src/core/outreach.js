@@ -91,8 +91,8 @@ scheduler.defineJob('outreach_step', {
 
     if (rung === 3) {
       const open = store
-        .listAlerts()
-        .find((a) => a.patientId === p.id && a.kind === 'unreachable' && a.status !== 'resolved');
+        .listAlerts(p.id)
+        .find((a) => a.kind === 'unreachable' && a.status !== 'resolved');
       const reason = `No reply to the check-in sent ${new Date(ladderStart).toLocaleString()}`;
       if (open) {
         store.updateAlert(open.id, { reasons: [...open.reasons, reason], silentDays: (open.silentDays ?? 1) + 1 });

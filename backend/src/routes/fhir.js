@@ -98,5 +98,5 @@ fhir.post('/import', async (req, res) => {
 fhir.get('/export/:patientId', (req, res) => {
   const p = store.getPatient(req.params.patientId);
   if (!p) return res.status(404).json({ error: 'patient not found' });
-  res.json(toFhirBundle(p, { alerts: store.listAlerts() }));
+  res.json(toFhirBundle(p, { alerts: store.listAlerts(p.id) }));
 });

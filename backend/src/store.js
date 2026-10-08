@@ -130,10 +130,54 @@ function emit(type, payload) {
 // Persist the demo clock whenever it moves.
 clock.clockEvents.on('advance', (e) => emit('clock', e));
 
+// ---------- per-patient indexes ----------
+// messages, alerts, audit and readings are read per patient on every inbound message and every
+// GET /patients/:id; filtering the whole log each time costs everyone's history. Each index is a
+// lazily built Map<patientId, rows[]> over one of those arrays (the pattern of the key index in
+// core/scheduler.js). It is trusted only while the array is the same object with the same length
+// and the same first and last row. Anything else (reset swaps the arrays, prune and resetPatient
+// shrink or replace them, a lane pushes to collection() directly) rebuilds it on the next read, so
+// it cannot go stale. Rows keep the order of the underlying array.
+function patientIndex(name) {
+  let idx = { arr: null, size: -1, first: undefined, last: undefined, map: new Map() };
+  const bucket = (id) => idx.map.get(id) ?? idx.map.set(id, []).get(id);
+  return {
+    // The live bucket: callers below hand out copies, never this array.
+    rows(patientId) {
+      const arr = db[name];
+      const n = arr.length;
+      if (idx.arr !== arr || idx.size !== n || idx.first !== arr[0] || idx.last !== arr[n - 1]) {
+        idx = { arr, size: n, first: arr[0], last: arr[n - 1], map: new Map() };
+        for (const row of arr) bucket(row.patientId).push(row);
+      }
+      return idx.map.get(patientId) ?? [];
+    },
+    // Right after the store itself adds a row (at the end, or at the front for alerts): O(1)
+    // instead of a rebuild. If the index was not current before the insert it is left alone and
+    // the next read rebuilds it.
+    added(row, front = false) {
+      const arr = db[name];
+      const n = arr.length;
+      const prevFirst = front ? arr[1] : n > 1 ? arr[0] : undefined;
+      const prevLast = front ? (n > 1 ? arr[n - 1] : undefined) : arr[n - 2];
+      if (idx.arr !== arr || idx.size !== n - 1 || idx.first !== prevFirst || idx.last !== prevLast) return;
+      if (front) bucket(row.patientId).unshift(row);
+      else bucket(row.patientId).push(row);
+      Object.assign(idx, { size: n, first: arr[0], last: arr[n - 1] });
+    },
+    drop() {
+      idx.arr = null;
+    },
+  };
+}
+const byPatient = { messages: patientIndex('messages'), alerts: patientIndex('alerts'), audit: patientIndex('audit'), readings: patientIndex('readings') };
+const dropIndexes = () => Object.values(byPatient).forEach((i) => i.drop());
+
 export function reset() {
   clock.reset();
   db = buildSeed();
   for (const c of DEFAULT_COLLECTIONS) db[c] ??= [];
+  dropIndexes();
   emit('reset', null);
 }
 
@@ -150,6 +194,7 @@ export function resetPatient(id) {
   fresh.caregiver = { ...fresh.caregiver, chatId: cur.caregiver?.chatId ?? null, ...(cur.caregiver?.phone && { phone: cur.caregiver.phone, channel: cur.caregiver.channel }) };
   db.patients[i] = fresh;
   for (const c of ['messages', 'alerts', 'audit', 'readings']) db[c] = db[c].filter((x) => x.patientId !== id);
+  dropIndexes();
   emit('patient', fresh);
   return fresh;
 }
@@ -205,6 +250,7 @@ export function findByChatId(chatId) {
 export function addMessage({ patientId, direction, to = 'patient', from, text, textEn, buttons, channel, delivery }) {
   const msg = { id: newId(), ts: clock.nowISO(), patientId, direction, to, from, text, textEn, buttons, channel, ...(delivery && { delivery }) };
   db.messages.push(msg);
+  byPatient.messages.added(msg);
   emit('message', msg);
   return msg;
 }
@@ -215,7 +261,7 @@ export function updateMessage(id, patch) {
   emit('message', m);
   return m;
 }
-export const listMessages = (patientId) => db.messages.filter((m) => m.patientId === patientId);
+export const listMessages = (patientId) => byPatient.messages.rows(patientId).slice();
 
 // ---------- alerts = the nurse worklist ----------
 // kind:   'triage' | 'unreachable' | 'refill' | 'sdoh' | 'question' | 'med_discrepancy' | 'device'
@@ -242,6 +288,7 @@ export function addAlert({ patientId, tier, reasons, kind = 'triage', title, ...
     ...extra,
   };
   db.alerts.unshift(alert);
+  byPatient.alerts.added(alert, true);
   emit('alert', alert);
   return alert;
 }
@@ -250,7 +297,12 @@ export function addAlert({ patientId, tier, reasons, kind = 'triage', title, ...
 export const addTask = ({ patientId, kind, title, reasons = [], tier = 'INFO', ...extra }) =>
   addAlert({ patientId, kind, title, reasons, tier, ...extra });
 
-export const listAlerts = () => db.alerts;
+// listAlerts() -> every alert, newest first (the live array). listAlerts(patientId) -> that
+// patient's alerts in the same order, from the index. An id that is passed but undefined gives
+// [], never everyone's alerts.
+export function listAlerts(patientId) {
+  return arguments.length ? byPatient.alerts.rows(patientId).slice() : db.alerts;
+}
 export const getAlert = (id) => db.alerts.find((x) => x.id === id);
 
 export function updateAlert(id, patch) {
@@ -270,21 +322,25 @@ export function updateAlert(id, patch) {
 export function audit(type, patientId, data = {}) {
   const entry = { id: newId(), ts: clock.nowISO(), type, patientId, data };
   db.audit.push(entry);
+  byPatient.audit.added(entry);
   emit('audit', entry);
   return entry;
 }
-export const listAudit = (patientId) => (patientId ? db.audit.filter((e) => e.patientId === patientId) : db.audit);
+export const listAudit = (patientId) => (patientId ? byPatient.audit.rows(patientId).slice() : db.audit);
 
 // ---------- readings: weight / SpO2 / heart rate from self-report or devices ----------
 // type: 'weight' (lb) | 'spo2' (%) | 'hr' (bpm); source: 'self' | 'device' | 'caregiver'
 export function addReading({ patientId, type, value, source = 'self', device, ts, readingId }) {
   const r = { id: newId(), ts: ts ?? clock.nowISO(), patientId, type, value, source, device, ...(readingId && { readingId }) };
   db.readings.push(r);
+  byPatient.readings.added(r);
   emit('reading', r);
   return r;
 }
-export const listReadings = (patientId, type) =>
-  db.readings.filter((r) => r.patientId === patientId && (!type || r.type === type));
+export function listReadings(patientId, type) {
+  const rows = byPatient.readings.rows(patientId);
+  return type ? rows.filter((r) => r.type === type) : rows.slice();
+}
 
 // ---------- generic collections for lane-owned data (e.g. insights cohort, jobs) ----------
 // Returns the live array; call persist() after mutating it.
@@ -331,7 +387,10 @@ export function prune() {
   removed += dropOldest(db.messages, RETENTION.messages);
   removed += dropOldest(db.readings, RETENTION.readings);
   removed += dropOldest((db.riskHistory ??= []), RETENTION.riskHistory);
-  if (removed) save(); // quiet: nothing changed that a dashboard shows
+  if (removed) {
+    dropIndexes();
+    save(); // quiet: nothing changed that a dashboard shows
+  }
   return removed;
 }
 

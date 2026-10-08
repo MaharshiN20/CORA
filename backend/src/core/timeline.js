@@ -41,8 +41,8 @@ export function timeline(patient, { limit = 200, kinds = TIMELINE_KINDS } = {}) 
     }
   }
   if (want.has('alert')) {
-    for (const a of store.listAlerts()) {
-      if (a.patientId === patient.id) items.push({ ts: a.ts, kind: 'alert', alertId: a.id, tier: a.tier, title: a.title, status: a.status, source: a.source ?? null, alertKind: a.kind ?? 'triage' });
+    for (const a of store.listAlerts(patient.id)) {
+      items.push({ ts: a.ts, kind: 'alert', alertId: a.id, tier: a.tier, title: a.title, status: a.status, source: a.source ?? null, alertKind: a.kind ?? 'triage' });
     }
   }
   if (want.has('reading')) {

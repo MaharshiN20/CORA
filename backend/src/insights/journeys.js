@@ -27,7 +27,7 @@ export function ackMinutes(alert) {
   return Math.max(0, Math.round((Date.parse(acked.ts) - opened) / 60000));
 }
 
-export function liveJourney(patient, { alerts = store.listAlerts(), audit = store.listAudit(patient.id), now = clock.now() } = {}) {
+export function liveJourney(patient, { alerts = store.listAlerts(patient.id), audit = store.listAudit(patient.id), now = clock.now() } = {}) {
   const discharged = Date.parse(patient.dischargedAt);
   const days = Math.max(0, Math.min(WINDOW_DAYS, Math.floor((now - discharged) / DAY)));
 

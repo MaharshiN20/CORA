@@ -143,6 +143,7 @@ Other collections:
 | `device_links` (Krish) | `{ provider: 'withings', userId, patientId }`: which patient a device account belongs to (`routes/webhooks.js` `linkDevice` / `findDevicePatient`; audit `device_link`) |
 | custom | `store.collection('<name>')` for lane-owned data (e.g. Maharshi's `cohort`). Call `store.persist()` after mutating |
 
+- Reading one patient's rows: `store.listMessages(id)`, `store.listAudit(id)`, `store.listReadings(id, type?)` and `store.listAlerts(id)` come from per-patient indexes (a copy each call, same order as the collection: alerts newest first, the rest oldest first). Use them instead of filtering `listAlerts()` / `listAudit()` yourself. Direct pushes to `collection()` are picked up; no call is needed to refresh anything.
 - `alert.kind`: `triage | unreachable | refill | sdoh | question | med_discrepancy | device | protocol_followup`
 - RED lock: for 1 h after a RED triage alert (or until it's resolved) every inbound message is answered with "call 911" and appended to that alert's `reasons`; routine jobs are skipped (`escalation.redLock`, scheduler `skipIf`)
 - `GET /api/alerts` adds `protocolCheck` (see HF-02 below) to open YELLOW triage alerts that trigger a standing order; an applied one carries `protocol: { id, version, appliedAt, by, followUpTaskId }`

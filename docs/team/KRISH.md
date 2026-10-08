@@ -85,7 +85,7 @@
   - `integrations/devices.js` has a Withings stub with no verification. Add `verifyWithingsSignature(rawBody, headers, secret)` (HMAC-SHA256, constant-time) and a `POST /webhooks/withings` route that rejects unsigned requests when `WITHINGS_CLIENT_SECRET` is set (fail closed in production, like Twilio) and turns a measure into the same path as `POST /api/devices/readings` through `core/devicetriage.js` `triageReading`, with `readingId` from the Withings id so retries are idempotent.
   - **Accept:** tests with a fixture payload: valid signature, tampered body, duplicate delivery (one reading), out-of-range value rejected.
 
-- [ ] **K11. Index messages / audit / alerts by patient (`store.js`)**
+- [x] **K11. Index messages / audit / alerts by patient (`store.js`)**
   - `listMessages(id)`, `listAudit(id)`, alerts-by-patient are full-array filters on hot paths (every inbound, every `GET /patients/:id`). Add lazily-built `Map<patientId, items[]>` caches that are rebuilt when the underlying array is replaced or resized (the same pattern as the key index in `core/scheduler.js`), so `prune()` and `reset()` can never leave them stale. Keep every exported function's return shape and order.
   - **Accept:** the existing suite unchanged and green, plus tests that the index is correct after `reset`, `prune`, `resetPatient`, and direct pushes to `collection()`; a quick timing test with 20k audit rows.
 

@@ -73,8 +73,8 @@ export async function triageReading(patient, reading) {
 
   const reasons = result.flags.map((f) => f.text);
   const open = store
-    .listAlerts()
-    .filter((a) => a.patientId === patient.id && a.source === SOURCE && a.status !== 'resolved' && clock.now() - Date.parse(a.ts) < DEBOUNCE_MS)
+    .listAlerts(patient.id)
+    .filter((a) => a.source === SOURCE && a.status !== 'resolved' && clock.now() - Date.parse(a.ts) < DEBOUNCE_MS)
     .sort((a, b) => RANK[b.tier] - RANK[a.tier])[0];
 
   if (open && RANK[open.tier] >= RANK[result.tier]) {

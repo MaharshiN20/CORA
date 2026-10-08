@@ -18,8 +18,8 @@ export function redLock(patient) {
   const now = clock.now();
   return (
     store
-      .listAlerts()
-      .find((a) => a.patientId === patient.id && a.tier === 'RED' && (a.kind ?? 'triage') === 'triage' && a.status !== 'resolved' && now - Date.parse(a.ts) < RED_LOCK_MS) ?? null
+      .listAlerts(patient.id)
+      .find((a) => a.tier === 'RED' && (a.kind ?? 'triage') === 'triage' && a.status !== 'resolved' && now - Date.parse(a.ts) < RED_LOCK_MS) ?? null
   );
 }
 

@@ -60,7 +60,7 @@ export function eligibility(patient, alert, protocolId = DEFAULT_ID) {
 
   // Exclusions: any red flag today, or an open RED alert.
   const red = flags.filter((f) => f.tier === 'RED');
-  const openRed = store.listAlerts().some((a) => a.patientId === patient.id && a.tier === 'RED' && a.status !== 'resolved');
+  const openRed = store.listAlerts(patient.id).some((a) => a.tier === 'RED' && a.status !== 'resolved');
   const spo2 = checkin?.answers?.spo2;
   if (red.length || openRed) add('no_red_flags', 'No red flags today', 'fail', red.map((f) => f.text).join('; ') || 'Open RED alert');
   else if (spo2 != null && spo2 < protocol.exclusions.spo2Below) add('no_red_flags', 'No red flags today', 'fail', `SpO₂ ${spo2}%`);

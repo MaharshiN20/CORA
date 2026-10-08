@@ -68,7 +68,7 @@ api.get('/patients/:id', (req, res) => {
     ...withLiveRisk(p),
     adherence: adherence(p),
     messages: store.listMessages(p.id),
-    alerts: store.listAlerts().filter((a) => a.patientId === p.id),
+    alerts: store.listAlerts(p.id),
     readings: store.listReadings(p.id),
     audit: store.listAudit(p.id),
   });
@@ -155,7 +155,7 @@ api.patch('/alerts/:id', async (req, res) => {
 function clearFalseAlarmTier(alert) {
   const p = store.getPatient(alert.patientId);
   if (!p || p.lastTier !== alert.tier) return;
-  const open = store.listAlerts().filter((x) => x.patientId === p.id && x.id !== alert.id && (x.kind ?? 'triage') === 'triage' && x.status !== 'resolved');
+  const open = store.listAlerts(p.id).filter((x) => x.id !== alert.id && (x.kind ?? 'triage') === 'triage' && x.status !== 'resolved');
   const lastTier = open.some((x) => x.tier === 'RED') ? 'RED' : open.some((x) => x.tier === 'YELLOW') ? 'YELLOW' : 'GREEN';
   store.updatePatient(p.id, { lastTier });
   store.audit('tier_cleared', p.id, { alertId: alert.id, from: alert.tier, to: lastTier, reason: 'false_positive' });

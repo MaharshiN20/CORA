@@ -48,7 +48,7 @@ export function getSignals(patient) {
   const adherence7d = answered.length ? answered.filter((d) => d.taken).length / answered.length : null;
   const unconfirmedDoses7d = doses7d.length - answered.length;
 
-  const alerts = store.listAlerts().filter((a) => a.patientId === patient.id && a.status !== 'resolved');
+  const alerts = store.listAlerts(patient.id).filter((a) => a.status !== 'resolved');
 
   // RPM billing needs data on >= 16 distinct days per 30 (device readings or daily weights).
   const readingDays = new Set([

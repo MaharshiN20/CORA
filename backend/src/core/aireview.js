@@ -73,7 +73,7 @@ async function run(patientId, rules) {
   if (rules.tier !== 'GREEN' || !llm.enabled() || !riskllm.enabled()) return null;
 
   // A nurse already has an AI-review alert open for this patient: a second one adds nothing.
-  if (store.listAlerts().some((a) => a.patientId === patientId && a.source === 'ai_review' && a.status !== 'resolved')) return null;
+  if (store.listAlerts(patientId).some((a) => a.source === 'ai_review' && a.status !== 'resolved')) return null;
 
   // Only what the patient said since the last review, so one old "slept in the recliner" can't
   // raise a fresh alert after every GREEN check-in until it scrolls out of the window. The mark is
