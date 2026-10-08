@@ -272,7 +272,7 @@ export function collection(name) {
 // Everything is in memory and rewritten on each flush, so unbounded logs slow every request and
 // every save. Oldest-first caps keep that bounded; they are far above a demo's or a pilot's
 // volume. Done/missed/cancelled jobs are only history once a week has passed.
-export const RETENTION = { jobDays: 7, audit: 20_000, messages: 20_000, readings: 20_000 };
+export const RETENTION = { jobDays: 7, audit: 20_000, messages: 20_000, readings: 20_000, riskHistory: 20_000 };
 
 // Drop from the front (oldest first) in place, so arrays handed out earlier stay valid.
 function dropOldest(arr, max) {
@@ -305,6 +305,7 @@ export function prune() {
   removed += dropOldest(db.audit, RETENTION.audit);
   removed += dropOldest(db.messages, RETENTION.messages);
   removed += dropOldest(db.readings, RETENTION.readings);
+  removed += dropOldest((db.riskHistory ??= []), RETENTION.riskHistory);
   if (removed) save(); // quiet: nothing changed that a dashboard shows
   return removed;
 }

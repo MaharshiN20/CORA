@@ -17,6 +17,8 @@ import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
 import * as protocols from '../core/protocols.js';
 import { triageReading } from '../core/devicetriage.js';
+import { timeline, auditCsv, TIMELINE_KINDS } from '../core/timeline.js';
+import { riskHistory } from '../insights/riskHistory.js';
 import { RANGES } from '../integrations/devices.js'; // one set of limits for the API and the virtual devices
 
 export const api = Router();
@@ -63,6 +65,30 @@ api.get('/patients/:id', (req, res) => {
     readings: store.listReadings(p.id),
     audit: store.listAudit(p.id),
   });
+});
+
+// GET /api/patients/:id/risk-history -> [{ ts, score, tier }] oldest first (last 200)
+api.get('/patients/:id/risk-history', (req, res) => {
+  if (!store.getPatient(req.params.id)) return res.status(404).json({ error: 'not found' });
+  res.json(riskHistory(req.params.id).slice(-200));
+});
+
+// GET /api/patients/:id/timeline?limit=200&kinds=checkin,message,alert,reading,risk,event
+// -> the patient's whole story on one axis, newest first (core/timeline.js)
+api.get('/patients/:id/timeline', (req, res) => {
+  const p = store.getPatient(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not found' });
+  const limit = Math.min(1000, Math.max(1, Number.parseInt(req.query.limit, 10) || 200));
+  const kinds = String(req.query.kinds ?? '').split(',').filter((k) => TIMELINE_KINDS.includes(k));
+  res.json(timeline(p, { limit, ...(kinds.length && { kinds }) }));
+});
+
+// GET /api/audit.csv?patientId=&type=&from=&to=&limit= -> the audit log as a download
+api.get('/audit.csv', (req, res) => {
+  const { patientId, type, from, to } = req.query;
+  for (const [k, v] of [['from', from], ['to', to]]) if (v && !Number.isFinite(Date.parse(v))) return res.status(400).json({ error: `${k} must be an ISO date` });
+  const limit = Math.min(20_000, Math.max(1, Number.parseInt(req.query.limit, 10) || 5000));
+  res.type('text/csv').set('Content-Disposition', 'attachment; filename="heartbridge-audit.csv"').send(auditCsv({ patientId, type, from, to, limit }));
 });
 
 // POST /api/patients { name, age?, language?, profile?, meds?, ... } -> created patient

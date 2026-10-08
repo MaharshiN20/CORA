@@ -13,7 +13,7 @@ import * as scheduler from './scheduler.js';
 import * as channels from '../channels/index.js';
 import { startCheckin } from './agent.js';
 import { isActive as checkinActive } from './checkin.js';
-import { scoreRisk } from './risk.js';
+import { scoreRisk, recordRisk } from './risk.js';
 import { getSignals } from './signals.js';
 import { occurrences, isMonitored, allPlanners } from './planning.js';
 // Feature modules register their job kinds + planners on import.
@@ -64,6 +64,18 @@ scheduler.defineJob('checkin_due', {
   },
 });
 
+// A risk reading every morning for every monitored patient, check-in or not: a patient who stopped
+// answering would otherwise have no history at all, and the trajectory chart would just end.
+scheduler.defineJob('risk_snapshot', {
+  collapse: true,
+  async run(job) {
+    const p = store.getPatient(job.patientId);
+    const row = await recordRisk(p);
+    return { tier: row?.tier ?? null };
+  },
+});
+const SNAPSHOT_TIME = '06:00';
+
 // ---------- planning ----------
 
 // Re-exported so tests and callers have one import for planning.
@@ -75,6 +87,10 @@ export function planPatient(p, fromMs, toMs) {
   for (const { at, key } of occurrences(times, fromMs, toMs)) {
     if (!isMonitored(p, at)) continue;
     scheduler.schedule({ kind: 'checkin_due', patientId: p.id, dueAt: at, key: `checkin_due:${p.id}:${key}` });
+  }
+  for (const { at, key } of occurrences([SNAPSHOT_TIME], fromMs, toMs)) {
+    if (!isMonitored(p, at)) continue;
+    scheduler.schedule({ kind: 'risk_snapshot', patientId: p.id, dueAt: at, key: `risk_snapshot:${p.id}:${key}` });
   }
   for (const planner of allPlanners()) planner(p, fromMs, toMs);
 }
