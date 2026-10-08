@@ -7,7 +7,7 @@ import * as store from '../store.js';
 import { t, hasNative } from './i18n.js';
 import { scoreRisk } from './risk.js';
 import { getSignals } from './signals.js';
-import { triage, consecutiveMissedDiureticDays } from './triage.js';
+import { triage, consecutiveMissedDiureticDays, spo2Thresholds } from './triage.js';
 import { escalate } from './escalation.js';
 import * as parser from './parser.js';
 import * as llm from './llm.js';
@@ -241,7 +241,9 @@ const pickEmergencyFields = (c) => ({
   ...(typeof c.spo2 === 'number' && { spo2: c.spo2 }),
 });
 
-const isEmergency = (a) => a.chestPain || a.breath === 'rest' || a.confusion || a.fainting || a.otherEmergency || (a.spo2 != null && a.spo2 < 90);
+const copdOf = (patient) => !!patient?.profile?.copd;
+const isEmergency = (a, copd = false) =>
+  a.chestPain || a.breath === 'rest' || a.confusion || a.fainting || a.otherEmergency || (a.spo2 != null && a.spo2 < spo2Thresholds(copd).red);
 
 // ---------- public API ----------
 
@@ -303,7 +305,7 @@ export async function handle(patient, { text, buttonData }) {
   const traced = trace && store.audit('parse_trace', patient.id, { ...trace, reporter: state.reporter ?? 'patient' });
 
   // Emergencies never wait for a weight confirmation.
-  if (isEmergency(a)) return { replies: await finish(patient, a, traced), textEn };
+  if (isEmergency(a, copdOf(patient))) return { replies: await finish(patient, a, traced), textEn };
 
   const next = steps.find((s) => !s.done(a));
   if (!next) return { replies: [...replies, ...(await finish(patient, a, traced))], textEn };
@@ -338,7 +340,7 @@ async function finish(patient, a, traced = null) {
   const reporter = patient.checkin?.reporter ?? 'patient';
   const proxy = reporter === 'caregiver';
 
-  const result = triage({ weights, answers: a, missedDiureticDays: consecutiveMissedDiureticDays(doses) });
+  const result = triage({ weights, answers: a, missedDiureticDays: consecutiveMissedDiureticDays(doses), dryWeightLb: patient.dryWeightLb, copd: copdOf(patient) });
   if (traced) {
     // The debug drawer's third pane: which deterministic rules fired on the final answers.
     traced.data.outcome = { tier: result.tier, flags: result.flags.map((x) => ({ code: x.code, tier: x.tier, text: x.text })) };
@@ -417,18 +419,33 @@ export async function handlePhoto(patient, photo) {
 export async function handleUrgentFreeText(patient, text, { reporter = 'patient', lang } = {}) {
   let extra = parser.parseFreeText(text);
   const msgLang = lang ?? patient.language;
-  if (!isEmergency(extra) && !hasNative(msgLang) && llm.enabled()) {
+  const copd = copdOf(patient);
+  if (!isEmergency(extra, copd) && !hasNative(msgLang) && llm.enabled()) {
     const c = await parser.parseWithLLM(text);
     if (c) {
       extra = { ...extra, ...pickEmergencyFields(c) };
-      if (isEmergency(extra)) store.audit('llm_parse', patient.id, { purpose: 'unprompted_emergency', lang: msgLang, flags: pickEmergencyFields(c) });
+      if (isEmergency(extra, copd)) store.audit('llm_parse', patient.id, { purpose: 'unprompted_emergency', lang: msgLang, flags: pickEmergencyFields(c) });
     }
   }
-  if (!isEmergency(extra)) return null;
-  const result = triage({ weights: patient.weights, answers: extra });
+  if (!isEmergency(extra, copd)) return null;
+  const result = triage({ weights: patient.weights, answers: extra, dryWeightLb: patient.dryWeightLb, copd });
   store.updatePatient(patient.id, { lastTier: result.tier });
   const proxy = reporter === 'caregiver';
   await escalate(store.getPatient(patient.id), result, { source: proxy ? 'caregiver message' : 'unprompted message', reporter });
   const key = proxy ? 'proxy_red_911' : 'red_interrupt';
   return [{ ...replyIn(lang ?? patient.language, key, { name: firstName(patient) }), urgent: true }];
+}
+
+// A blood pressure the patient typed ("118/72") outside a check-in: save it, run it through the
+// same rules as everything else, and escalate if it is out of range. -> Reply[]
+export async function handleBloodPressure(patient, bp) {
+  store.updatePatient(patient.id, { vitals: [...(patient.vitals ?? []), { ts: clock.nowISO(), ...bp, source: 'self' }] });
+  store.audit('vital_reported', patient.id, bp);
+  const result = triage({ weights: [], answers: {}, bp }); // BP only: weight trends are the check-in's job
+  const vars = { bp: `${bp.sbp}/${bp.dbp}` };
+  if (result.tier === 'GREEN') return [{ text: t(patient.language, 'bp_logged', vars), textEn: t('en', 'bp_logged', vars) }];
+  store.updatePatient(patient.id, { lastTier: result.tier });
+  await escalate(store.getPatient(patient.id), result, { source: 'blood pressure' });
+  if (result.tier === 'RED') return [{ ...replyIn(patient.language, 'red_interrupt', { name: firstName(patient) }), urgent: true }];
+  return [{ text: t(patient.language, 'bp_flagged', vars), textEn: t('en', 'bp_flagged', vars) }];
 }

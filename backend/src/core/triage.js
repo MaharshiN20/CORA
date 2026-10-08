@@ -36,8 +36,17 @@ export const THRESHOLDS = {
   gain24hLb: 2,
   gain7dLb: 5,
   lossDehydrationLb: 3,
+  gain72hLb: 3, // over a skipped day (readings 48-72 h apart) the bar is a little higher
+  aboveDryWeightLb: 5, // slow creep that never trips the day-to-day rules
+  weightDropLb: 5, // in 24 h, on its own: over-diuresis, or a bad scale reading to double-check
   spo2Red: 90, // < 90 -> RED
   spo2Yellow: 93, // 90-92 -> YELLOW
+  spo2RedCopd: 88, // COPD patients live at 88-92%: < 88 -> RED
+  spo2YellowCopd: 90, // 88-89 -> YELLOW
+  sbpCritical: 80, // < 80 -> RED
+  sbpLow: 90, // 80-89 -> YELLOW
+  sbpHigh: 180,
+  dbpHigh: 110,
   hrHigh: 120,
   hrLow: 50,
   missedDiureticDays: 2,
@@ -51,6 +60,10 @@ const OTHER_EMERGENCY_TEXT = {
   stroke_signs: 'Possible stroke: slurred speech, facial droop or one-sided weakness',
   arm_jaw_pain: 'Left arm or jaw pain / numbness (possible cardiac)',
 };
+
+// Oxygen cut-offs by patient: { red, yellow } (SpO2 below red = 911; below yellow = nurse today).
+export const spo2Thresholds = (copd = false) =>
+  copd ? { red: THRESHOLDS.spo2RedCopd, yellow: THRESHOLDS.spo2YellowCopd } : { red: THRESHOLDS.spo2Red, yellow: THRESHOLDS.spo2Yellow };
 
 // ---------- weight trend helpers ----------
 
@@ -81,17 +94,35 @@ export function weightChange7d(weights) {
   return round1(latest.lb - inWindow[0].lb);
 }
 
+// Change vs. the prior reading 48-72 h before the latest: the "nobody weighed in yesterday" case
+// that weightChange24h can't see. null when there is a reading 12-48 h back (that one is used).
+export function weightChangeSkippedDay(weights) {
+  const latest = weights.at(-1);
+  if (!latest || weightChange24h(weights) != null) return null;
+  const t = Date.parse(latest.ts);
+  for (let i = weights.length - 2; i >= 0; i--) {
+    const age = t - Date.parse(weights[i].ts);
+    if (age > 72 * HOUR) break;
+    if (age > 48 * HOUR) return { delta: round1(latest.lb - weights[i].lb), days: Math.round(age / DAY) };
+  }
+  return null;
+}
+
 const round1 = (n) => Math.round(n * 10) / 10;
 
 // ---------- main ----------
 
-export function triage({ weights = [], answers = {}, missedDiureticDays = 0 } = {}) {
+// dryWeightLb: the patient's target weight (optional). copd: widens the oxygen cut-offs.
+// bp: a reported { sbp, dbp } (optional).
+export function triage({ weights = [], answers = {}, missedDiureticDays = 0, dryWeightLb = null, copd = false, bp = null } = {}) {
   const flags = [];
   const advice = new Set();
   const flag = (tier, code, text) => flags.push({ tier, code, text });
 
   const d24 = weightChange24h(weights);
   const d7 = weightChange7d(weights);
+  const skipped = weightChangeSkippedDay(weights);
+  const o2 = spo2Thresholds(copd);
   const { breath, orthopnea, pnd, swelling, chestPain, confusion, fainting, dizzy, spo2, heartRate, otherEmergency } = answers;
 
   // ---- RED: emergency, patient told to call 911 ----
@@ -99,7 +130,8 @@ export function triage({ weights = [], answers = {}, missedDiureticDays = 0 } = 
   if (breath === 'rest') flag('RED', 'sob_rest', 'Short of breath at rest');
   if (confusion) flag('RED', 'confusion', 'New confusion');
   if (fainting) flag('RED', 'syncope', 'Fainted / passed out');
-  if (isNum(spo2) && spo2 < THRESHOLDS.spo2Red) flag('RED', 'spo2_low', `SpO2 ${spo2}% (< ${THRESHOLDS.spo2Red}%)`);
+  if (isNum(spo2) && spo2 < o2.red) flag('RED', 'spo2_low', `SpO2 ${spo2}% (< ${o2.red}%${copd ? ', COPD' : ''})`);
+  if (isBp(bp) && bp.sbp < THRESHOLDS.sbpCritical) flag('RED', 'bp_critical', `Blood pressure ${bp.sbp}/${bp.dbp} (systolic < ${THRESHOLDS.sbpCritical})`);
   // Signs with no check-in question of their own (parser.OTHER_EMERGENCY). Any code is RED, so a
   // code this table doesn't know yet still reaches a nurse as an emergency.
   if (otherEmergency) flag('RED', otherEmergency in OTHER_EMERGENCY_TEXT ? otherEmergency : 'other_emergency', OTHER_EMERGENCY_TEXT[otherEmergency] ?? 'Emergency sign reported');
@@ -107,15 +139,23 @@ export function triage({ weights = [], answers = {}, missedDiureticDays = 0 } = 
   // ---- YELLOW: nurse callback today ----
   if (isNum(d24) && d24 >= THRESHOLDS.gain24hLb)
     flag('YELLOW', 'weight_24h', `Weight up ${d24} lb in 24h (≥ ${THRESHOLDS.gain24hLb})`);
+  if (skipped && skipped.delta >= THRESHOLDS.gain72hLb)
+    flag('YELLOW', 'weight_72h', `Weight up ${skipped.delta} lb since ${skipped.days} days ago, no reading in between (≥ ${THRESHOLDS.gain72hLb})`);
   if (isNum(d7) && d7 >= THRESHOLDS.gain7dLb)
     flag('YELLOW', 'weight_7d', `Weight up ${d7} lb in 7 days (≥ ${THRESHOLDS.gain7dLb})`);
+  // Slow creep: never more than a pound a day, but well above the target weight.
+  const latestLb = weights.at(-1)?.lb;
+  if (isNum(dryWeightLb) && isNum(latestLb) && latestLb - dryWeightLb >= THRESHOLDS.aboveDryWeightLb && !flags.some((f) => f.code.startsWith('weight_')))
+    flag('YELLOW', 'above_dry_weight', `Weight ${round1(latestLb - dryWeightLb)} lb above dry weight (${dryWeightLb} lb)`);
   if (orthopnea) flag('YELLOW', 'orthopnea', 'Needs more pillows / sleeps propped up');
   if (pnd) flag('YELLOW', 'pnd', 'Woke up at night short of breath (PND)');
   if (swelling === 'worse') flag('YELLOW', 'edema_worse', 'Leg/ankle swelling getting worse');
   if (missedDiureticDays >= THRESHOLDS.missedDiureticDays)
     flag('YELLOW', 'missed_diuretic', `Missed diuretic ${missedDiureticDays} days in a row`);
-  if (isNum(spo2) && spo2 >= THRESHOLDS.spo2Red && spo2 < THRESHOLDS.spo2Yellow)
-    flag('YELLOW', 'spo2_borderline', `SpO2 ${spo2}% (borderline)`);
+  if (isNum(spo2) && spo2 >= o2.red && spo2 < o2.yellow)
+    flag('YELLOW', 'spo2_borderline', `SpO2 ${spo2}% (borderline${copd ? ', COPD' : ''})`);
+  if (isBp(bp) && bp.sbp >= THRESHOLDS.sbpCritical && bp.sbp < THRESHOLDS.sbpLow) flag('YELLOW', 'bp_low', `Blood pressure ${bp.sbp}/${bp.dbp} (systolic < ${THRESHOLDS.sbpLow})`);
+  if (isBp(bp) && (bp.sbp >= THRESHOLDS.sbpHigh || bp.dbp >= THRESHOLDS.dbpHigh)) flag('YELLOW', 'bp_high', `Blood pressure ${bp.sbp}/${bp.dbp} (very high)`);
   if (isNum(heartRate) && (heartRate > THRESHOLDS.hrHigh || heartRate < THRESHOLDS.hrLow))
     flag('YELLOW', 'hr_abnormal', `Heart rate ${heartRate} bpm`);
 
@@ -131,6 +171,9 @@ export function triage({ weights = [], answers = {}, missedDiureticDays = 0 } = 
       flag('YELLOW', 'dizzy_dehydration', `Dizzy with weight down ${Math.abs(d24)} lb in 24h (possible over-diuresis)`);
     else advice.add('stand_slowly');
   }
+  // A big drop on its own (not already explained by the dizzy rule above).
+  if (isNum(d24) && d24 <= -THRESHOLDS.weightDropLb && !flags.some((f) => f.code === 'dizzy_dehydration'))
+    flag('YELLOW', 'weight_drop', `Weight down ${Math.abs(d24)} lb in 24h (possible over-diuresis, or check the scale reading)`);
 
   // ---- GREEN self-care advice ----
   if (swelling === 'mild') advice.add('elevate_legs').add('low_sodium');
@@ -147,6 +190,7 @@ export function triage({ weights = [], answers = {}, missedDiureticDays = 0 } = 
 }
 
 const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
+const isBp = (bp) => !!bp && isNum(bp.sbp) && isNum(bp.dbp);
 
 // Consecutive most-recent days a diuretic dose was missed.
 // doses: [{ ts, med, taken: boolean, diuretic?: boolean }]

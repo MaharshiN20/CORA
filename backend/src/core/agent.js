@@ -168,12 +168,7 @@ async function handleFreeText(patient, input, { injection = false } = {}) {
   if (companion.DOSING_CHANGE.test(input)) return { replies: (await companion.answer(patient, input)).replies };
   // "118/72": a blood pressure (e.g. the nurse asked for it before a standing order).
   const bp = parser.parseBloodPressure(input);
-  if (bp) {
-    store.updatePatient(patient.id, { vitals: [...(patient.vitals ?? []), { ts: clock.nowISO(), ...bp, source: 'self' }] });
-    store.audit('vital_reported', patient.id, bp);
-    const vars = { bp: `${bp.sbp}/${bp.dbp}` };
-    return { replies: [{ text: t(patient.language, 'bp_logged', vars), textEn: t('en', 'bp_logged', vars) }] };
-  }
+  if (bp) return { replies: await checkin.handleBloodPressure(patient, bp) };
   if (Object.keys(parser.parseFreeText(input)).length) return checkin.startWith(patient, input);
   // A re-programming attempt with no symptom or medicine question: a safe canned reply, no LLM.
   if (injection) return { replies: [{ text: t(patient.language, 'companion_other'), textEn: t('en', 'companion_other') }] };

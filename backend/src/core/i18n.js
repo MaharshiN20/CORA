@@ -106,6 +106,7 @@ const STRINGS = {
     nurse_ask_bp: '👩‍⚕️ {nurse} from your care team would like your blood pressure today. If you have a home cuff, please send the two numbers, e.g. 118/72.',
     protocol_notice: "💊 {nurse} from your care team updated your water-pill plan for today: {instructions} If you feel dizzy or worse, call your care team (chest pain or trouble breathing: call 911).",
     bp_logged: 'Thank you! I saved your blood pressure ({bp}) for your nurse. 💙',
+    bp_flagged: "Thank you, I saved your blood pressure ({bp}). It's outside your usual range, so I've asked your nurse to look at it today. If you feel faint, have chest pain or trouble breathing, call 911. 💙",
     // --- caregiver proxy check-in + weekly digest ---
     proxy_greeting: "Thank you for checking in for {name} 💙 I'll ask today's questions. Please answer them for {name}, based on how {name} is doing right now.",
     proxy_thanks_green: 'Thank you! {name} looks stable today. 👍',
@@ -253,6 +254,7 @@ const STRINGS = {
     nurse_ask_bp: '👩‍⚕️ {nurse} de su equipo médico quisiera saber su presión arterial hoy. Si tiene un aparato en casa, envíe los dos números, por ejemplo 118/72.',
     protocol_notice: '💊 {nurse} de su equipo médico actualizó hoy el plan de su pastilla para el agua: {instructions} Si se siente mareado(a) o peor, llame a su equipo médico (dolor de pecho o falta de aire: llame al 911).',
     bp_logged: '¡Gracias! Guardé su presión arterial ({bp}) para su enfermera. 💙',
+    bp_flagged: 'Gracias, guardé su presión arterial ({bp}). Está fuera de su rango habitual, así que pedí a su enfermera que la revise hoy. Si se siente desmayar, tiene dolor de pecho o dificultad para respirar, llame al 911. 💙',
     proxy_greeting: 'Gracias por hacer el chequeo de {name} 💙 Le haré las preguntas de hoy. Por favor contéstelas por {name}, según cómo está {name} ahora mismo.',
     proxy_thanks_green: '¡Gracias! {name} se ve estable hoy. 👍',
     proxy_thanks_yellow: 'Gracias. Algunas respuestas necesitan revisión, así que le pedí a la enfermera de {name} que llame hoy. Si {name} empeora antes, llame al equipo médico.',
