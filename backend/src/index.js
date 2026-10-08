@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { Server } from 'socket.io';
 import { createApp } from './app.js';
-import { events } from './store.js';
+import { events, flush } from './store.js';
 import * as telegram from './channels/telegram.js';
 import * as llm from './core/llm/index.js';
 import * as jobs from './core/jobs.js';
@@ -23,3 +23,23 @@ setInterval(() => llm.detect().catch(() => {}), 60_000).unref();
 // Scheduler: daily check-ins (and, as features land, meds, refills, outreach, digests).
 await jobs.start();
 console.log('[scheduler] running (30s tick; demo clock advances run due jobs instantly)');
+
+// Graceful shutdown: stop taking work, then flush the debounced store so nothing is lost.
+let closing = false;
+async function shutdown(signal) {
+  if (closing) return;
+  closing = true;
+  console.log(`[api] ${signal}: shutting down`);
+  try {
+    jobs.stop();
+    await telegram.stop();
+    io.close();
+    server.close();
+  } catch (err) {
+    console.error('[api] error during shutdown:', err.message);
+  } finally {
+    flush();
+    process.exit(0);
+  }
+}
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => shutdown(sig));

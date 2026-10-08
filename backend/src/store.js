@@ -18,25 +18,84 @@ const DEFAULT_COLLECTIONS = ['patients', 'messages', 'alerts', 'audit', 'reading
 // Emits 'change' with { type, payload } so socket.io can push live updates to the dashboard.
 export const events = new EventEmitter();
 
+const BAK_FILE = `${DB_FILE}.bak`;
+const TMP_FILE = `${DB_FILE}.tmp`;
+const SAVE_DEBOUNCE_MS = 250; // a burst of mutations (one inbound message makes many) is one write
+const BACKUP_EVERY_MS = 30_000;
+
 let db = load();
 
+function readJson(file) {
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+// Only a genuinely missing file means "first run, seed the demo". A file that exists but won't
+// parse (a crash mid-write on an older build, disk trouble) is never silently replaced by seed
+// data, which the next save would then write over the only copy: recover from the last good .bak,
+// or refuse to start so a human can look.
 function load() {
   let data;
   try {
-    data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-  } catch {
-    data = buildSeed();
+    data = readJson(DB_FILE);
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      data = buildSeed();
+    } else {
+      try {
+        fs.copyFileSync(DB_FILE, `${DB_FILE}.corrupt`);
+      } catch {}
+      try {
+        data = readJson(BAK_FILE);
+        console.error(`[store] ${DB_FILE} was unreadable (${err.message}); recovered from ${BAK_FILE}`);
+        fs.unlinkSync(DB_FILE); // keep the bad copy out of the .bak rotation
+      } catch {
+        throw new Error(`[store] ${DB_FILE} is corrupt (${err.message}) and there is no usable backup. Copy kept at ${DB_FILE}.corrupt; fix or delete it to start fresh.`);
+      }
+    }
   }
   for (const c of DEFAULT_COLLECTIONS) data[c] ??= [];
   clock.setOffset(data.clockOffsetMs ?? 0);
   return data;
 }
 
-function save() {
+// Write-then-rename so a crash leaves either the old file or the new one, never half of one.
+// The previous file is copied to .bak (at most every 30 s) before it is replaced.
+let lastBackup = -Infinity;
+function writeNow() {
   db.clockOffsetMs = clock.offset();
   fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  const fd = fs.openSync(TMP_FILE, 'w');
+  try {
+    fs.writeFileSync(fd, JSON.stringify(db));
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  const t = performance.now(); // monotonic: this is I/O pacing, not domain time (core/clock.js)
+  if (t - lastBackup >= BACKUP_EVERY_MS && fs.existsSync(DB_FILE)) {
+    fs.copyFileSync(DB_FILE, BAK_FILE);
+    lastBackup = t;
+  }
+  fs.renameSync(TMP_FILE, DB_FILE);
 }
+
+let saveTimer = null;
+function save() {
+  db.clockOffsetMs = clock.offset(); // in-memory state stays current; only the disk write is deferred
+  if (saveTimer) return;
+  saveTimer = setTimeout(flush, SAVE_DEBOUNCE_MS);
+  saveTimer.unref(); // never keeps the process (or a test run) alive
+}
+
+// Write any pending changes now. Also runs on process exit; index.js calls it on SIGTERM/SIGINT.
+export function flush() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = null;
+  writeNow();
+}
+process.on('exit', () => {
+  if (saveTimer) flush();
+});
 
 function emit(type, payload) {
   save();
