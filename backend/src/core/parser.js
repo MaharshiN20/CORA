@@ -20,7 +20,7 @@ const near = (a, b) => new RegExp(`(?:${a})${GAP}(?:${b})|(?:${b})${GAP}(?:${a})
 
 const CHEST = '\\b(?:chest|chst|pecho)\\b';
 const CHEST_BAD =
-  '\\b(?:pain|pains|pian|painful|tight\\w*|pressure|hurt\\w*|heav\\w*|squeez\\w*|ach\\w*|crush\\w*|burn\\w*|' +
+  '\\b(?:pain|pains|pian|painful|tight\\w*|pressure|hurt\\w*|heav(?:y|iness|ier)|squeez\\w*|ach(?:e|es|ed|ing)|crush\\w*|burn\\w*|' +
   'dolor\\w*|duele\\w*|apretad\\w*|aprieta\\w*|presion|opresion|pesad\\w*|arde)\\b';
 const BREATHLESS =
   "(?:short|out) of breath|breathless|hard to breathe?|trouble breathing|difficulty breathing|can'?t get (?:my |enough )?(?:breath|air)|" +
@@ -45,6 +45,46 @@ const PATTERNS = {
   ],
 };
 
+// Other 911-grade signs. They have no check-in question of their own, so they raise
+// answers.otherEmergency (a code) and triage turns it into RED with a readable reason.
+const BLOOD = 'blood(?!\\s*(?:pressure|sugar|test|tests|work|thinners?|draw|count|type))';
+const OTHER_EMERGENCY = {
+  frothy_sputum: [
+    near('\\b(?:pink|frothy|foamy)\\b', '\\b(?:cough\\w*|sputum|phlegm|spit\\w*|mucus|saliva|fluid|stuff|foam)\\b'),
+    /\besputo\b.{0,15}\b(?:rosad[oa]|espumos[oa])\b|\bflema (?:rosada|espumosa)\b|\btos\b.{0,15}\b(?:rosad[oa]|espum\w+)\b/,
+  ],
+  coughing_blood: [
+    new RegExp(`\\b(?:cough\\w*|spit\\w*|vomit\\w*|throwing up)\\b(?:\\W+\\w+){0,3}?\\W+${BLOOD}`),
+    /\btos con sangre\b|\btoso sangre\b|\bescup\w* sangre\b|\bvomit\w* sangre\b/,
+  ],
+  blue_lips: [
+    /\b(?:lips?|fingertips?)\b(?:\W+\w+){0,3}?\W+(?:blue|bluish|purple|cyanotic|dusky)\b/,
+    /\b(?:blue|bluish|purple)\b(?:\W+\w+){0,2}?\W+(?:lips?|fingertips?)\b/,
+    /\blabios\b.{0,15}\b(?:azul\w*|morad\w*)\b|\bazul\w*\b.{0,10}\blabios\b|\bdedos azules\b/,
+  ],
+  stroke_signs: [
+    /\bslurr\w* (?:speech|words)\b|\bspeech\b(?:\W+\w+){0,2}?\W+slurr\w*/,
+    /\b(?:face|mouth|smile)\b(?:\W+\w+){0,3}?\W+(?:droop\w*|lopsided|crooked)|\bdroop\w* (?:face|mouth|eyelid)\b/,
+    /\b(?:can'?t|cannot|unable to) speak\b|\bsudden(?:ly)? (?:weak\w*|numb\w*)\b(?:\W+\w+){0,3}?\W+(?:one side|side|arm|leg)\b|\bone side\b.{0,20}\b(?:weak\w*|numb\w*|paraly\w*)\b/,
+    /\bhabla (?:arrastrad[oa]|enredad[oa])\b|\bcara caid[oa]\b|\bboca torcid[oa]\b|\bno (?:puede|puedo) hablar\b|\bdebilidad (?:de|en) un lado\b/,
+  ],
+  // Jaw pain, or pain/numbness in the LEFT arm: the other half of a heart-attack picture.
+  // ("my arm hurts from the fall" is not it; "chest and arm" is handled by CHEST_AND_LIMB.)
+  arm_jaw_pain: [
+    near('\\bjaw\\b', '\\b(?:pain\\w*|aches?|hurts?|tight|clench\\w*)\\b'),
+    near('\\bleft arm\\b', '\\b(?:pain\\w*|aches?|hurts?|numb\\w*|tingl\\w*|heavy)\\b'),
+    near('\\b(?:brazo izquierdo|mandibula|quijada)\\b', '\\b(?:dolor\\w*|duele\\w*|adormecid\\w*|hormigue\\w*)\\b'),
+  ],
+};
+
+// "Chest and arm hurt" is one complaint, but the clause splitter would cut it at "and".
+const CHEST_AND_LIMB =
+  /\b(chest|pecho)\s+(?:and|y|&)\s+(?:(?:my|mi|the|el|la)\s+)?(?:(?:left|right|izquierdo|derecho)\s+)?(?:arms?|jaw|back|shoulders?|neck|brazos?|mandibula|espalda|hombros?|cuello)\b/g;
+
+// A heart attack as history, not an event: "...5 years ago", "...last year", "in 2019", "hace 3 años".
+const HEART_ATTACK_HISTORY =
+  /^\s*(?:\w+\s+){0,3}?(?:years?|months?|decades?|weeks?) ago|^\s*(?:\w+\s+){0,2}?(?:last (?:year|month|decade)|in (?:19|20)\d\d)\b|^\s*(?:\w+\s+){0,2}?hace\s+(?:\w+\s+){0,2}(?:ano|mes|semana|dia)s?\b|^\s*(?:el )?ano pasado\b/;
+
 // Breathless *only when lying down, or waking up breathless at night (PND)* = orthopnea
 // (nurse today), not breathless at rest (911).
 const LYING_DOWN =
@@ -55,10 +95,29 @@ const NEGATION =
 const IDIOM_BEFORE_HEART_ATTACK = /(?:gave|give|giving|gives|going to give)(?: me)?(?: a)?\s*$|(?:almost|nearly) (?:had|have|gave)(?: me)?(?: a)?\s*$/;
 const CLAUSE_SPLIT = /[.;!?\n,]+|\b(?:but|pero|and|y|although|aunque|though|however|sino)\b/;
 
+// "I don't know, my chest hurts", "not sure ...", "not feeling well ...": a negator, but not of
+// the symptom that follows. Removed before looking for negation.
+const NON_NEGATING =
+  /\b(?:(?:i |we |you )?(?:do ?n'?t|didn'?t|dont) (?:know|think|understand|remember|care|want)|not (?:sure|certain|really sure|feeling (?:well|good|right|great|ok|okay)|well|good|right|great)|no (?:se|creo|estoy segur[oa])|no me siento bien)\b/g;
+// "never had chest pain like this", "nunca ... asi": the negator makes it worse, not absent.
+const NEVER_LIKE_THIS = /\b(?:never|nunca)\b.*\b(?:like this|like that|before|so bad|this bad|antes|asi|tan fuerte)\b/;
+
 // Is the match at `index` in `clause` negated by a negator in the (up to) 4 words before it?
 function negated(clause, index) {
-  const before = clause.slice(0, index).trim().split(/\s+/).slice(-4).join(' ');
+  const raw = clause.slice(0, index);
+  if (NEVER_LIKE_THIS.test(clause)) return NEGATION.test(raw.replace(/\b(?:never|nunca)\b/g, ' '));
+  const before = raw.replace(NON_NEGATING, ' ').trim().split(/\s+/).slice(-4).join(' ');
   return NEGATION.test(before);
+}
+
+// The same check for a keyword found anywhere in a whole message: only the clause the match
+// sits in counts (text before it, back to the last punctuation / "but").
+function mentioned(text, re) {
+  const s = norm(text);
+  const m = re.exec(s);
+  if (!m) return false;
+  const lastClause = s.slice(0, m.index).split(CLAUSE_SPLIT).pop() ?? '';
+  return !negated(lastClause, lastClause.length);
 }
 
 function clauseFlags(clause) {
@@ -68,10 +127,22 @@ function clauseFlags(clause) {
       const m = re.exec(clause);
       if (!m) continue;
       if (negated(clause, m.index)) continue;
-      if (flag === 'chestPain' && /heart attack/.test(m[0]) && IDIOM_BEFORE_HEART_ATTACK.test(clause.slice(0, m.index))) continue;
+      if (flag === 'chestPain' && /heart attack|infarto|ataque al corazon/.test(m[0])) {
+        if (IDIOM_BEFORE_HEART_ATTACK.test(clause.slice(0, m.index))) continue;
+        if (HEART_ATTACK_HISTORY.test(clause.slice(m.index + m[0].length))) continue; // "...5 years ago"
+      }
       found[flag] = true;
       break;
     }
+  }
+  for (const [code, regexes] of Object.entries(OTHER_EMERGENCY)) {
+    for (const re of regexes) {
+      const m = re.exec(clause);
+      if (!m || negated(clause, m.index)) continue;
+      found.otherEmergency = code;
+      break;
+    }
+    if (found.otherEmergency) break;
   }
   if (found.breathRest && LYING_DOWN.test(clause) && !new RegExp(AT_REST).test(clause)) {
     delete found.breathRest;
@@ -83,7 +154,7 @@ function clauseFlags(clause) {
 // Orthopnea = needing MORE pillows than usual, or sleeping propped up / in a recliner.
 // A bare pillow count ("my usual 2 pillows") is the patient's baseline, not a symptom.
 const ORTHOPNEA =
-  /\b(?:more|extra|additional|m[aá]s)\b(?:\s+\w+){0,2}\s+(?:pillows?|almohadas?)\b|\brecliner\b|\bsleep\w* (?:sitting )?up\b|\bslept (?:sitting )?up\b|\bsit(?:ting)? up to breathe?\b|\bpropped up\b|\bsill[oó]n\b|\breclinable\b|\bdorm\w* sentad[oa]\b|\bwoke up (?:short of breath|gasping|can'?t breathe)|\bme despert[eé] sin aire\b|\bsin aire en la noche\b/i;
+  /\b(?:can'?t|cannot|unable to|could ?n'?t) (?:lie|lay) (?:down|flat)\b|\bno puedo (?:acostarme|acostar|estar acostad[oa])\b|\b(?:more|extra|additional|m[aá]s)\b(?:\s+\w+){0,2}\s+(?:pillows?|almohadas?)\b|\brecliner\b|\bsleep\w* (?:sitting )?up\b|\bslept (?:sitting )?up\b|\bsit(?:ting)? up to breathe?\b|\bpropped up\b|\bsill[oó]n\b|\breclinable\b|\bdorm\w* sentad[oa]\b|\bwoke up (?:short of breath|gasping|can'?t breathe)|\bme despert[eé] sin aire\b|\bsin aire en la noche\b/i;
 // "Slept fine / same as usual": means no to the pillows question.
 const BASELINE = /\b(?:usual|normal|same|fine|good|ok|okay|as always|like always|lo normal|como siempre|igual|bien)\b/i;
 
@@ -104,16 +175,24 @@ const KEYWORDS = {
 const toLb = (n, unit) => (/^(kg|kilos?)$/i.test(unit ?? '') ? Math.round(n * 2.2046 * 10) / 10 : n);
 const inRange = (lb) => lb >= 70 && lb <= 500;
 
+// A number followed by one of these is a dose, vital sign, age or count, not a body weight.
+const NOT_A_WEIGHT_AFTER =
+  /^\s*(?:mg|mcg|g|ml|mmhg|bpm|%|pills?|tablets?|tabs?|units?|years?|yrs?|y\/o|days?|hours?|hrs?|minutes?|mins?|times|pillows?|almohadas?|pastillas?|tabletas?|a[nñ]os|d[ií]as|horas?|veces)\b|^\s*%/i;
+
 export function parseWeight(text) {
   const s = String(text).replace(/(\d),(\d)/g, '$1.$2');
-  const nums = [...s.matchAll(/(?<![\d.])(\d+(?:\.\d+)?)(?![\d.]*\d)\s*(lb|lbs|pounds|libras|kg|kilos?)?\b/gi)];
+  const nums = [...s.matchAll(/(?<![\d.])(\d+(?:\.\d+)?)(?![\d.]*\d)\s*(lb|lbs|pounds|libras|kg|kilos?)?\b/gi)].filter((m) => {
+    if (m[2]) return true; // "172 lbs" is a weight whatever surrounds it
+    const after = s.slice(m.index + m[0].length);
+    const before = s.slice(0, m.index);
+    return !NOT_A_WEIGHT_AFTER.test(after) && !/\/\s*$/.test(before) && !/^\s*\//.test(after);
+  });
   if (nums.length) {
-    // First plausible number ("slept 3 nights in the recliner, 176 today" -> 176).
-    for (const m of nums) {
-      const lb = toLb(parseFloat(m[1]), m[2]);
-      if (inRange(lb)) return lb;
-    }
-    return null;
+    // A number with a weight unit wins ("took 80 mg, 172 lbs"); else the first plausible one
+    // ("slept 3 nights in the recliner, 176 today" -> 176). Doses, blood pressures, ages and
+    // counts are filtered out above, so "80 mg Lasix, 170 today" is 170, not 80.
+    const plausible = nums.map((m) => ({ lb: toLb(parseFloat(m[1]), m[2]), unit: m[2] })).filter((x) => inRange(x.lb));
+    return (plausible.find((x) => x.unit) ?? plausible[0])?.lb ?? null;
   }
   const n = wordsToNumber(s);
   if (n == null) return null;
@@ -171,7 +250,14 @@ export function parseBloodPressure(text) {
 }
 
 export function parseSpo2(text) {
-  const m = String(text).match(/(?<![\d.])(\d{2,3})(?![\d.]*\d)\s*%?/);
+  // "72 bpm" typed at the oxygen question is a pulse; read as SpO2 72% it would fire a false 911.
+  const raw = String(text);
+  if (/\b(?:pulse|heart ?rate|hr|bpm|pulso|latidos|ritmo)\b/i.test(raw) && !/%|spo2|\bsat|oxygen|oxigeno|oxígeno|\bo2\b/i.test(raw)) return null;
+  // A number marked as oxygen ("95%", "oxygen 95") beats a bare one that may be a pulse.
+  const m =
+    raw.match(/(?<![\d.])(\d{2,3})(?![\d.]*\d)\s*%/) ??
+    raw.match(/(?:spo2|\bsat\w*|oxygen|oxigeno|oxígeno|\bo2\b)\D{0,12}(?<![\d.])(\d{2,3})(?![\d.]*\d)/i) ??
+    raw.match(/(?<![\d.])(\d{2,3})(?![\d.]*\d)/);
   const n = m ? parseInt(m[1], 10) : NaN;
   return n >= 50 && n <= 100 ? n : null;
 }
@@ -180,7 +266,8 @@ export function parseSpo2(text) {
 // (orthopnea here = "can't breathe when I lie down": reported so it isn't mistaken for RED.)
 export function detectRedFlags(text) {
   const found = {};
-  for (const clause of norm(text).split(CLAUSE_SPLIT)) {
+  const normalized = norm(text).replace(CHEST_AND_LIMB, '$1');
+  for (const clause of normalized.split(CLAUSE_SPLIT)) {
     if (clause?.trim()) Object.assign(found, clauseFlags(clause));
   }
   return Object.keys(found).length ? found : null;
@@ -196,11 +283,12 @@ export function parseFreeText(text) {
   if (rf?.fainting) a.fainting = true;
   if (rf?.confusion) a.confusion = true;
   if (rf?.orthopnea) a.orthopnea = true; // "can't breathe when I lie down"
-  if (!a.breath && KEYWORDS.breathExertion.test(s)) a.breath = 'exertion';
+  if (rf?.otherEmergency) a.otherEmergency = rf.otherEmergency;
+  if (!a.breath && mentioned(s, KEYWORDS.breathExertion)) a.breath = 'exertion';
   if (hasOrthopnea(s)) a.orthopnea = true;
-  if (KEYWORDS.swellingWorse.test(s)) a.swelling = 'worse';
+  if (mentioned(s, KEYWORDS.swellingWorse)) a.swelling = 'worse';
   else if (KEYWORDS.swellingNone.test(s)) a.swelling = 'none';
-  if (KEYWORDS.dizzy.test(s)) a.dizzy = true;
+  if (mentioned(s, KEYWORDS.dizzy)) a.dizzy = true;
   return a;
 }
 
@@ -315,7 +403,9 @@ export function validateExtraction(text, out) {
     const numbersOk = type !== 'number' || (quoted && numberMatches(field, value, evidence));
     if (quoted && numbersOk) { res.fields[field] = value; continue; }
 
-    if (isEmergencyValue(field, value)) {
+    // A message the model itself flagged as an injection attempt can't talk its way into a RED:
+    // an emergency needs a verbatim quote there. Otherwise a bad quote is kept (see below).
+    if (isEmergencyValue(field, value) && !res.injectionAttempt) {
       res.fields[field] = value; // lean towards 911: keep it, flag it for the nurse
       res.unverified.push(field);
       continue;
@@ -328,7 +418,7 @@ export function validateExtraction(text, out) {
 // -> { result: flat answers + textEn (or null), raw, dropped, unverified, timedOut, ms }
 export async function parseWithLLMTraced(text, { step = null, deadlineMs = PARSE_DEADLINE_MS } = {}) {
   const started = Date.now(); // latency measurement only (infrastructure, not patient time)
-  const raw = await llm.completeJSON(PARSE_PROMPT, `current_question: ${step ?? 'none'}\n<msg>${String(text)}</msg>`, {
+  const raw = await llm.completeJSON(PARSE_PROMPT, `current_question: ${step ?? 'none'}\n<msg>${String(text).replace(/<\/?\s*msg\s*>/gi, ' ')}</msg>`, {
     maxTokens: 600,
     timeoutMs: deadlineMs,
     deadlineMs,

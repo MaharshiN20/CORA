@@ -180,7 +180,7 @@ async function applyText(a, text, step, lang) {
   // Then anything else the message mentions, regardless of step.
   const extra = parser.parseFreeText(text);
   for (const [k, v] of Object.entries(extra)) if (a[k] == null) a[k] = v;
-  if (extra.chestPain || extra.confusion || extra.fainting) a.redflagsAsked = true;
+  if (extra.chestPain || extra.confusion || extra.fainting || extra.otherEmergency) a.redflagsAsked = true;
   const rules = diff(snapshot, a);
 
   // The LLM reads what the rules couldn't: anything in en/es the rules understood nothing of,
@@ -241,7 +241,7 @@ const pickEmergencyFields = (c) => ({
   ...(typeof c.spo2 === 'number' && { spo2: c.spo2 }),
 });
 
-const isEmergency = (a) => a.chestPain || a.breath === 'rest' || a.confusion || a.fainting || (a.spo2 != null && a.spo2 < 90);
+const isEmergency = (a) => a.chestPain || a.breath === 'rest' || a.confusion || a.fainting || a.otherEmergency || (a.spo2 != null && a.spo2 < 90);
 
 // ---------- public API ----------
 

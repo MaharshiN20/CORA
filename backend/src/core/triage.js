@@ -43,6 +43,15 @@ export const THRESHOLDS = {
   missedDiureticDays: 2,
 };
 
+// Nurse-facing reasons for answers.otherEmergency codes.
+const OTHER_EMERGENCY_TEXT = {
+  frothy_sputum: 'Coughing up pink or frothy sputum (possible pulmonary edema)',
+  coughing_blood: 'Coughing up or vomiting blood',
+  blue_lips: 'Blue or purple lips / fingertips',
+  stroke_signs: 'Possible stroke: slurred speech, facial droop or one-sided weakness',
+  arm_jaw_pain: 'Left arm or jaw pain / numbness (possible cardiac)',
+};
+
 // ---------- weight trend helpers ----------
 
 // Change vs. the most recent prior reading taken 12-48h before the latest.
@@ -83,7 +92,7 @@ export function triage({ weights = [], answers = {}, missedDiureticDays = 0 } = 
 
   const d24 = weightChange24h(weights);
   const d7 = weightChange7d(weights);
-  const { breath, orthopnea, pnd, swelling, chestPain, confusion, fainting, dizzy, spo2, heartRate } = answers;
+  const { breath, orthopnea, pnd, swelling, chestPain, confusion, fainting, dizzy, spo2, heartRate, otherEmergency } = answers;
 
   // ---- RED: emergency, patient told to call 911 ----
   if (chestPain) flag('RED', 'chest_pain', 'Chest pain or pressure');
@@ -91,6 +100,9 @@ export function triage({ weights = [], answers = {}, missedDiureticDays = 0 } = 
   if (confusion) flag('RED', 'confusion', 'New confusion');
   if (fainting) flag('RED', 'syncope', 'Fainted / passed out');
   if (isNum(spo2) && spo2 < THRESHOLDS.spo2Red) flag('RED', 'spo2_low', `SpO2 ${spo2}% (< ${THRESHOLDS.spo2Red}%)`);
+  // Signs with no check-in question of their own (parser.OTHER_EMERGENCY). Any code is RED, so a
+  // code this table doesn't know yet still reaches a nurse as an emergency.
+  if (otherEmergency) flag('RED', otherEmergency in OTHER_EMERGENCY_TEXT ? otherEmergency : 'other_emergency', OTHER_EMERGENCY_TEXT[otherEmergency] ?? 'Emergency sign reported');
 
   // ---- YELLOW: nurse callback today ----
   if (isNum(d24) && d24 >= THRESHOLDS.gain24hLb)
