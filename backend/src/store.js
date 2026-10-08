@@ -167,6 +167,7 @@ export function linkChat(code, chatId) {
 
 // Returns { role, patient } for a Telegram chat id, or null if not linked.
 export function findByChatId(chatId) {
+  if (chatId == null) return null; // unlinked patients have chatId null: null must not "match" them
   for (const p of db.patients) {
     if (p.chatId === chatId) return { role: 'patient', patient: p };
     if (p.caregiver?.chatId === chatId) return { role: 'caregiver', patient: p };
@@ -265,6 +266,38 @@ export const listReadings = (patientId, type) =>
 export function collection(name) {
   db[name] ??= [];
   return db[name];
+}
+
+// ---------- retention ----------
+// Everything is in memory and rewritten on each flush, so unbounded logs slow every request and
+// every save. Oldest-first caps keep that bounded; they are far above a demo's or a pilot's
+// volume. Done/missed/cancelled jobs are only history once a week has passed.
+export const RETENTION = { jobDays: 7, audit: 20_000, messages: 20_000, readings: 20_000 };
+
+// Drop from the front (oldest first) in place, so arrays handed out earlier stay valid.
+function dropOldest(arr, max) {
+  if (arr.length <= max) return 0;
+  const n = arr.length - max;
+  arr.splice(0, n);
+  return n;
+}
+
+export function prune() {
+  const cutoff = clock.now() - RETENTION.jobDays * 24 * 60 * 60 * 1000;
+  const jobs = db.jobs;
+  let kept = 0;
+  let removed = 0;
+  for (const j of jobs) {
+    const history = j.status === 'done' || j.status === 'missed' || j.status === 'cancelled';
+    if (history && Date.parse(j.ranAt ?? j.dueAt) < cutoff) removed++;
+    else jobs[kept++] = j;
+  }
+  jobs.length = kept;
+  removed += dropOldest(db.audit, RETENTION.audit);
+  removed += dropOldest(db.messages, RETENTION.messages);
+  removed += dropOldest(db.readings, RETENTION.readings);
+  if (removed) save(); // quiet: nothing changed that a dashboard shows
+  return removed;
 }
 
 // Raw access for core modules that need it (checkin state, vitals, etc.)

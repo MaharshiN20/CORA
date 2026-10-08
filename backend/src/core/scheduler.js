@@ -44,11 +44,23 @@ const groupOf = (j) => `${j.kind}:${handlers.get(j.kind)?.collapseKey?.(j) ?? j.
 
 const jobs = () => store.collection('jobs');
 
+// key -> job, so planning (thousands of schedule() calls per pass) is not O(jobs) each time.
+// Rebuilt whenever the underlying array is replaced (reset) or its length changed behind our
+// back (prune, recovery), so it can't go stale in a way that creates duplicate jobs.
+let keyIndex = { arr: null, size: -1, map: new Map() };
+function byKey(k) {
+  const arr = jobs();
+  if (keyIndex.arr !== arr || keyIndex.size !== arr.length) {
+    keyIndex = { arr, size: arr.length, map: new Map(arr.map((j) => [j.key, j])) };
+  }
+  return keyIndex.map.get(k);
+}
+
 // Idempotent: a job with the same key is never created twice (in any status).
 export function schedule({ kind, patientId = null, dueAt, key, payload = {} }) {
   if (!handlers.has(kind)) throw new Error(`schedule: unknown job kind "${kind}"`);
   const k = key ?? `${kind}:${patientId}:${dueAt}`;
-  const existing = jobs().find((j) => j.key === k);
+  const existing = byKey(k);
   if (existing) return existing;
   const job = {
     id: crypto.randomUUID(),
@@ -61,6 +73,8 @@ export function schedule({ kind, patientId = null, dueAt, key, payload = {} }) {
     createdAt: clock.nowISO(),
   };
   jobs().push(job);
+  keyIndex.map.set(k, job);
+  keyIndex.size = jobs().length;
   store.persist('job', job);
   return job;
 }

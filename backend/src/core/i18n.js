@@ -380,6 +380,12 @@ function fromGenerated(lang, text) {
 const LANG_NAMES = { vi: 'Vietnamese', hi: 'Hindi', zh: 'Simplified Chinese', ko: 'Korean', fr: 'French', ar: 'Arabic', ht: 'Haitian Creole', pt: 'Portuguese', ru: 'Russian', tl: 'Tagalog' };
 export const languageName = (lang) => LANG_NAMES[lang] ?? (lang === 'es' ? 'Spanish' : lang);
 const cache = new Map();
+// Bounded: nurse free text and patient replies are unbounded input. Oldest entry goes first.
+const CACHE_MAX = 2000;
+function cachePut(key, value) {
+  if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
+  cache.set(key, value);
+}
 
 // Translate an English string into the patient's language: generated templates first
 // (offline), then the LLM chain (cached). Returns the original text if the language
@@ -397,9 +403,10 @@ export async function localize(lang, text) {
       'Keep emojis, numbers and "911" unchanged. Output only the translation.',
     text,
   );
-  const result = out || text;
-  cache.set(key, result);
-  return result;
+  // A failed call (null) must not be cached, or one transient LLM hiccup pins English forever.
+  if (!out) return text;
+  cachePut(key, out);
+  return out;
 }
 
 // Translate free text written in English (e.g. a nurse's message) into ANY patient
@@ -416,7 +423,7 @@ export async function translateFromEnglish(lang, text) {
     text,
   );
   if (!out) return { text, translated: false };
-  cache.set(key, out);
+  cachePut(key, out);
   return { text: out, translated: true };
 }
 

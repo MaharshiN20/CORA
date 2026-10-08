@@ -105,6 +105,7 @@ function planFrom(fromMs) {
 
 export function start({ intervalMs = TICK_MS } = {}) {
   scheduler.recoverInterrupted();
+  store.prune();
   planFrom(clock.now());
   if (intervalMs) {
     timer = setInterval(() => {
@@ -114,6 +115,7 @@ export function start({ intervalMs = TICK_MS } = {}) {
         console.error('[scheduler] planning failed', e);
       }
       scheduler.tick().catch((e) => console.error('[scheduler] tick failed', e));
+      store.prune();
     }, intervalMs);
     timer.unref?.();
   }
