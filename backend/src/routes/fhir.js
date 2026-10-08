@@ -19,16 +19,23 @@ const supported = () => languages().map((l) => l.code);
 
 const fail = (res, err) => {
   if (err instanceof FhirError) return res.status(err.status).json({ error: err.message });
-  console.error('[fhir]', err);
-  return res.status(500).json({ error: err.message });
+  console.error('[fhir]', err?.message ?? err); // detail stays in the log
+  return res.status(500).json({ error: 'internal error' });
 };
 
-// Imports are recorded in the audit log, so importing the same EHR patient twice finds the first one.
+// An EHR patient that was already imported: the patient record carries fhirId/fhirBase (set below).
+// Imports made before that was recorded are found through their audit row.
 function alreadyImported(fhirId) {
   const base = baseUrl();
+  const own = store.listPatients().find((p) => p.fhirId === fhirId && p.fhirBase === base);
+  if (own) return own.id;
   const hit = store.listAudit().find((e) => e.type === 'fhir_import' && e.data?.fhirId === fhirId && e.data?.base === base);
   return hit && store.getPatient(hit.patientId) ? hit.patientId : null;
 }
+
+// Imports in flight, so a double click (two requests before either has finished fetching) can't
+// create two patients: the check above only sees patients that already exist.
+const importing = new Set();
 
 fhir.get('/', (_req, res) => res.json({ ok: true, base: baseUrl() }));
 
@@ -56,6 +63,9 @@ fhir.post('/import', async (req, res) => {
   if (!fhirId) return res.status(400).json({ error: 'fhirPatientId is required' });
   const existing = alreadyImported(fhirId);
   if (existing) return res.status(409).json({ error: 'Already imported', patientId: existing });
+  const claim = `${baseUrl()}|${fhirId}`;
+  if (importing.has(claim)) return res.status(409).json({ error: 'This patient is already being imported' });
+  importing.add(claim);
   try {
     const { data, summary } = toPatientData(await fetchRecord(fhirId), { supported: supported() });
     // HeartBridge is a heart-failure program for adults: enrolling anyone else (a public
@@ -64,7 +74,11 @@ fhir.post('/import', async (req, res) => {
     if (reasons.length && req.body?.override !== true) {
       return res.status(422).json({ error: `Not enrolled: ${reasons.join('; ')}. Confirm to enroll anyway.`, needsOverride: true, reasons });
     }
+    // Re-check now that the fetch is done: another path may have created the patient meanwhile.
+    const raced = alreadyImported(fhirId);
+    if (raced) return res.status(409).json({ error: 'Already imported', patientId: raced });
     let patient = createPatient(data);
+    patient = store.updatePatient(patient.id, { fhirId, fhirBase: baseUrl() });
     // createPatient assumes age 70 when none is given; an unknown age must stay unknown,
     // and the baseline risk must not count an age factor we invented.
     if (data.age == null) {
@@ -76,6 +90,8 @@ fhir.post('/import', async (req, res) => {
     res.status(201).json({ patient, summary });
   } catch (err) {
     fail(res, err);
+  } finally {
+    importing.delete(claim);
   }
 });
 

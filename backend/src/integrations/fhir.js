@@ -25,7 +25,9 @@ async function get(path) {
   try {
     res = await fetch(`${baseUrl()}/${path}`, { headers: { Accept: 'application/fhir+json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   } catch (err) {
-    throw new FhirError(`EHR server unreachable (${err.name === 'TimeoutError' ? 'timed out' : err.message})`, 502);
+    // Say what the nurse can act on; the underlying error stays in the server log, not in the response.
+    console.error('[fhir] request failed:', err.name === 'TimeoutError' ? 'timed out' : err.message);
+    throw new FhirError(`EHR server unreachable${err.name === 'TimeoutError' ? ' (timed out)' : ''}`, 502);
   }
   if (res.status === 404 || res.status === 410) throw new FhirError('Not found in the EHR', 404);
   if (!res.ok) throw new FhirError(`EHR server returned ${res.status}`, 502);
