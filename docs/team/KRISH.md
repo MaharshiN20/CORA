@@ -65,6 +65,7 @@
   - Handle the `409 Conflict` from a second poller with a clear log line.
   - Add a `/status` command in the nurse group (bot uptime, LLM provider from `llm.status()`, linked patient count).
   - **Accept:** tests for the rate limiter and retry logic, a manual run of the whole demo on your phone, and a list of anything flaky in REQUESTS.md.
+  - **Status:** the code, the tests and the flaky / unverified list are pushed (commit `73b6933`, REQUESTS.md). The box stays open for one thing a Claude can't do: the run of the whole demo from a real phone (open the `DEMO_ES` deep link, finish a check-in, see the YELLOW on the dashboard). Tick it after that run.
 
 ## Handed over from Prannav's Oct 8 audit pass (K8 to K16)
 
