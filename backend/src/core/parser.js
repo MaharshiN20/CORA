@@ -1,6 +1,8 @@
 // Free text -> structured check-in answers.
-// Regex/keyword first (offline, en + es); the LLM chain fills gaps for other phrasing/languages.
+// Regex/keyword first (offline: everything in en + es, the red flags also in vi / hi / zh, see
+// redflags-intl.js); the LLM chain fills gaps for other phrasing/languages.
 import * as llm from './llm.js';
+import { detectIntlRedFlags } from './redflags-intl.js';
 
 // ---------- red flags: the phrases that mean "call 911 now" ----------
 // Deterministic on purpose (this decides 911). Measured against evals/messages.jsonl
@@ -270,6 +272,8 @@ export function detectRedFlags(text) {
   for (const clause of normalized.split(CLAUSE_SPLIT)) {
     if (clause?.trim()) Object.assign(found, clauseFlags(clause));
   }
+  // Vietnamese, Hindi and Chinese have their own lists and their own negation rules.
+  Object.assign(found, detectIntlRedFlags(text));
   return Object.keys(found).length ? found : null;
 }
 

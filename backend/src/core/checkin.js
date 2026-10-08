@@ -47,7 +47,20 @@ function replyIn(lang, key, vars = {}, buttons) {
 }
 const reply = (p, key, vars, buttons) => replyIn(langOf(p), key, vars, buttons);
 
-function prompt(p, stepId) {
+// Safety net. The rules read every English and Spanish emergency; in other languages they know
+// a hand-written subset (core/redflags-intl.js) and otherwise lean on the LLM parser. With no
+// model up, a typed "I can't breathe" in such a language can go unread, so every question
+// carries one extra line: call 911 for chest pain or trouble breathing.
+const needsSafetyNet = (lang) => !hasNative(lang) && !llm.enabled();
+function withSafetyNet(p, r) {
+  const L = langOf(p);
+  if (!needsSafetyNet(L)) return r;
+  return { ...r, text: `${r.text}\n\n${t(L, 'safety_net_911')}`, textEn: `${r.textEn}\n\n${t('en', 'safety_net_911')}` };
+}
+
+const prompt = (p, stepId) => withSafetyNet(p, question(p, stepId));
+
+function question(p, stepId) {
   const L = langOf(p);
   switch (stepId) {
     case 'weight':
@@ -113,10 +126,11 @@ function weightConfirmPrompt(p, a) {
   const diff = Math.round(Math.abs(a.weightPending - last) * 10) / 10;
   const key = a.weightPending > last ? 'weight_confirm_up' : 'weight_confirm_down';
   const L = langOf(p);
-  return reply(p, key, { diff, last, lb: a.weightPending }, [
+  const confirm = reply(p, key, { diff, last, lb: a.weightPending }, [
     [{ label: t(L, 'weight_confirm_yes', { lb: a.weightPending }), data: 'ci:wconf:yes' }],
     [{ label: t(L, 'weight_confirm_no'), data: 'ci:wconf:no' }],
   ]);
+  return withSafetyNet(p, confirm);
 }
 
 function applyButton(a, data) {
@@ -330,7 +344,7 @@ export async function handle(patient, { text, buttonData }) {
   store.updatePatient(patient.id, { checkin: { ...state, state: next.id, answers: a } });
   const sameStep = next.id === state.state;
   if (next.id === 'weight' && a.weightPending != null) replies.push(weightConfirmPrompt(patient, a));
-  else if (!understood && next.id === 'weight') replies.push(reply(patient, 'bad_weight', {}, [[btn(langOf(patient), 'weight_skip', 'ci:wt:skip')]]));
+  else if (!understood && next.id === 'weight') replies.push(withSafetyNet(patient, reply(patient, 'bad_weight', {}, [[btn(langOf(patient), 'weight_skip', 'ci:wt:skip')]])));
   // Never re-send the identical question: say we noted what they told us, or that we
   // didn't catch it (and point at the buttons).
   else if (!understood) replies.push(combine(reply(patient, 'didnt_catch'), prompt(patient, next.id)));
@@ -420,19 +434,19 @@ export async function handlePhoto(patient, photo) {
   delete a.weightLb;
   store.updatePatient(patient.id, { checkin: { ...patient.checkin, answers: a } });
   const L = langOf(patient);
-  return [
-    reply(patient, 'scale_read', { lb: read.lb }, [
-      [{ label: t(L, 'weight_confirm_yes', { lb: read.lb }), data: 'ci:wconf:yes' }],
-      [{ label: t(L, 'weight_confirm_no'), data: 'ci:wconf:no' }],
-    ]),
-  ];
+  const confirm = reply(patient, 'scale_read', { lb: read.lb }, [
+    [{ label: t(L, 'weight_confirm_yes', { lb: read.lb }), data: 'ci:wconf:yes' }],
+    [{ label: t(L, 'weight_confirm_no'), data: 'ci:wconf:no' }],
+  ]);
+  return [withSafetyNet(patient, confirm)];
 }
 
 // Emergency phrase outside a check-in ("my chest hurts"): triage + escalate right away.
 // A caregiver can report one too ("mom has chest pain"): same triage, reply addressed to them.
-// Languages without hand-written red-flag patterns (vi, hi, zh...): if the rules find
-// nothing, the LLM *parses* the message and the same isEmergency rule decides (the LLM
-// never picks the tier). en/es stay rules-only: the eval gate shows the rules catch them all.
+// Other languages: vi / hi / zh have hand-written red-flag lists too (core/redflags-intl.js),
+// but they are not complete, and the rest have none. So when the rules find nothing there, the
+// LLM *parses* the message and the same isEmergency rule decides (the LLM never picks the
+// tier). en/es stay rules-only: the eval gate shows the rules catch them all.
 export async function handleUrgentFreeText(patient, text, { reporter = 'patient', lang } = {}) {
   let extra = parser.parseFreeText(text);
   const msgLang = lang ?? patient.language;

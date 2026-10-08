@@ -88,7 +88,10 @@ test('vi/hi/zh unprompted emergency: the LLM parses, the rule decides, nurse ale
   process.env.LLM_PROVIDER = 'lmstudio';
   const realFetch = globalThis.fetch;
   // Evidence-quoted extraction (parser.validateExtraction): each value cites the message.
-  let parsed = { fields: { confusion: { value: true, evidence: 'lú lẫn' } }, textEn: 'My mother seems confused' };
+  // The message must be one the hand-written vi patterns (core/redflags-intl.js) do NOT know,
+  // or the rules would catch it and the model would never be asked.
+  const UNKNOWN_TO_RULES = 'Mẹ tôi nói năng lộn xộn, không còn tỉnh táo';
+  let parsed = { fields: { confusion: { value: true, evidence: 'không còn tỉnh táo' } }, textEn: 'My mother is talking incoherently and is no longer lucid' };
   globalThis.fetch = async (url, opts) => {
     const u = String(url);
     if (u.endsWith('/v1/models')) return new Response(JSON.stringify({ data: [{ id: 'qwen2.5-7b-instruct' }] }));
@@ -105,11 +108,20 @@ test('vi/hi/zh unprompted emergency: the LLM parses, the rule decides, nurse ale
     const agent = await import('../src/core/agent.js');
     await llm.detect({ force: true });
     store.reset();
-    const r = await agent.handleInbound({ patientId: 'p3', text: 'Mẹ tôi có vẻ lú lẫn, không biết mình đang ở đâu' }); // Thanh, vi
+    const parser = await import('../src/core/parser.js');
+    assert.deepEqual(parser.parseFreeText(UNKNOWN_TO_RULES), {}, 'the rules alone read nothing here');
+    const r = await agent.handleInbound({ patientId: 'p3', text: UNKNOWN_TO_RULES }); // Thanh, vi
     assert.equal(r[0].urgent, true);
     const alert = store.listAlerts()[0];
     assert.equal(alert.tier, 'RED');
     assert.ok(store.listAudit('p3').some((e) => e.type === 'llm_parse' && e.data.flags.confusion));
+
+    // A phrase the vi patterns do know is escalated by the rules themselves: no model involved.
+    store.reset();
+    const known = await agent.handleInbound({ patientId: 'p3', text: 'Mẹ tôi có vẻ lú lẫn, không biết mình đang ở đâu' });
+    assert.equal(known[0].urgent, true);
+    assert.equal(store.listAlerts()[0].tier, 'RED');
+    assert.ok(!store.listAudit('p3').some((e) => e.type === 'llm_parse'), 'caught without asking the model');
 
     // LLM says nothing alarming -> no escalation (the rule decides, not the model's tone)
     store.reset();

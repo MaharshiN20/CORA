@@ -154,3 +154,95 @@
 {"id":"zh-018","lang":"zh","step":"spo2","text":"93","expected":{"spo2":93}}
 {"id":"zh-019","lang":"zh","step":"spo2","text":"血氧88","expected":{"spo2":88}}
 {"id":"zh-020","lang":"zh","step":"free","text":"你好!孙子来看我了,很开心。就是胸口有点闷","expected":{"chestPain":true},"note":"hidden emergency in chit-chat"}
+{"id":"vi-021","lang":"vi","step":"free","text":"tôi không thở được","expected":{"breath":"rest"}}
+{"id":"vi-022","lang":"vi","step":"redflags","text":"ngực tôi đau quá","expected":{"chestPain":true}}
+{"id":"vi-023","lang":"vi","step":"free","text":"bà tôi vừa bị xỉu trong nhà tắm","expected":{"fainting":true}}
+{"id":"vi-024","lang":"vi","step":"free","text":"ba tôi nói sảng, không nhận ra ai hết","expected":{"confusion":true}}
+{"id":"vi-025","lang":"vi","step":"free","text":"dau nguc qua","expected":{"chestPain":true},"note":"typed without diacritics"}
+{"id":"vi-026","lang":"vi","step":"breath","text":"ngồi nghỉ mà vẫn khó thở","expected":{"breath":"rest"}}
+{"id":"vi-027","lang":"vi","step":"free","text":"khong tho duoc","expected":{"breath":"rest"},"note":"typed without diacritics"}
+{"id":"vi-028","lang":"vi","step":"free","text":"đau thắt ngực từ sáng tới giờ","expected":{"chestPain":true}}
+{"id":"vi-029","lang":"vi","step":"free","text":"cha tôi đau ngực","expected":{"chestPain":true},"note":"cha (father) is not chả (not)"}
+{"id":"vi-030","lang":"vi","step":"redflags","text":"ngực không đau","expected":{"chestPain":false},"note":"negation"}
+{"id":"vi-031","lang":"vi","step":"free","text":"hết đau ngực rồi, cảm ơn cô","expected":{"chestPain":false},"note":"negation: the pain has stopped"}
+{"id":"vi-032","lang":"vi","step":"free","text":"hôm nay nóng muốn xỉu","expected":{"fainting":false},"note":"figure of speech (so hot I could faint)"}
+{"id":"vi-033","lang":"vi","step":"free","text":"chờ tôi một xíu","expected":{},"note":"xíu (a moment) is not xỉu (faint)"}
+{"id":"vi-034","lang":"vi","step":"free","text":"mũi tôi bị ngạt","expected":{},"note":"ngạt (blocked nose) is not ngất (faint)"}
+{"id":"vi-035","lang":"vi","step":"breath","text":"đi bộ nhanh thì khó thở, ngồi nghỉ là hết","expected":{"breath":"exertion"},"note":"breathless on exertion only, gone at rest"}
+{"id":"vi-036","lang":"vi","step":"free","text":"không khó thở, không đau ngực, không chóng mặt","expected":{"chestPain":false,"dizzy":false},"note":"negation"}
+{"id":"vi-037","lang":"vi","step":"free","text":"tôi không ngủ được vì khó thở khi nằm","expected":{"orthopnea":true}}
+{"id":"vi-038","lang":"vi","step":"free","text":"không biết thuốc ở đâu","expected":{},"note":"doesn't know where the medicine is, not confusion"}
+{"id":"hi-021","lang":"hi","step":"free","text":"सांस नहीं ले पा रहा हूं","expected":{"breath":"rest"}}
+{"id":"hi-022","lang":"hi","step":"redflags","text":"छाती में बहुत दर्द हो रहा है","expected":{"chestPain":true}}
+{"id":"hi-023","lang":"hi","step":"free","text":"मम्मी अचानक बेहोश होकर गिर गईं","expected":{"fainting":true}}
+{"id":"hi-024","lang":"hi","step":"free","text":"दादी किसी को पहचान नहीं रही हैं","expected":{"confusion":true}}
+{"id":"hi-025","lang":"hi","step":"free","text":"seene me dard ho raha hai","expected":{"chestPain":true},"note":"Hindi typed in Latin letters"}
+{"id":"hi-026","lang":"hi","step":"breath","text":"बैठे बैठे भी सांस फूल रही है","expected":{"breath":"rest"}}
+{"id":"hi-027","lang":"hi","step":"free","text":"सीने में दर्द नहीं जा रहा","expected":{"chestPain":true},"note":"नहीं here means the pain is NOT going away"}
+{"id":"hi-028","lang":"hi","step":"free","text":"दम घुट रहा है","expected":{"breath":"rest"}}
+{"id":"hi-029","lang":"hi","step":"redflags","text":"सीने में कोई दर्द नहीं है","expected":{"chestPain":false},"note":"negation"}
+{"id":"hi-030","lang":"hi","step":"free","text":"मैं बेहोश नहीं हुआ, बस चक्कर आया था","expected":{"fainting":false,"dizzy":true},"note":"negation"}
+{"id":"hi-031","lang":"hi","step":"free","text":"दवा को लेकर थोड़ी उलझन में हूं, सुबह वाली गोली कौन सी है?","expected":{},"note":"confused about medicines, not delirium"}
+{"id":"hi-032","lang":"hi","step":"free","text":"मुझे कुछ समझ नहीं आ रहा, सवाल दोबारा भेजिए","expected":{},"note":"doesn't understand the question"}
+{"id":"hi-033","lang":"hi","step":"breath","text":"सीढ़ियां चढ़ने पर सांस फूलती है","expected":{"breath":"exertion"}}
+{"id":"hi-034","lang":"hi","step":"free","text":"seene me dard nahi hai","expected":{"chestPain":false},"note":"negation, Hindi typed in Latin letters"}
+{"id":"hi-035","lang":"hi","step":"free","text":"रात में लेटने पर सांस लेने में तकलीफ होती है","expected":{"orthopnea":true}}
+{"id":"hi-036","lang":"hi","step":"free","text":"कमर में दर्द है सीने में नहीं","expected":{"chestPain":false},"note":"negation: back pain, not chest"}
+{"id":"zh-021","lang":"zh","step":"free","text":"我无法呼吸","expected":{"breath":"rest"}}
+{"id":"zh-022","lang":"zh","step":"redflags","text":"胸口像压了块石头","expected":{"chestPain":true}}
+{"id":"zh-023","lang":"zh","step":"free","text":"爸爸刚才昏过去了","expected":{"fainting":true}}
+{"id":"zh-024","lang":"zh","step":"free","text":"奶奶神志不清,认不出人了","expected":{"confusion":true}}
+{"id":"zh-025","lang":"zh","step":"breath","text":"休息的时候也喘不上气","expected":{"breath":"rest"}}
+{"id":"zh-026","lang":"zh","step":"free","text":"胸悶,喘不過氣","expected":{"chestPain":true},"note":"traditional characters"}
+{"id":"zh-027","lang":"zh","step":"free","text":"心口疼得厉害","expected":{"chestPain":true}}
+{"id":"zh-028","lang":"zh","step":"free","text":"我很不舒服胸口痛","expected":{"chestPain":true},"note":"不舒服 (unwell) is not a negation"}
+{"id":"zh-029","lang":"zh","step":"redflags","text":"胸口不痛","expected":{"chestPain":false},"note":"negation"}
+{"id":"zh-030","lang":"zh","step":"free","text":"没有晕倒,只是有点头晕","expected":{"fainting":false,"dizzy":true},"note":"negation"}
+{"id":"zh-031","lang":"zh","step":"free","text":"我真糊涂,又忘了量体重","expected":{},"note":"figure of speech (silly me), not confusion"}
+{"id":"zh-032","lang":"zh","step":"free","text":"不知道在哪里买药","expected":{},"note":"doesn't know where to buy medicine, not confusion"}
+{"id":"zh-033","lang":"zh","step":"breath","text":"爬楼梯的时候喘不过气,休息一下就好了","expected":{"breath":"exertion"},"note":"breathless on exertion only"}
+{"id":"zh-034","lang":"zh","step":"free","text":"今天累得快晕倒了","expected":{},"note":"figure of speech (so tired I could faint)"}
+{"id":"zh-035","lang":"zh","step":"free","text":"晚上躺下就喘不过气","expected":{"orthopnea":true}}
+{"id":"zh-036","lang":"zh","step":"free","text":"看到孙子生病我很心疼","expected":{},"note":"心疼 is feeling sorry for someone, not chest pain"}
+{"id":"vi-039","lang":"vi","step":"free","text":"tôi thấy tức ngực lắm","expected":{"chestPain":true}}
+{"id":"vi-040","lang":"vi","step":"free","text":"ngực đau nhói từng cơn","expected":{"chestPain":true}}
+{"id":"vi-041","lang":"vi","step":"free","text":"mẹ em ngất xỉu rồi","expected":{"fainting":true}}
+{"id":"vi-042","lang":"vi","step":"free","text":"khó thở quá, không thở nổi","expected":{"breath":"rest"}}
+{"id":"vi-043","lang":"vi","step":"free","text":"ông nội không nhận ra người nhà nữa","expected":{"confusion":true}}
+{"id":"vi-044","lang":"vi","step":"breath","text":"nằm nghỉ cũng thấy hụt hơi","expected":{"breath":"rest"}}
+{"id":"vi-045","lang":"vi","step":"free","text":"bố tôi đang bị đau ngực dữ dội","expected":{"chestPain":true}}
+{"id":"vi-046","lang":"vi","step":"free","text":"em thở không được chị ơi","expected":{"breath":"rest"}}
+{"id":"vi-047","lang":"vi","step":"redflags","text":"em khỏe, không có đau ngực gì hết","expected":{"chestPain":false},"note":"negation"}
+{"id":"vi-048","lang":"vi","step":"free","text":"hôm qua hơi mệt nhưng nay đỡ rồi","expected":{}}
+{"id":"vi-049","lang":"vi","step":"breath","text":"leo cầu thang thì hơi khó thở","expected":{"breath":"exertion"}}
+{"id":"vi-050","lang":"vi","step":"free","text":"ăn uống bình thường, ngủ được","expected":{}}
+{"id":"vi-051","lang":"vi","step":"breath","text":"chưa thấy khó thở gì","expected":{"breath":"normal"},"note":"negation"}
+{"id":"vi-052","lang":"vi","step":"weight","text":"tôi cân nặng 60 ký","expected":{"weightLb":132.3}}
+{"id":"hi-037","lang":"hi","step":"free","text":"मेरे सीने में तेज दर्द हो रहा है","expected":{"chestPain":true}}
+{"id":"hi-038","lang":"hi","step":"free","text":"पापा बेहोश हो गए हैं","expected":{"fainting":true}}
+{"id":"hi-039","lang":"hi","step":"free","text":"सांस बिल्कुल नहीं आ रही","expected":{"breath":"rest"}}
+{"id":"hi-040","lang":"hi","step":"free","text":"छाती में भारीपन लग रहा है","expected":{"chestPain":true}}
+{"id":"hi-041","lang":"hi","step":"free","text":"मां किसी को पहचान नहीं पा रही","expected":{"confusion":true}}
+{"id":"hi-042","lang":"hi","step":"breath","text":"आराम करने पर भी सांस फूल रही है","expected":{"breath":"rest"}}
+{"id":"hi-043","lang":"hi","step":"free","text":"chhati me dard hai bahut","expected":{"chestPain":true},"note":"Hindi typed in Latin letters"}
+{"id":"hi-044","lang":"hi","step":"free","text":"सीने में जलन और दर्द है","expected":{"chestPain":true}}
+{"id":"hi-045","lang":"hi","step":"free","text":"मैं ठीक हूं, कोई तकलीफ नहीं है","expected":{}}
+{"id":"hi-046","lang":"hi","step":"redflags","text":"सीने में दर्द बिल्कुल नहीं है","expected":{"chestPain":false},"note":"negation"}
+{"id":"hi-047","lang":"hi","step":"breath","text":"थोड़ा चलने पर सांस फूल जाती है","expected":{"breath":"exertion"}}
+{"id":"hi-048","lang":"hi","step":"diuretic","text":"दवा ले ली है","expected":{"diureticTaken":true}}
+{"id":"hi-049","lang":"hi","step":"free","text":"रात को नींद अच्छी आई","expected":{}}
+{"id":"hi-050","lang":"hi","step":"free","text":"सिर में दर्द है","expected":{},"note":"a headache, not chest pain"}
+{"id":"zh-037","lang":"zh","step":"free","text":"我胸口很痛","expected":{"chestPain":true}}
+{"id":"zh-038","lang":"zh","step":"free","text":"胸闷得厉害","expected":{"chestPain":true}}
+{"id":"zh-039","lang":"zh","step":"free","text":"爷爷晕倒了","expected":{"fainting":true}}
+{"id":"zh-040","lang":"zh","step":"breath","text":"喘不过气,坐着都喘","expected":{"breath":"rest"}}
+{"id":"zh-041","lang":"zh","step":"free","text":"妈妈意识模糊,叫不醒","expected":{"confusion":true}}
+{"id":"zh-042","lang":"zh","step":"free","text":"呼吸不了了","expected":{"breath":"rest"}}
+{"id":"zh-043","lang":"zh","step":"free","text":"胸部疼痛","expected":{"chestPain":true}}
+{"id":"zh-044","lang":"zh","step":"free","text":"他不认识人了","expected":{"confusion":true}}
+{"id":"zh-045","lang":"zh","step":"free","text":"今天感觉很好,没有不舒服","expected":{}}
+{"id":"zh-046","lang":"zh","step":"free","text":"胸不闷,也不喘","expected":{"chestPain":false,"breath":"normal"},"note":"negation"}
+{"id":"zh-047","lang":"zh","step":"breath","text":"上楼梯有点喘","expected":{"breath":"exertion"}}
+{"id":"zh-048","lang":"zh","step":"diuretic","text":"药已经吃了","expected":{"diureticTaken":true}}
+{"id":"zh-049","lang":"zh","step":"weight","text":"体重80公斤","expected":{"weightLb":176.4}}
+{"id":"zh-050","lang":"zh","step":"free","text":"有点咳嗽,没有胸痛","expected":{"chestPain":false},"note":"negation"}

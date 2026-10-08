@@ -215,4 +215,7 @@ parser.parseWithLLM(text, { step? }) → flat answers | null   // evidence-check
 Always handle `null`. That's the no-LLM path, and it must work.
 
 ## 6. Languages
+- Red flags without a model: English and Spanish in `core/parser.js` (the gate: 100% of the eval's emergencies); Vietnamese, Hindi and Chinese in `core/redflags-intl.js` (hand-written, **not yet reviewed by a native speaker**, see `REVIEW` there). `parser.detectRedFlags` / `parseFreeText` run both. Every other language relies on the buttons and the LLM parser.
+- Safety net: when no LLM is available and the language is not en / es, every check-in question ends with the `safety_net_911` line (`core/checkin.js`). `Reply.text` and `Reply.textEn` both carry it; channels render it like any other text.
+
 `t(lang, key, vars)` is sync (en/es hand-written). `localize(lang, text)` translates English produced by `t()` using `src/core/i18n-generated/<lang>.json` templates first (offline), then the LLM chain, then returns English. `translateFromEnglish(lang, text)` is for free text (e.g. nurse messages). New patient-facing keys need en + es in `core/i18n.js`. Run `npm --prefix backend run i18n:build -- --langs <codes>` to refresh generated languages.

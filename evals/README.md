@@ -15,7 +15,7 @@ It writes [`RESULTS.md`](RESULTS.md) and exits 1 if the red-flag gate fails.
 ## Files
 | File | What |
 |---|---|
-| `messages.jsonl` | 156 labelled messages (en 51, es 45, vi 20, hi 20, zh 20): `{ id, lang, step, text, expected, note? }`. `expected` is what the message actually says, not what a parser happens to catch. Hard cases are tagged in `note`: negations, typos, units (kg / kilos / 公斤 / किलो / ký), run-ons, sarcasm, emergencies hidden in chit-chat. |
+| `messages.jsonl` | 248 labelled messages (en 51, es 45, vi 52, hi 50, zh 50): `{ id, lang, step, text, expected, note? }`. `expected` is what the message actually says, not what a parser happens to catch. Hard cases are tagged in `note`: negations, typos, units (kg / kilos / 公斤 / किलो / ký), run-ons, sarcasm, emergencies hidden in chit-chat, and for vi / hi / zh look-alike words (xíu / xỉu), figures of speech (累得快晕倒了), Hindi typed in Latin letters, Vietnamese typed without diacritics. |
 | `score.js` | Pure scoring: normalization, a rules predictor that mirrors `core/checkin.js`, the live hybrid, precision/recall, red-flag recall, the gate, the report. Tested in `backend/test/insights-evals.test.js`. |
 | `run.js` | CLI: runs each provider pinned with `LLM_PROVIDER`, writes `RESULTS.md`. |
 
@@ -27,7 +27,14 @@ It writes [`RESULTS.md`](RESULTS.md) and exits 1 if the red-flag gate fails.
 - LLM numbers move a little between runs (sampling temperature 0.2); rules numbers don't.
 
 ## Status (2026-10-08)
-The rules gate is enforced on every `npm test` (`backend/test/evals.gate.test.js`): English and Spanish red-flag recall is 100% with no false alarms, and rules precision/recall have regression floors. [`RESULTS.md`](RESULTS.md) is the last full run with a model; regenerate it with `npm run eval` when you change the parser or the model. The one open weakness is stated in that test: free-text emergencies in Vietnamese / Hindi / Chinese are caught by rules in 1 of 6 messages each, so those patients rely on the LLM parser being available.
+The rules gate is enforced on every `npm test` (`backend/test/evals.gate.test.js`): English and Spanish red-flag recall is 100% with no false alarms, and rules precision/recall have regression floors.
+
+**Vietnamese / Hindi / Chinese (K15).** The rules used to catch 1 emergency in 6 in each of these languages. `backend/src/core/redflags-intl.js` now has hand-written lists for chest pain, can't breathe / breathless at rest, fainting and confusion, each with its own negation handling. Rules only, on this file: 23/23, 22/22 and 22/22 emergencies caught, 0 false alarms on 85 calm rows; the gate test holds a 90% floor per language and zero false alarms. Read those numbers with care:
+- The rows and the patterns were written by the same non-native author, and no native speaker or clinician has reviewed either (`REVIEW` in that file records this per language). The fairest number available: 24 emergency phrases written after the patterns were frozen scored 23 caught, with 0 false alarms on 18 calm ones. The one miss was then fixed and all 42 rows were added to the file, so they are no longer held out.
+- Known gaps, by choice: "heart attack" wording (usually history in this population), chest "discomfort" without a pain word, dizziness and swelling in these languages (not red flags; the LLM parser or the buttons carry them), and 80 kg typed as `80 ký` / `80公斤` being read as pounds.
+- Because the lists are not complete, a patient in any language other than English or Spanish gets one more line under every check-in question when no model is available: "If you have chest pain or can't breathe, call 911 right away." (`safety_net_911`, `core/checkin.js`).
+
+[`RESULTS.md`](RESULTS.md) is the last full run with a model (2026-09-27, 156 rows): its `rules` column for vi / hi / zh predates all of the above. Regenerate it with `npm run eval` when a provider is available.
 
 ## Findings log (2026-09-27, qwen2.5:7b on Ollama, RTX 4070)
 Items 1 to 3 below were fixed afterwards (items 1 and 3: `core/parser.js`; item 2: `handleUrgentFreeText` runs the LLM parser for non-native languages when the rules find nothing). They are kept as the record of what the harness found.

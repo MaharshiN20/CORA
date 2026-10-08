@@ -49,6 +49,9 @@ const STRINGS = {
     thanks_yellow: "Thank you, {name}. Some of your answers need a closer look, so I've asked your nurse to call you today. If you feel worse before then, call your care team.",
     red_911: '🚨 {name}, what you described can be an emergency. Please CALL 911 NOW. I have also alerted your care team and {caregiver}.',
     red_interrupt: '🚨 That sounds serious. If you have chest pain or trouble breathing, CALL 911 NOW. I have alerted your care team.',
+    // Added under every check-in question when no model is up and the language isn't en / es
+    // (core/checkin.js): free text there may hide an emergency the rules can't read.
+    safety_net_911: 'If you have chest pain or can’t breathe, call 911 right away.',
     not_in_checkin: "Hi {name}! I'm your HeartBridge helper. Want to do your check-in now?",
     start_checkin: '▶️ Start check-in',
     advice_header: 'Tips for today:',
@@ -207,6 +210,7 @@ const STRINGS = {
     thanks_yellow: 'Gracias, {name}. Algunas respuestas necesitan revisión, así que le pedí a su enfermera que la llame hoy. Si se siente peor antes, llame a su equipo médico.',
     red_911: '🚨 {name}, lo que describe puede ser una emergencia. Por favor LLAME AL 911 AHORA. También avisé a su equipo médico y a {caregiver}.',
     red_interrupt: '🚨 Eso suena grave. Si tiene dolor de pecho o dificultad para respirar, LLAME AL 911 AHORA. Avisé a su equipo médico.',
+    safety_net_911: 'Si tiene dolor de pecho o no puede respirar, llame al 911 de inmediato.',
     not_in_checkin: '¡Hola {name}! Soy su asistente HeartBridge. ¿Quiere hacer su chequeo ahora?',
     start_checkin: '▶️ Empezar chequeo',
     advice_header: 'Consejos para hoy:',

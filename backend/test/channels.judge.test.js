@@ -71,9 +71,11 @@ test('/start DEMO_<LANG> enrolls a demo patient in every supported language', as
     assert.equal(link.patient.source, 'demo');
     assert.match(link.patient.linkCode, /^DEMO[A-Z0-9]{5}$/);
     // No LLM in tests: non-native languages use their generated template translation
-    // (src/core/i18n-generated, P2-11) when one exists, otherwise the English template.
-    const expected = native ? i18n.t(code, 'ask_redflags') : await i18n.localize(code, i18n.t('en', 'ask_redflags'));
+    // (src/core/i18n-generated, P2-11) when one exists, otherwise the English template. With no
+    // model to read free text, their questions also carry the "call 911" line (K15).
+    const expected = native ? i18n.t(code, 'ask_redflags') : await i18n.localize(code, `${i18n.t('en', 'ask_redflags')}\n\n${i18n.t('en', 'safety_net_911')}`);
     assert.equal(h.lastSent(calls).text, expected, code);
+    assert.equal(h.lastSent(calls).text.includes('911'), !native, `${code}: the 911 line is there exactly when the language is not en / es`);
   }
   assert.equal(demoPatients().length, enroll.languages().length);
 });

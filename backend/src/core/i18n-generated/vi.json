@@ -6,10 +6,20 @@
     "provider": "gemini",
     "model": "gemini-flash-latest",
     "generatedAt": "2026-09-27T12:39:58.686Z",
-    "total": 140,
-    "translated": 139,
+    "total": 148,
+    "translated": 140,
     "missing": [
-      "protocol_notice"
+      "record_not_found",
+      "cg_alert_red",
+      "cg_alert_yellow",
+      "weight_skip",
+      "weight_skipped",
+      "code_in_use",
+      "protocol_notice",
+      "bp_flagged"
+    ],
+    "humanEdited": [
+      "safety_net_911"
     ]
   },
   "strings": {
@@ -151,6 +161,7 @@
     "caregiver_ack": "Cảm ơn! Bạn đã được kết nối với tư cách là người chăm sóc cho {name}. Bạn sẽ nhận được thông báo và tóm tắt hàng tuần tại đây. Để trả lời cuộc kiểm tra hôm nay của {name}, hãy gửi \"kiểm tra\".",
     "companion_dosing_cg": "Chỉ riêng đội ngũ chăm sóc của {name} mới có thể thay đổi cách {name} dùng thuốc, vì vậy tôi đã chuyển câu hỏi của bạn đến y tá. Cho đến khi họ phản hồi, {name} nên tiếp tục dùng thuốc đúng như chỉ định. 💊",
     "red_lock": "🚨 {name}, các triệu chứng của bạn có thể là tình huống khẩn cấp. Vui lòng GỌI 911 NGAY LẬP TỨC. Y tá của bạn đã được báo động và sẽ gọi lại cho bạn. Nếu bạn đã gọi rồi, hãy ở lại với nhân viên điều phối cuộc gọi.",
-    "proxy_red_lock": "🚨 {name} có thể đang gặp tình huống khẩn cấp. Vui lòng GỌI 911 NGAY cho {name}. Đội ngũ chăm sóc đã được thông báo."
+    "proxy_red_lock": "🚨 {name} có thể đang gặp tình huống khẩn cấp. Vui lòng GỌI 911 NGAY cho {name}. Đội ngũ chăm sóc đã được thông báo.",
+    "safety_net_911": "Nếu bạn bị đau ngực hoặc khó thở, hãy gọi 911 ngay lập tức."
   }
 }
