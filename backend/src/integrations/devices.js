@@ -5,6 +5,7 @@
 // what a cellular scale or a Withings webhook would do, so the demo exercises the real path.
 // Trends advance the demo clock between readings (POST /api/demo/advance) so "5 days of
 // weight gain" happens in seconds and the scheduler sees each day go by.
+import crypto from 'node:crypto';
 
 // Same limits the API enforces (routes/api.js), checked here so a typo fails fast and clearly.
 export const RANGES = { weight: [50, 700], spo2: [50, 100], hr: [20, 250] };
@@ -124,14 +125,93 @@ export async function runCli(main, argv, log = console.log) {
   }
 }
 
-// ---------- Withings (stretch, documented only) ----------
-// A real integration would: 1) send the patient to Withings OAuth
-// (https://account.withings.com/oauth2_user/authorize2, scope user.metrics), 2) exchange the
-// code for tokens (POST https://wbsapi.withings.net/v2/oauth2 action=requesttoken), 3) subscribe
-// to weight notifications (POST /notify action=subscribe, appli=1) pointing at a backend webhook,
-// 4) on each notification fetch measures (POST /measure action=getmeas, meastype=1 kg) and call
-// the same POST /api/devices/readings with device 'withings'. Tokens would live in
-// store.collection('device_tokens'). Nothing here runs yet.
+// ---------- Withings ----------
+// What runs: POST /webhooks/withings (routes/webhooks.js) takes measure groups in the shape of
+// Withings' own `getmeas` answer, checks the signature below, and feeds each measure through the
+// same path as POST /api/devices/readings (core/devicetriage.js ingestReading).
+//
+// What does not run yet (the `withings` stub at the bottom): the OAuth half. Withings itself only
+// notifies "user X has new data" (unsigned, no values). A full integration 1) sends the patient to
+// Withings OAuth (https://account.withings.com/oauth2_user/authorize2, scope user.metrics),
+// 2) exchanges the code for tokens (POST https://wbsapi.withings.net/v2/oauth2
+// action=requesttoken), 3) subscribes to notifications (POST /notify action=subscribe, appli=1),
+// 4) on each one fetches the measures (POST /measure action=getmeas) and posts them, signed with
+// the client secret, to the webhook above. Tokens would live in store.collection('device_tokens').
+
+export const WITHINGS_SIGNATURE_HEADER = 'x-withings-signature';
+
+// Hex HMAC-SHA256 of the exact request bytes, keyed with the Withings client secret.
+export function withingsSignature(rawBody, secret) {
+  return crypto.createHmac('sha256', String(secret)).update(rawBody).digest('hex');
+}
+
+// rawBody: the request body as received (Buffer or string), before any JSON parsing: a
+// re-serialised body would not hash the same. The header may carry a "sha256=" prefix.
+// Compared in constant time. -> boolean (false for a missing secret, header or body).
+export function verifyWithingsSignature(rawBody, headers, secret) {
+  if (!secret || rawBody == null) return false;
+  const given = headers?.[WITHINGS_SIGNATURE_HEADER];
+  if (typeof given !== 'string') return false;
+  const hex = given.trim().replace(/^sha256=/i, '').toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(hex)) return false; // not a SHA-256 digest: nothing to compare
+  return crypto.timingSafeEqual(Buffer.from(hex, 'hex'), Buffer.from(withingsSignature(rawBody, secret), 'hex'));
+}
+
+const KG_TO_LB = 2.2046226218;
+// Withings measure type -> our reading type (https://developer.withings.com/api-reference#tag/measure).
+const WITHINGS_TYPES = {
+  1: { type: 'weight', convert: (kg) => kg * KG_TO_LB }, // kg
+  11: { type: 'hr', convert: (bpm) => bpm },
+  54: { type: 'spo2', convert: (pct) => pct },
+};
+
+// A Withings payload { userid, measuregrps: [{ grpid, attrib, date, category, measures: [{ value, type, unit }] }] }
+// -> { userId, readings: [{ type, value, ts, readingId, grpid }], rejected: [{ grpid, type?, reason }] }.
+// Pure. A real value is value * 10^unit. Types we don't monitor (fat mass, ...) are skipped
+// silently; anything that can't be trusted is listed in `rejected` so it leaves a trace:
+//   - a group the scale could not attribute (attrib 1: someone else may have stepped on it)
+//   - a goal rather than a measurement (category 2)
+//   - no group id (a retry could not be recognised) or no usable date / number
+export function withingsReadings(payload) {
+  const readings = [];
+  const rejected = [];
+  const groups = Array.isArray(payload?.measuregrps) ? payload.measuregrps : null;
+  if (!groups) throw new Error('measuregrps must be an array');
+  for (const g of groups) {
+    const grpid = typeof g?.grpid === 'number' || typeof g?.grpid === 'string' ? String(g.grpid) : null;
+    const reject = (reason, type) => rejected.push({ grpid, ...(type && { type }), reason });
+    if (!grpid || !/^[\w-]{1,40}$/.test(grpid)) {
+      reject('no measure group id');
+      continue;
+    }
+    if (g.category === 2) {
+      reject('a goal, not a measurement');
+      continue;
+    }
+    if (g.attrib === 1) {
+      reject('the device could not tell who was measured');
+      continue;
+    }
+    if (!Number.isFinite(g.date) || g.date <= 0) {
+      reject('no measurement date');
+      continue;
+    }
+    const ts = new Date(g.date * 1000).toISOString();
+    for (const m of Array.isArray(g.measures) ? g.measures : []) {
+      const known = WITHINGS_TYPES[m?.type];
+      if (!known) continue;
+      if (!Number.isFinite(m.value) || !Number.isInteger(m.unit ?? 0) || Math.abs(m.unit ?? 0) > 9) {
+        reject('not a number', known.type);
+        continue;
+      }
+      const value = Math.round(known.convert(m.value * 10 ** (m.unit ?? 0)) * 10) / 10;
+      readings.push({ type: known.type, value, ts, readingId: `withings:${grpid}:${m.type}`, grpid });
+    }
+  }
+  const userId = typeof payload.userid === 'number' || typeof payload.userid === 'string' ? String(payload.userid) : null;
+  return { userId, readings, rejected };
+}
+
 export const withings = {
   enabled: () => false,
   authorizeUrl() {

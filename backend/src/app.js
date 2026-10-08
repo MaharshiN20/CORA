@@ -19,6 +19,7 @@ export function createApp() {
   app.use(cors(sec.corsOptions));
   // Photos arrive as base64 on the simulate route only; every other JSON body is capped small.
   app.use('/api/patients/:id/simulate', express.json({ limit: '10mb' }));
+  app.use('/webhooks/withings', express.raw({ type: () => true, limit: '100kb' })); // its signature covers the exact bytes
   app.use(express.json({ limit: '100kb' }));
   app.use(express.urlencoded({ extended: false, limit: '100kb' })); // Twilio webhooks are form-encoded
   app.use('/api', sec.apiAuth);

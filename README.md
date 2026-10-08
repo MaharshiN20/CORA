@@ -38,6 +38,7 @@ Locally nothing is required. Before you expose the server to other people, set t
 - `CORS_ORIGIN`: the dashboard's origin. `NODE_ENV=production` also turns **off** the reset / clock-advance / cohort-regenerate controls unless `DEMO_MODE=1`.
 - `DEVICE_KEY`: home devices send it as `x-device-key` to `POST /api/devices/readings` (that endpoint only).
 - `TWILIO_AUTH_TOKEN` and `PUBLIC_URL`: required in production, or the SMS/WhatsApp webhooks refuse every request.
+- `TELEGRAM_WEBHOOK_URL` + `TELEGRAM_WEBHOOK_SECRET` switch Telegram from long polling to a webhook ([setup §9](docs/TELEGRAM_SETUP.md)); `WITHINGS_CLIENT_SECRET` makes `POST /webhooks/withings` require a signed body. In production both webhooks refuse every request until their secret is set.
 - `NURSE_CHAT_ID` (Telegram group) and optionally `NURSE_PHONE` (SMS fallback): where alerts go. A message that can't be delivered is queued and retried, and an alert whose nurse page could not go out shows a warning on its card.
 - Care codes lock to the first chat/phone that uses them (`ALLOW_RELINK=0`, the production default); a nurse releases one with `POST /api/patients/:id/unlink`.
 - Data lives in `backend/data/db.json` and is written atomically with a rolling `.bak`; a corrupt file is restored from it or the server refuses to start, never silently reset.

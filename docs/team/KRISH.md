@@ -81,7 +81,7 @@
   - A startup validator in `index.js` that logs one clear warning per misconfiguration: `API_TOKEN` unset, `NODE_ENV=production` without `CORS_ORIGIN`, `TWILIO_AUTH_TOKEN` set without `PUBLIC_URL`, no nurse channel (`NURSE_CHAT_ID` / `NURSE_PHONE`), default public `FHIR_BASE_URL` in production. Pure function `configWarnings(env)` so it is unit-testable.
   - **Accept:** tests for `configWarnings` (each case + a clean config returns `[]`) and for `/api/ready`.
 
-- [ ] **K10. Withings webhook signature (stub to real check)**
+- [x] **K10. Withings webhook signature (stub to real check)**
   - `integrations/devices.js` has a Withings stub with no verification. Add `verifyWithingsSignature(rawBody, headers, secret)` (HMAC-SHA256, constant-time) and a `POST /webhooks/withings` route that rejects unsigned requests when `WITHINGS_CLIENT_SECRET` is set (fail closed in production, like Twilio) and turns a measure into the same path as `POST /api/devices/readings` through `core/devicetriage.js` `triageReading`, with `readingId` from the Withings id so retries are idempotent.
   - **Accept:** tests with a fixture payload: valid signature, tampered body, duplicate delivery (one reading), out-of-range value rejected.
 

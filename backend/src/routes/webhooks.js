@@ -3,6 +3,7 @@
 //   POST /webhooks/twilio/sms        form-encoded { From, Body, NumMedia?, MediaUrl0?, MediaContentType0? }
 //   POST /webhooks/twilio/whatsapp   same, From = "whatsapp:+1..."
 //   POST /webhooks/telegram          a Telegram update (JSON), only in webhook mode
+//   POST /webhooks/withings          signed Withings measure groups -> device readings
 //
 // "JOIN <CODE>" links the phone (GARCIA1 = patient, CG_GARCIA1 = caregiver, DEMO / DEMO_ES = judge mode).
 // Anything else goes to handleInbound; a bare number answers the last numbered menu.
@@ -17,6 +18,8 @@ import * as twilio from '../channels/twilio.js';
 import * as telegram from '../channels/telegram.js';
 import { remember, resolve, normalizePhone } from '../channels/options.js';
 import { transcribe } from '../integrations/speech.js';
+import { verifyWithingsSignature, withingsReadings } from '../integrations/devices.js';
+import { ingestReading } from '../core/devicetriage.js';
 import * as sec from '../security.js';
 import { readBodyCapped } from '../channels/resilience.js';
 
@@ -229,6 +232,70 @@ webhooks.get('/', (_req, res) =>
 );
 webhooks.post('/twilio/sms', checkSignature, handler('sms'));
 webhooks.post('/twilio/whatsapp', checkSignature, handler('whatsapp'));
+
+// ---------- Withings ----------
+// Which patient a device account belongs to. A lane-owned collection, so the patient record
+// doesn't grow a field per vendor. The OAuth callback will call linkDevice() when it exists;
+// until then a link is made when the patient is given the device.
+const deviceLinks = () => store.collection('device_links');
+
+export function linkDevice(provider, userId, patientId) {
+  if (!store.getPatient(patientId)) return null;
+  const key = String(userId);
+  let link = deviceLinks().find((l) => l.provider === provider && l.userId === key);
+  if (link) link.patientId = patientId;
+  else deviceLinks().push((link = { provider, userId: key, patientId }));
+  store.persist();
+  store.audit('device_link', patientId, { provider });
+  return link;
+}
+
+export function findDevicePatient(provider, userId) {
+  if (userId == null) return null;
+  const link = deviceLinks().find((l) => l.provider === provider && l.userId === String(userId));
+  return link ? (store.getPatient(link.patientId) ?? null) : null;
+}
+
+// Fails closed in production like the Twilio check: without the secret anyone could post a
+// weight for a linked patient, and raise an alert or hide a real gain behind a fake reading.
+function checkWithingsSignature(req, res, next) {
+  const secret = process.env.WITHINGS_CLIENT_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV !== 'production') return next(); // local dev / tests: nothing to verify against
+    console.warn('[webhooks] rejected: WITHINGS_CLIENT_SECRET is not set in production');
+    return res.status(403).json({ error: 'webhook not configured' });
+  }
+  // app.js keeps this route's body as raw bytes; a parsed-and-rebuilt body would not hash the same.
+  if (Buffer.isBuffer(req.body) && verifyWithingsSignature(req.body, req.headers, secret)) return next();
+  console.warn('[webhooks] rejected Withings request with a bad signature');
+  res.status(403).json({ error: 'invalid signature' });
+}
+
+// POST /webhooks/withings  { userid, measuregrps: [...] } (the shape of Withings' getmeas answer)
+//   -> 200 { ok, accepted: [{ readingId, type, value, tier }], duplicates, rejected: [{ grpid, type?, reason }] }
+// Each measure takes the same path as POST /api/devices/readings. Its readingId comes from the
+// Withings group id, so a delivery that is repeated stores nothing twice. A delivery we understood
+// is always answered 200, even if every value in it was refused: retrying bad data cannot fix it.
+webhooks.post('/withings', checkWithingsSignature, async (req, res) => {
+  let parsed;
+  try {
+    parsed = withingsReadings(JSON.parse(Buffer.isBuffer(req.body) ? req.body.toString('utf8') : ''));
+  } catch {
+    return res.status(400).json({ error: 'body must be JSON with a measuregrps array' });
+  }
+  const patient = findDevicePatient('withings', parsed.userId);
+  if (!patient) return res.status(404).json({ error: 'unknown Withings user' });
+  const summary = { ok: true, accepted: [], duplicates: 0, rejected: parsed.rejected };
+  for (const r of parsed.readings) {
+    const { status, body } = await ingestReading({ patientId: patient.id, type: r.type, value: r.value, ts: r.ts, readingId: r.readingId, device: 'withings' });
+    if (status === 201) summary.accepted.push({ readingId: r.readingId, type: r.type, value: r.value, tier: body.tier });
+    else if (status === 200) summary.duplicates++;
+    else summary.rejected.push({ grpid: r.grpid, type: r.type, reason: body.error });
+  }
+  // A scale that keeps sending nonsense is worth a trace on the patient's record.
+  if (summary.rejected.length) store.audit('device_rejected', patient.id, { device: 'withings', rejected: summary.rejected });
+  res.json(summary);
+});
 
 // Telegram webhook mode (TELEGRAM_WEBHOOK_URL). The secret check, the update_id de-duplication
 // and the handling all live in channels/telegram.js; this only maps the outcome to HTTP.

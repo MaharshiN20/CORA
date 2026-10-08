@@ -1,0 +1,27 @@
+{
+  "userid": 13371337,
+  "measuregrps": [
+    {
+      "grpid": 5550001,
+      "attrib": 0,
+      "date": 1759900000,
+      "created": 1759900030,
+      "category": 1,
+      "deviceid": "a1b2c3d4e5f6",
+      "measures": [
+        { "value": 80500, "type": 1, "unit": -3 },
+        { "value": 2150, "type": 8, "unit": -2 },
+        { "value": 72, "type": 11, "unit": 0 }
+      ]
+    },
+    {
+      "grpid": 5550002,
+      "attrib": 0,
+      "date": 1759900000,
+      "created": 1759900040,
+      "category": 1,
+      "deviceid": "f6e5d4c3b2a1",
+      "measures": [{ "value": 96, "type": 54, "unit": 0 }]
+    }
+  ]
+}

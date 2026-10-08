@@ -16,10 +16,9 @@ import { startScreen } from '../core/sdoh.js';
 import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
 import * as protocols from '../core/protocols.js';
-import { triageReading } from '../core/devicetriage.js';
+import { ingestReading } from '../core/devicetriage.js';
 import { timeline, auditCsv, TIMELINE_KINDS } from '../core/timeline.js';
 import { riskHistory } from '../insights/riskHistory.js';
-import { RANGES } from '../integrations/devices.js'; // one set of limits for the API and the virtual devices
 import { readiness } from '../readiness.js';
 
 export const api = Router();
@@ -233,34 +232,9 @@ api.post('/patients/:id/prescriptions/:med/picked-up', (req, res) => {
 // POST /api/devices/readings { patientId, type: 'weight'|'spo2'|'hr', value, device?, ts?, readingId? }
 //   -> 201 { ...reading, tier }  (200 with the original reading when readingId was already seen)
 // The reading is judged by the same triage rules as a check-in answer (core/devicetriage.js).
-const MAX_PAST_MS = 30 * 24 * 60 * 60 * 1000;
 api.post('/devices/readings', async (req, res) => {
-  const { patientId, type, value, device, ts, readingId } = req.body ?? {};
-  const patient = typeof patientId === 'string' ? store.getPatient(patientId) : null;
-  if (!patient) return res.status(404).json({ error: 'unknown patientId' });
-  const range = RANGES[type];
-  if (!range) return res.status(400).json({ error: `type must be one of ${Object.keys(RANGES)}` });
-  const v = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
-  if (!Number.isFinite(v) || v < range[0] || v > range[1]) return res.status(400).json({ error: `value out of range ${range}` });
-  if (device !== undefined && (typeof device !== 'string' || device.length > 40)) return res.status(400).json({ error: 'device must be a string of at most 40 characters' });
-  if (readingId !== undefined && (typeof readingId !== 'string' || !readingId || readingId.length > 64)) return res.status(400).json({ error: 'readingId must be a string of 1-64 characters' });
-  let when;
-  if (ts !== undefined) {
-    const ms = typeof ts === 'string' || typeof ts === 'number' ? Date.parse(typeof ts === 'number' ? new Date(ts).toISOString() : ts) : NaN;
-    if (!Number.isFinite(ms)) return res.status(400).json({ error: 'ts must be an ISO timestamp' });
-    if (ms > clock.now() + 5 * 60_000) return res.status(400).json({ error: 'ts is in the future' });
-    if (ms < clock.now() - MAX_PAST_MS) return res.status(400).json({ error: 'ts is more than 30 days old' });
-    when = new Date(ms).toISOString();
-  }
-  // A device that retries after a timeout must not create a second reading or a second alert.
-  if (readingId) {
-    const seen = store.listReadings(patientId).find((r) => r.readingId === readingId);
-    if (seen) return res.status(200).json({ ...seen, duplicate: true });
-  }
-  const reading = store.addReading({ patientId, type, value: v, source: 'device', device: device ?? 'unknown', ts: when, readingId });
-  store.audit('device_reading', patientId, { type, value: v, device: reading.device });
-  const { tier } = await triageReading(patient, reading);
-  res.status(201).json({ ...reading, tier });
+  const { status, body } = await ingestReading(req.body ?? {});
+  res.status(status).json(body);
 });
 
 // ---- demo / simulation ----
