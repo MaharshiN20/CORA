@@ -32,6 +32,17 @@ npm run e2e                            # rehearse the whole demo story over HTTP
 
 No keys needed to start. Without a Telegram token you can still chat as a patient from the dashboard's "Simulate a patient reply" box.
 
+### Before anyone else can reach it (security and operations)
+Locally nothing is required. Before you expose the server to other people, set these in `backend/.env` (all documented in `.env.example`):
+- `API_TOKEN`: the dashboard and the live feed then require it (the dashboard asks for it once). Unset = open, with a warning at startup.
+- `CORS_ORIGIN`: the dashboard's origin. `NODE_ENV=production` also turns **off** the reset / clock-advance / cohort-regenerate controls unless `DEMO_MODE=1`.
+- `DEVICE_KEY`: home devices send it as `x-device-key` to `POST /api/devices/readings` (that endpoint only).
+- `TWILIO_AUTH_TOKEN` and `PUBLIC_URL`: required in production, or the SMS/WhatsApp webhooks refuse every request.
+- `NURSE_CHAT_ID` (Telegram group) and optionally `NURSE_PHONE` (SMS fallback): where alerts go. A message that can't be delivered is queued and retried, and an alert whose nurse page could not go out shows a warning on its card.
+- Care codes lock to the first chat/phone that uses them (`ALLOW_RELINK=0`, the production default); a nurse releases one with `POST /api/patients/:id/unlink`.
+- Data lives in `backend/data/db.json` and is written atomically with a rolling `.bak`; a corrupt file is restored from it or the server refuses to start, never silently reset.
+- `GET /api/audit.csv` exports the audit log. `.github/workflows/ci.yml` runs `npm run check` on every push.
+
 ### AI (optional, auto-detected)
 The backend picks the first available provider: **Claude → Gemini → Ollama → LM Studio → rules only**. The dashboard shows which one is in use.
 - **Claude**: set `ANTHROPIC_API_KEY` in `backend/.env`.
