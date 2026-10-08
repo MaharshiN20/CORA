@@ -66,5 +66,48 @@
   - Add a `/status` command in the nurse group (bot uptime, LLM provider from `llm.status()`, linked patient count).
   - **Accept:** tests for the rate limiter and retry logic, a manual run of the whole demo on your phone, and a list of anything flaky in REQUESTS.md.
 
+## Handed over from Prannav's Oct 8 audit pass (K8 to K16)
+
+**Context:** Prannav's Claude did a full audit and fixed most of it (27 commits, see the log and the Oct 8 entry in `docs/team/REQUESTS.md`; contract changes are in `docs/CONTRACTS.md`). These items were left out. Read `CONTRACTS.md` first: the outbox (`channels/index.js`), `security.js`, and `core/devicetriage.js` are new and you will build on them.
+**Permission:** Prannav approved editing files outside your lane for these tasks (same arrangement as the Oct 8 pass). Keep each change small, one feature per commit, and note the cross-lane files in the commit body. Same loop as always: tests that never touch the network, `npm run check` green, then push.
+
+- [ ] **K8. Telegram webhook mode (production path)**
+  - Long polling stays the default. With `TELEGRAM_WEBHOOK_URL` (+ `TELEGRAM_WEBHOOK_SECRET`) set, call `setWebhook` with `secret_token`, mount `POST /webhooks/telegram`, and reject any request whose `X-Telegram-Bot-Api-Secret-Token` doesn't match (constant-time compare, see `security.js` `safeEqual`). Dedupe on `update_id` (short TTL). Fail closed in production if the URL is set but the secret is not.
+  - Stop polling when webhook mode is on; `stop()` should delete the webhook only when asked.
+  - **Accept:** tests with `bot.handleUpdate` for a valid secret, a wrong/missing secret (403), a replayed `update_id`, and the polling default unchanged. Document it in `docs/TELEGRAM_SETUP.md`.
+
+- [ ] **K9. `/api/ready` + startup config check**
+  - `GET /api/ready` (public like `/health`, but no secrets in it): `{ ready, checks: { store, scheduler, telegram, twilio, llm, nurseChannel, outbox: { pending, dead } } }`, 503 when the store is unwritable. Count `outbox` rows by status.
+  - A startup validator in `index.js` that logs one clear warning per misconfiguration: `API_TOKEN` unset, `NODE_ENV=production` without `CORS_ORIGIN`, `TWILIO_AUTH_TOKEN` set without `PUBLIC_URL`, no nurse channel (`NURSE_CHAT_ID` / `NURSE_PHONE`), default public `FHIR_BASE_URL` in production. Pure function `configWarnings(env)` so it is unit-testable.
+  - **Accept:** tests for `configWarnings` (each case + a clean config returns `[]`) and for `/api/ready`.
+
+- [ ] **K10. Withings webhook signature (stub to real check)**
+  - `integrations/devices.js` has a Withings stub with no verification. Add `verifyWithingsSignature(rawBody, headers, secret)` (HMAC-SHA256, constant-time) and a `POST /webhooks/withings` route that rejects unsigned requests when `WITHINGS_CLIENT_SECRET` is set (fail closed in production, like Twilio) and turns a measure into the same path as `POST /api/devices/readings` through `core/devicetriage.js` `triageReading`, with `readingId` from the Withings id so retries are idempotent.
+  - **Accept:** tests with a fixture payload: valid signature, tampered body, duplicate delivery (one reading), out-of-range value rejected.
+
+- [ ] **K11. Index messages / audit / alerts by patient (`store.js`)**
+  - `listMessages(id)`, `listAudit(id)`, alerts-by-patient are full-array filters on hot paths (every inbound, every `GET /patients/:id`). Add lazily-built `Map<patientId, items[]>` caches that are rebuilt when the underlying array is replaced or resized (the same pattern as the key index in `core/scheduler.js`), so `prune()` and `reset()` can never leave them stale. Keep every exported function's return shape and order.
+  - **Accept:** the existing suite unchanged and green, plus tests that the index is correct after `reset`, `prune`, `resetPatient`, and direct pushes to `collection()`; a quick timing test with 20k audit rows.
+
+- [ ] **K12. Cancel in-flight AI reviews**
+  - `riskllm` times out with `Promise.race`, but the provider request keeps running. Thread an `AbortSignal` through `core/llm/index.js` `run()` and the providers' `chat(opts)` (`opts.signal`), and have `riskllm/index.js` and `core/aireview.js` abort on timeout. Keep `deadlineMs` behaviour for patient-facing calls.
+  - **Accept:** a test with a fake provider that records `signal.aborted` after the timeout; existing `llm.test.js`, `riskllm*.test.js` and `aireview*.test.js` unchanged and green.
+
+- [ ] **K13. Eval set for the AI risk reviewer**
+  - `evals/` only measures the language parser. Add `evals/risk-cases.jsonl` (about 40 labelled trajectories: weight creep, recliner, missed refills, stable controls, plus injection attempts) and a scorer that reports escalation precision/recall and checks the invariants that must always hold: never lowers a tier, never returns RED, unknown tiers never escalate. A deterministic `call` stub drives it offline in `npm test`; `npm run eval -- --risk` runs it against real providers.
+  - **Accept:** an offline test that enforces the invariants on the whole case file; README section.
+
+- [ ] **K14. Bulk alert actions**
+  - Dashboard: checkboxes on cards and "Acknowledge selected" / "Assign selected to me" (INFO and YELLOW only; RED is never bulk-actioned). Backend: `PATCH /api/alerts` with `{ ids, status?, assignee?, by }`, max 50 ids, same validation and audit rows (`nurse_action`) as the single-alert PATCH, patient ack notices sent once per alert. Partial failures reported per id.
+  - **Accept:** backend tests (RED refused, unknown id reported, audit rows written) and Vitest for selection + the request body.
+
+- [ ] **K15. Non-English safety net without an LLM**
+  - Rules catch free-text emergencies in Vietnamese, Hindi and Chinese in only about 1 of 6 messages (`backend/test/evals.gate.test.js` pins it). Add hand-written red-flag patterns for those three languages in `core/parser.js` (chest pain, can't breathe, fainted, confused; negation-aware, with a native speaker or reviewer note for each list), and raise the floors in `evals.gate.test.js` as recall improves. Where no LLM is available, append the "call 911 if you have chest pain or can't breathe" line to every outbound check-in prompt for those languages (new i18n key, en + es + generated templates).
+  - **Accept:** new rows in `evals/messages.jsonl` (keep the validator green), the gate test floors raised, zero false alarms on the calm rows.
+
+- [ ] **K16. Refuse the public FHIR sandbox in production**
+  - `integrations/fhir.js` defaults to the public HAPI server. When `NODE_ENV=production` and `FHIR_BASE_URL` is unset, refuse to import (clear 503 `{ error }`) instead of sending patient identifiers to a public sandbox; `GET /api/fhir` reports `{ base, sandbox: true }`. Dashboard import dialog shows a banner when `sandbox` is true.
+  - **Accept:** tests for production-unset (refused), production-set (works), development (works, flagged sandbox).
+
 ## Definition of done (every task)
 Tests written and green, `npm run check` green, a manual check noted in the commit body, box ticked here, then commit `[channels] …` and push.

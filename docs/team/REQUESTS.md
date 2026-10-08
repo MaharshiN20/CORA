@@ -4,6 +4,7 @@ Append-only. Format: `- [ ] @owner from @requester: what you need + why (link to
 The owner ticks `[x]` and adds a short note when it's done. Contract changes also update `docs/CONTRACTS.md` and `backend/test/contracts.test.js`.
 
 ## Open
+- [ ] @krish from @prannav: **K8 to K16 are yours** (the items my Oct 8 audit pass left out): Telegram webhook mode, `/api/ready` + startup config check, Withings signature check, store indexes by patient, aborting in-flight AI reviews, an eval set for the AI risk reviewer, bulk alert actions, non-English 911 patterns/safety net, and the FHIR-sandbox guard in production. Full specs and acceptance criteria are in `docs/team/KRISH.md` ("Handed over from Prannav's Oct 8 audit pass"); work through them in order. You may edit files outside your lane for these (Prannav approved); say which in each commit body. Read the Oct 8 entry under Done first.
 - [ ] @all from @krish (FYI, K7 flaky/unverified list): nothing flaky seen in tests (full suite green on every run). Not yet verified live: (1) whole demo from a real phone (DEMO_ES deep link → check-in → YELLOW on the dashboard), (2) Groq Whisper (GROQ_API_KEY is empty locally; no-key path works), (3) Telegram fetching Google TTS URLs (upload fallback in place), (4) Twilio SMS/WhatsApp against a real account (curl → TwiML path works). Real 409 Conflict reproduced with two pollers: clear log line, sending still works.
 
 ## Done
