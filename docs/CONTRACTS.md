@@ -86,6 +86,7 @@ getSignals(patient) → {
   adherence7d: 0..1 | null, unconfirmedDoses7d, weightDelta24h, weightDelta7d,
   openAlerts, openRedAlerts, sdohFlags: string[], lessonScore: 0..1 | null,
   rpmDays30, lastCheckinAt, lastTier,
+  silentDays,            // days since the last finished check-in (or discharge); null in the first 3 days
 }
 ```
 ```js
@@ -95,6 +96,7 @@ reviewPatient(patient, { rules, messages, now }) → null | {
   concerns: [{ category, text, evidence }], nurseSummary, suggestedActions: string[], model, ts,
 }
 ```
+Overrides on top of the additive score: an open RED alert → High; `silentDays ≥ 3` → at least Med (+3 factor); dynamic points are capped at 10 (a negative "capped" factor keeps the sum honest); a Med/High patient stays there until 2 points below the cutoff (hysteresis, only when signals are given). The AI reviewer's `mergeTier` ignores unknown tiers, and it skips a patient who already has an open `ai_review` alert (stamp: `patient.lastAiReviewAt`).
 `null` means no data yet, never zero. `scoreRisk(patient)` without signals must keep working (seed, tests).
 The core calls `scoreRisk(patient, getSignals(patient))` for check-in depth and scheduling, and saves the result on the patient after each check-in. Seed patients carry a check-in history (`seeded: true`), so signals start realistic.
 `core/aireview.js` already calls `risk.recordRisk(patient)` after every check-in **if that export exists**, and runs `reviewPatient` in the background only on GREEN days when the shared LLM chain has a provider.
