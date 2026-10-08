@@ -52,12 +52,29 @@ describe('AlertCard outcome flow', () => {
     expect(await screen.findByText('PATCH /alerts/a1 -> 500')).toBeInTheDocument();
   });
 
-  it('links to the patient and shows reasons + AI summary', () => {
-    renderCard({ ...base, source: 'ai_review', ai: { nurseSummary: 'Slow weight creep.' } });
+  // The shape below is what GET /api/alerts really returns for an AI-review alert
+  // (backend/test/alerts.contract.test.js): fields on the alert itself, no nested `ai`.
+  it('links to the patient and shows reasons + the AI brief the API actually sends', () => {
+    renderCard({ ...base, source: 'ai_review', nurseSummary: 'Slow weight creep.', suggestedActions: ['Call today', 'Ask about pillows'], readmissionRisk: 'high', model: 'qwen' });
     expect(screen.getByRole('link', { name: 'Maria Garcia' })).toHaveAttribute('href', '/patients/p1');
     expect(screen.getByText('Chest pain')).toBeInTheDocument();
     expect(screen.getByText(/Slow weight creep/)).toBeInTheDocument();
     expect(screen.getByText('AI review')).toBeInTheDocument();
+    const actions = screen.getByRole('list', { name: 'Suggested actions' });
+    expect(actions).toHaveTextContent('Call today');
+    expect(actions).toHaveTextContent('Ask about pillows');
+    expect(screen.getByText(/Readmission risk: high/)).toBeInTheDocument();
+  });
+
+  it('a plain alert has no AI box', () => {
+    renderCard(base);
+    expect(screen.queryByText(/Readmission risk/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Suggested actions' })).not.toBeInTheDocument();
+  });
+
+  it('warns when the nurse-group page for the alert could not be delivered', () => {
+    renderCard({ ...base, undelivered: true });
+    expect(screen.getByRole('status')).toHaveTextContent(/could not be delivered/);
   });
 });
 

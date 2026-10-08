@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 import { LineChart, Line, ReferenceLine, YAxis } from 'recharts';
 import { Phone } from 'lucide-react';
 import { api } from '../api.js';
-import { sla, nextAction, OUTCOMES, resolvePatch } from '../lib/worklist.js';
+import { sla, nextAction, OUTCOMES, resolvePatch, aiOf } from '../lib/worklist.js';
 import { timeOf, languageName } from '../lib/format.js';
 import { TierBadge, KindBadge, Button } from './ui.jsx';
 import ProtocolCard from './ProtocolCard.jsx';
@@ -32,6 +32,25 @@ export function SlaCountdown({ alert, now }) {
     <span data-testid="sla" className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${slaTone(alert.tier, s)}`}>
       ⏱ {s.label}
     </span>
+  );
+}
+
+// The AI reviewer's summary, suggested next steps and its read on readmission risk.
+export function AiBrief({ alert }) {
+  const ai = aiOf(alert);
+  if (!ai) return null;
+  return (
+    <div className="mt-2 rounded-md bg-violet-50 p-2 text-sm text-violet-900">
+      {ai.nurseSummary && <p>🤖 {ai.nurseSummary}</p>}
+      {ai.suggestedActions.length > 0 && (
+        <ul aria-label="Suggested actions" className="mt-1 list-disc pl-5">
+          {ai.suggestedActions.map((a, i) => (
+            <li key={i}>{a}</li>
+          ))}
+        </ul>
+      )}
+      {ai.readmissionRisk && <p className="mt-1 text-xs text-violet-700">Readmission risk: {ai.readmissionRisk}</p>}
+    </div>
   );
 }
 
@@ -127,7 +146,12 @@ export default function AlertCard({ alert, patient, now, update = api.updateAler
           ))}
         </ul>
       )}
-      {alert.ai?.nurseSummary && <p className="mt-2 rounded-md bg-violet-50 p-2 text-sm text-violet-900">🤖 {alert.ai.nurseSummary}</p>}
+      <AiBrief alert={alert} />
+      {alert.undelivered && (
+        <p role="status" className="mt-2 rounded-md bg-amber-100 p-2 text-sm font-medium text-amber-900">
+          ⚠ The nurse-group page for this alert could not be delivered. Retrying automatically; check the dashboard directly.
+        </p>
+      )}
       {(alert.kind ?? 'triage') === 'triage' && <VitalsStrip patient={patient} tier={alert.tier} />}
       {alert.protocolCheck?.triggered && alert.status !== 'resolved' && <ProtocolCard alert={alert} />}
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">

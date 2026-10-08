@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sortWorklist, filterWorklist, sla, formatDuration, nextAction, resolvePatch, kindOf } from './worklist.js';
+import { sortWorklist, filterWorklist, sla, formatDuration, nextAction, resolvePatch, kindOf, aiOf } from './worklist.js';
 
 const T0 = Date.parse('2026-09-26T12:00:00Z');
 const at = (min) => new Date(T0 + min * 60000).toISOString();
@@ -75,5 +75,20 @@ describe('outcome flow', () => {
     expect(resolvePatch('false_positive', '   ')).toEqual({ status: 'resolved', outcome: 'false_positive', by: 'nurse' });
     expect(() => resolvePatch(undefined)).toThrow(/outcome/);
     expect(() => resolvePatch('maybe')).toThrow(/outcome/);
+  });
+});
+
+describe('aiOf', () => {
+  it('reads the AI brief from the alert itself, as the API sends it', () => {
+    const a = { nurseSummary: 'Slow creep.', suggestedActions: ['Call'], readmissionRisk: 'moderate', model: 'm' };
+    expect(aiOf(a)).toEqual({ nurseSummary: 'Slow creep.', suggestedActions: ['Call'], readmissionRisk: 'moderate', model: 'm' });
+  });
+  it('is null for alerts without a brief (including a nested `ai` nobody sets)', () => {
+    expect(aiOf({ tier: 'RED' })).toBeNull();
+    expect(aiOf({ ai: { nurseSummary: 'x' } })).toBeNull();
+    expect(aiOf(null)).toBeNull();
+  });
+  it('tolerates a missing action list', () => {
+    expect(aiOf({ nurseSummary: 'x' }).suggestedActions).toEqual([]);
   });
 });

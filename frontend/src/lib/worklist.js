@@ -20,6 +20,19 @@ export const kindOf = (alert) => KINDS[alert.kind ?? 'triage'] ?? { label: alert
 
 export const isOpen = (alert) => alert.status !== 'resolved';
 
+// The AI reviewer's brief for the nurse. The API puts these fields directly on the alert
+// (docs/CONTRACTS.md §3, backend/test/alerts.contract.test.js); there is no nested `ai` object.
+// -> null when the alert has no AI brief.
+export function aiOf(alert) {
+  if (!alert?.nurseSummary && !alert?.suggestedActions?.length) return null;
+  return {
+    nurseSummary: alert.nurseSummary ?? null,
+    suggestedActions: Array.isArray(alert.suggestedActions) ? alert.suggestedActions : [],
+    readmissionRisk: alert.readmissionRisk ?? null,
+    model: alert.model ?? null,
+  };
+}
+
 const dueMs = (a) => {
   const t = Date.parse(a.dueBy);
   return Number.isFinite(t) ? t : Infinity; // no SLA -> after everything that has one

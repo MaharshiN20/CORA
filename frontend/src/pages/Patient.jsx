@@ -9,6 +9,7 @@ import { formatDuration } from '../lib/worklist.js';
 import { languageName, shortDate, timeOf, pct } from '../lib/format.js';
 import { Card, Empty, TierBadge, RiskBadge, Button, AsyncButton, KindBadge, TREND_ICON } from '../components/ui.jsx';
 import PhoneSimulator from '../components/PhoneSimulator.jsx';
+import { AiBrief } from '../components/AlertCard.jsx';
 import DebugDrawer from '../components/DebugDrawer.jsx';
 import ExportDialog from '../components/ExportDialog.jsx';
 
@@ -233,7 +234,7 @@ function WhyPanel({ p }) {
               <span className="ml-auto text-xs capitalize text-slate-500">{a.status}{a.outcome ? ` · ${a.outcome.replace(/_/g, ' ')}` : ''}</span>
             </div>
             <ul className="mt-1 list-disc pl-5 text-slate-700">{(a.reasons ?? []).map((r, i) => <li key={i}>{r}</li>)}</ul>
-            {a.ai?.nurseSummary && <p className="mt-1 text-violet-900">🤖 {a.ai.nurseSummary}</p>}
+            <AiBrief alert={a} />
           </div>
         ))}
         {audit.length > 0 && (
