@@ -168,35 +168,53 @@ export function normalizeReview(o) {
 // timeoutMs) are requested in docs/team/REQUESTS.md and ignored by the chain until then.
 const FORMAT = `Respond with ONLY a JSON object (no prose, no code fences) matching this JSON Schema:\n${JSON.stringify(SCHEMA)}`;
 
-async function callChain(prompt) {
+async function callChain(prompt, { signal } = {}) {
   const text = await llm.complete(`${SYSTEM}\n\n${FORMAT}`, prompt, MAX_TOKENS, {
     json: true,
     schema: SCHEMA,
     model: MODEL,
     timeoutMs: TIMEOUT_MS,
+    signal,
   });
   const obj = parseJSON(text);
   return obj && { ...obj, model: obj.model ?? llm.status().model };
 }
 
+// Runs start(signal) and gives up after `ms`, or as soon as the caller's own signal (`outer`)
+// fires. Giving up aborts `signal`, so the model request in flight is cancelled instead of
+// running on for minutes with nobody waiting for it (a local model can only do one at a time).
 // The timer must stay referenced while we wait (an unref'd timer lets Node's event loop
 // drain mid-wait, so the test runner cancelled the "hung provider" test), and is cleared
 // as soon as the race settles so a finished review never leaves a timer behind.
-function withTimeout(promise, ms) {
+function withTimeout(start, ms, outer) {
+  const controller = new AbortController();
   let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+  let onOuter;
+  const gaveUp = new Promise((_, reject) => {
+    const stop = (why) => {
+      controller.abort();
+      reject(new Error(why));
+    };
+    timer = setTimeout(() => stop(`timed out after ${ms} ms`), ms);
+    if (outer?.aborted) stop('cancelled');
+    else outer?.addEventListener('abort', (onOuter = () => stop('cancelled')), { once: true });
   });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  // The async wrapper turns a synchronous throw from start() into a rejection, so the timer is always cleared.
+  return Promise.race([(async () => start(controller.signal))(), gaveUp]).finally(() => {
+    clearTimeout(timer);
+    outer?.removeEventListener('abort', onOuter);
+  });
 }
 
-export async function reviewPatient(patient, { rules = null, messages = [], now = clock.now() } = {}, { call, timeoutMs = TIMEOUT_MS } = {}) {
+// Third argument: { call?, timeoutMs?, signal? }. `call(prompt, { signal })` is the injectable
+// model call; `signal` lets the caller cancel the review (core/aireview.js does, on its own timeout).
+export async function reviewPatient(patient, { rules = null, messages = [], now = clock.now() } = {}, { call, timeoutMs = TIMEOUT_MS, signal: outer } = {}) {
   if (!enabled()) return null;
   const caseData = buildCase(patient, { rules, now });
   const signals = detectSignals(caseData, messages);
   let ai;
   try {
-    ai = normalizeReview(await withTimeout((call ?? callChain)(buildPrompt(caseData, messages, signals)), timeoutMs));
+    ai = normalizeReview(await withTimeout((signal) => (call ?? callChain)(buildPrompt(caseData, messages, signals), { signal }), timeoutMs, outer));
   } catch (err) {
     console.error('[riskllm] review failed, rules result stands:', err.message);
     return null;

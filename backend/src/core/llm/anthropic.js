@@ -14,7 +14,7 @@ export function detect() {
     accepts,
     vision: true,
     // json/schema are enforced by the prompt + JSON extraction in llm/index.js.
-    async chat({ system, user, maxTokens, model: wanted, timeoutMs, image }) {
+    async chat({ system, user, maxTokens, model: wanted, timeoutMs, image, signal }) {
       const res = await client.messages.create(
         {
           model: wanted && accepts(wanted) ? wanted : model,
@@ -27,7 +27,7 @@ export function detect() {
             },
           ],
         },
-        timeoutMs ? { timeout: timeoutMs } : undefined,
+        timeoutMs || signal ? { ...(timeoutMs && { timeout: timeoutMs }), ...(signal && { signal }) } : undefined,
       );
       return res.content.find((b) => b.type === 'text')?.text ?? '';
     },

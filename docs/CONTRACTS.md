@@ -91,7 +91,7 @@ getSignals(patient) → {
 ```
 ```js
 // riskllm/index.js (Maharshi): post-check-in reviewer. Escalate-only, never lowers, never RED.
-reviewPatient(patient, { rules, messages, now }) → null | {
+reviewPatient(patient, { rules, messages, now }, { timeoutMs?, signal? }?) → null | {   // timeout or signal: the model call is aborted, null
   rulesTier, aiTier, finalTier, escalate, urgent, readmissionRisk: 'low'|'moderate'|'high',
   concerns: [{ category, text, evidence }], nurseSummary, suggestedActions: string[], model, ts,
 }
@@ -199,11 +199,14 @@ Access: with `API_TOKEN` set, every `/api` route (except `/health`, `/ready`, `/
 ```js
 import * as llm from '../core/llm/index.js';
 llm.enabled() → boolean; llm.status() → { provider, model, available }
-llm.complete(system, user, maxTokens?, { json?, schema?, model?, timeoutMs? }) → Promise<string | null>
-llm.completeJSON(system, user, { maxTokens?, schema?, model?, timeoutMs?, deadlineMs? }) → Promise<object | null>
+llm.complete(system, user, maxTokens?, { json?, schema?, model?, timeoutMs?, deadlineMs?, signal? }) → Promise<string | null>
+llm.completeJSON(system, user, { maxTokens?, schema?, model?, timeoutMs?, deadlineMs?, signal? }) → Promise<object | null>
 // chain: Claude -> Gemini -> Ollama -> LM Studio; `model` is used only by a provider that has it;
 // 503/429 are retried once per provider, then the next provider is tried
 // deadlineMs caps the WHOLE chain (patient-facing parsing uses 4 s, then rules take over)
+// signal (AbortSignal): aborting it cancels the provider request in flight and ends the chain (null);
+// every provider's chat(opts) receives it as opts.signal. Used by background work nobody waits on
+// any more: riskllm aborts on its timeout, core/aireview.js on its backstop (riskllm timeout + 10 s)
 llm.visionEnabled() → boolean   // some provider can read images (Gemini, Claude, local *-vl / llava / gemma-3)
 llm.completeVisionJSON(system, prompt, { base64, mime }, opts?) → Promise<object | null>   // text-only providers are skipped
 parser.parseWithLLM(text, { step? }) → flat answers | null   // evidence-checked (parser.validateExtraction)

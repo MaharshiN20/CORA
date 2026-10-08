@@ -93,12 +93,15 @@ async function run(opts) {
 
 async function runChain(opts) {
   for (const p of await detect()) {
+    // The caller gave up (opts.signal): don't start, or move on to, another provider.
+    if (opts.signal?.aborted) return null;
     if ((coolingUntil.get(p.name) ?? 0) > Date.now()) continue;
     if (opts.image && !p.vision) continue; // a text-only model can't read the photo
     try {
       const text = (await p.chat(opts))?.trim();
       if (text) return text;
     } catch (err) {
+      if (opts.signal?.aborted) return null; // cancelled by the caller, not a provider failure
       coolDownIfNeeded(p, err);
       console.error(`[llm] ${p.name} failed, trying next:`, err.message);
     }
@@ -106,8 +109,10 @@ async function runChain(opts) {
   return null;
 }
 
-// opts (all optional, per call): { json, schema, model, timeoutMs, deadlineMs }
+// opts (all optional, per call): { json, schema, model, timeoutMs, deadlineMs, signal }
 //   deadlineMs -> hard cap on the whole provider chain (null when it expires)
+//   signal    -> an AbortSignal: aborting it cancels the request in flight and ends the chain
+//                (null). For background work nobody waits on any more (a timed-out AI review)
 //   schema    -> enforced as JSON schema where the provider supports it (Gemini, LM Studio, Ollama)
 //   model     -> preferred model, used only by a provider that has it (else its default)
 //   timeoutMs -> per-call timeout (default 60s; CPU-only local reviews can need more)
@@ -137,7 +142,12 @@ export function completeVisionJSON(system, user, image, opts = {}) {
   return completeJSON(system, user, { ...opts, image });
 }
 
-// Test hook
+// Test hooks
+// Use these providers ({ name, model, chat(opts) }) as the chain, without probing.
+export function _use(list) {
+  providers = list;
+  probedAt = Date.now();
+}
 export function _reset() {
   coolingUntil.clear();
   providers = [];

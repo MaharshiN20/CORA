@@ -15,7 +15,14 @@ import * as llm from './llm/index.js';
 import * as risk from './risk.js';
 import * as riskllm from '../riskllm/index.js';
 
-let reviewer = (patient, input) => riskllm.reviewPatient(patient, input);
+const defaultReviewer = (patient, input, opts) => riskllm.reviewPatient(patient, input, opts);
+let reviewer = defaultReviewer;
+// Backstop. riskllm has its own timeout, but a reviewer that never settles (a wedged provider, a
+// bug) would hold one of the two slots below for good, and after two of those no patient is ever
+// reviewed again. Past this the review is cancelled (the signal reaches the model request through
+// riskllm and the LLM chain) and the rules result stands.
+const REVIEW_TIMEOUT_MS = (Number(process.env.RISK_TIMEOUT_MS) || 180_000) + 10_000;
+let reviewTimeoutMs = REVIEW_TIMEOUT_MS;
 const pending = new Set();
 const byPatient = new Map(); // patientId -> its in-flight review promise
 
@@ -36,9 +43,31 @@ async function slot(fn) {
   }
 }
 
-// Test hook: swap the reviewer (e.g. a canned escalate/null result).
-export function setReviewer(fn) {
-  reviewer = fn ?? ((patient, input) => riskllm.reviewPatient(patient, input));
+// Test hook: swap the reviewer (e.g. a canned escalate/null result) and, optionally, the backstop.
+// reviewer(patient, input, { signal }): the signal is aborted when the review is given up on.
+export function setReviewer(fn, { timeoutMs = REVIEW_TIMEOUT_MS } = {}) {
+  reviewer = fn ?? defaultReviewer;
+  reviewTimeoutMs = timeoutMs;
+}
+
+// -> the reviewer's answer, or null once the backstop fires (after aborting its signal).
+async function bounded(start) {
+  const controller = new AbortController();
+  const ms = reviewTimeoutMs;
+  let timer;
+  const expired = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      console.error(`[aireview] review cancelled after ${ms} ms, rules stand`);
+      resolve(null);
+    }, ms);
+    timer.unref?.(); // a backstop must never be what keeps the process alive
+  });
+  try {
+    return await Promise.race([start(controller.signal), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // One review per patient at a time: a second check-in finishing while the first is still being
@@ -87,7 +116,7 @@ async function run(patientId, rules) {
     .slice(-12)
     .map((m) => ({ ts: m.ts, text: m.textEn ?? m.text }));
 
-  const review = await reviewer(patient, { rules: { tier: rules.tier, flags: rules.flags ?? [] }, messages, now: clock.now() });
+  const review = await bounded((signal) => reviewer(patient, { rules: { tier: rules.tier, flags: rules.flags ?? [] }, messages, now: clock.now() }, { signal }));
   if (!review) return null;
 
   store.audit('ai_review', patientId, {

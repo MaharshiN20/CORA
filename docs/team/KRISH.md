@@ -89,7 +89,7 @@
   - `listMessages(id)`, `listAudit(id)`, alerts-by-patient are full-array filters on hot paths (every inbound, every `GET /patients/:id`). Add lazily-built `Map<patientId, items[]>` caches that are rebuilt when the underlying array is replaced or resized (the same pattern as the key index in `core/scheduler.js`), so `prune()` and `reset()` can never leave them stale. Keep every exported function's return shape and order.
   - **Accept:** the existing suite unchanged and green, plus tests that the index is correct after `reset`, `prune`, `resetPatient`, and direct pushes to `collection()`; a quick timing test with 20k audit rows.
 
-- [ ] **K12. Cancel in-flight AI reviews**
+- [x] **K12. Cancel in-flight AI reviews**
   - `riskllm` times out with `Promise.race`, but the provider request keeps running. Thread an `AbortSignal` through `core/llm/index.js` `run()` and the providers' `chat(opts)` (`opts.signal`), and have `riskllm/index.js` and `core/aireview.js` abort on timeout. Keep `deadlineMs` behaviour for patient-facing calls.
   - **Accept:** a test with a fake provider that records `signal.aborted` after the timeout; existing `llm.test.js`, `riskllm*.test.js` and `aireview*.test.js` unchanged and green.
 

@@ -51,12 +51,14 @@ export const VISION_MODEL = /\bvl\b|-vl|vision|llava|gemma-?3|pixtral|minicpm-v|
 export function makeProvider(name, chatUrl, model, { headers = {}, models = [model], accepts, vision = VISION_MODEL.test(model) } = {}) {
   const canUse = accepts ?? ((m) => models.includes(m));
 
-  async function call({ system, user, maxTokens, json, schema, model: wanted, timeoutMs, image }) {
+  async function call({ system, user, maxTokens, json, schema, model: wanted, timeoutMs, image, signal }) {
     const useModel = wanted && canUse(wanted) ? wanted : model;
+    const timeout = AbortSignal.timeout(timeoutMs ?? CALL_TIMEOUT_MS);
     const res = await fetch(chatUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
-      signal: AbortSignal.timeout(timeoutMs ?? CALL_TIMEOUT_MS),
+      // The per-call timeout, and the caller's own signal when it has one (whichever fires first).
+      signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
       body: JSON.stringify({
         model: useModel,
         max_tokens: maxTokens,
