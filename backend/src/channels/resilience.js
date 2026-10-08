@@ -1,5 +1,6 @@
-// Channel hardening (K7): per-chat rate limiting, retrying Telegram API calls, and
-// readable polling errors. Pure helpers with injectable time/sleep so tests run instantly.
+// Channel hardening (K7): per-chat rate limiting, retrying Telegram API calls, webhook
+// de-duplication and readable polling errors. Pure helpers with injectable time/sleep so tests
+// run instantly.
 
 // Sliding window: at most `limit` hits per `windowMs` per key (chat id).
 // hit(key) -> true if allowed. Keeps only timestamps inside the window, so memory stays small.
@@ -19,6 +20,25 @@ export function createRateLimiter({ limit = 20, windowMs = 60_000, now = () => p
     },
     reset: () => hits.clear(),
     size: () => hits.size,
+  };
+}
+
+// Remembers ids for `ttlMs`, so a webhook delivery that comes twice (Telegram re-sends an update
+// when our answer was slow or lost) is handled once. seen(id) -> true if the id is already known,
+// otherwise it is recorded. Real time like the limiter above; expired ids are swept as it grows.
+export function createDedupe({ ttlMs = 10 * 60_000, now = () => performance.now() } = {}) {
+  const until = new Map();
+  return {
+    seen(id) {
+      const t = now();
+      if (until.size > 5000) for (const [k, v] of until) if (t >= v) until.delete(k);
+      const expires = until.get(id);
+      if (expires !== undefined && t < expires) return true;
+      until.set(id, t + ttlMs);
+      return false;
+    },
+    reset: () => until.clear(),
+    size: () => until.size,
   };
 }
 

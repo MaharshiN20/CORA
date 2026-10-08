@@ -10,7 +10,8 @@ import crypto from 'node:crypto';
 // ---------- API token ----------
 const PUBLIC_PATHS = new Set(['/health', '/join']); // health is polled by the UI; join links are public QR targets
 
-function safeEqual(a, b) {
+// Constant-time string compare (hashing first makes the lengths equal). Also used for webhook secrets.
+export function safeEqual(a, b) {
   const ha = crypto.createHash('sha256').update(String(a)).digest();
   const hb = crypto.createHash('sha256').update(String(b)).digest();
   return crypto.timingSafeEqual(ha, hb);
@@ -109,8 +110,10 @@ export function resetRateLimits() {
   hits.clear();
 }
 
-export function rateLimit({ name, max, windowMs = 60_000 }) {
+// skip(req) -> true lets a request through uncounted (a path that has its own bucket).
+export function rateLimit({ name, max, windowMs = 60_000, skip }) {
   return (req, res, next) => {
+    if (skip?.(req)) return next();
     const t = now();
     if (hits.size > 5000) for (const [k, v] of hits) if (t > v.until) hits.delete(k); // no idle-key leak
     const key = `${name}:${req.ip}`;

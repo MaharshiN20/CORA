@@ -1,7 +1,8 @@
-// Inbound webhooks for non-Telegram channels (Krish lane). Mounted at /webhooks.
+// Inbound webhooks (Krish lane). Mounted at /webhooks.
 //
 //   POST /webhooks/twilio/sms        form-encoded { From, Body, NumMedia?, MediaUrl0?, MediaContentType0? }
 //   POST /webhooks/twilio/whatsapp   same, From = "whatsapp:+1..."
+//   POST /webhooks/telegram          a Telegram update (JSON), only in webhook mode
 //
 // "JOIN <CODE>" links the phone (GARCIA1 = patient, CG_GARCIA1 = caregiver, DEMO / DEMO_ES = judge mode).
 // Anything else goes to handleInbound; a bare number answers the last numbered menu.
@@ -13,6 +14,7 @@ import { handleInbound, startCheckin } from '../core/agent.js';
 import { enrollDemoPatient, isSupportedLanguage } from '../core/enroll.js';
 import { t, localize } from '../core/i18n.js';
 import * as twilio from '../channels/twilio.js';
+import * as telegram from '../channels/telegram.js';
 import { remember, resolve, normalizePhone } from '../channels/options.js';
 import { transcribe } from '../integrations/speech.js';
 import * as sec from '../security.js';
@@ -227,3 +229,10 @@ webhooks.get('/', (_req, res) =>
 );
 webhooks.post('/twilio/sms', checkSignature, handler('sms'));
 webhooks.post('/twilio/whatsapp', checkSignature, handler('whatsapp'));
+
+// Telegram webhook mode (TELEGRAM_WEBHOOK_URL). The secret check, the update_id de-duplication
+// and the handling all live in channels/telegram.js; this only maps the outcome to HTTP.
+webhooks.post('/telegram', async (req, res) => {
+  const { status, error } = await telegram.handleWebhook(req.body, req.get('x-telegram-bot-api-secret-token'));
+  res.status(status).json(error ? { error } : { ok: true });
+});

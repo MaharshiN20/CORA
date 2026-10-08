@@ -10,7 +10,8 @@
 //
 // Handlers live in buildBot() so tests can drive a bot with fake updates and a
 // transformer that swallows every API call (no network). start() is the only
-// thing that talks to Telegram for real (long polling, no public URL needed).
+// thing that talks to Telegram for real: long polling by default (no public URL
+// needed), or a webhook when TELEGRAM_WEBHOOK_URL is set (the production path).
 // ============================================================================
 import { Bot, InlineKeyboard, InputFile } from 'grammy';
 import * as store from '../store.js';
@@ -23,11 +24,15 @@ import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
 import * as twilio from './twilio.js';
 import * as sec from '../security.js';
-import { createRateLimiter, retryTransformer, describePollingError, readBodyCapped, scrub } from './resilience.js';
+import { createRateLimiter, createDedupe, retryTransformer, describePollingError, readBodyCapped, scrub } from './resilience.js';
 
 let bot = null;
+// How updates reach this process: 'off' | 'polling' | 'webhook' | 'refused' (webhook
+// misconfigured) | 'failed' (polling died or the webhook could not be registered).
+let receiving = 'off';
 
 export const isEnabled = () => bot !== null;
+export const receiveMode = () => receiving;
 
 // Shown in Telegram's "/" menu. Spanish variants are registered for es clients.
 export const COMMANDS = {
@@ -129,6 +134,8 @@ async function downloadFile(ctx, declaredSize) {
 // Test hook: make sendToChat() use a bot built by buildBot() without polling.
 export function useBot(b) {
   bot = b;
+  receiving = 'off';
+  seenUpdates.reset();
 }
 
 // Language for someone we can't identify yet: Telegram tells us the app's language.
@@ -454,6 +461,89 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
   return b;
 }
 
+// ---------- webhook mode (the production path) ----------
+// Long polling needs nothing public and is the default. A webhook is what a real deployment
+// runs: no connection held open, several instances behind one address, and Telegram re-sends
+// whatever we did not acknowledge. It also makes this an endpoint anyone can post to, so every
+// request must carry the secret we registered (header X-Telegram-Bot-Api-Secret-Token).
+export const WEBHOOK_PATH = '/webhooks/telegram';
+const SECRET_FORMAT = /^[A-Za-z0-9_-]{1,256}$/; // Telegram's rule for secret_token
+// The only update types the handlers use (my_chat_member: the bot was added to a group, which
+// is when its id gets logged for NURSE_CHAT_ID). Set explicitly so an older setting can't linger.
+const WEBHOOK_UPDATES = ['message', 'callback_query', 'my_chat_member'];
+
+// -> { mode: 'polling' } | { mode: 'webhook', url, secret } | { mode: 'refused', reason }
+// Read per call (not cached), so tests and ops can flip it live.
+export function webhookConfig(env = process.env) {
+  const raw = (env.TELEGRAM_WEBHOOK_URL ?? '').trim();
+  if (!raw) return { mode: 'polling' };
+  const refused = (reason) => ({ mode: 'refused', reason });
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return refused('TELEGRAM_WEBHOOK_URL is not a valid URL');
+  }
+  if (url.protocol !== 'https:') return refused('TELEGRAM_WEBHOOK_URL must start with https:// (Telegram only calls HTTPS)');
+  if (url.pathname === '/') url.pathname = WEBHOOK_PATH; // a bare public base URL is enough
+  const secret = (env.TELEGRAM_WEBHOOK_SECRET ?? '').trim();
+  if (secret && !SECRET_FORMAT.test(secret)) return refused('TELEGRAM_WEBHOOK_SECRET may only contain A-Z a-z 0-9 _ and - (1 to 256 characters)');
+  // Fails closed: without a secret anyone who finds the URL could post updates as any patient.
+  if (!secret && env.NODE_ENV === 'production') return refused('TELEGRAM_WEBHOOK_SECRET is required in production');
+  return { mode: 'webhook', url: url.href, secret: secret || null };
+}
+
+// Telegram re-sends an update until it gets a 2xx, and again when the answer was slow.
+const seenUpdates = createDedupe({ ttlMs: 10 * 60_000 });
+
+// One webhook delivery -> { status, error? } for routes/webhooks.js.
+export async function handleWebhook(update, givenSecret) {
+  const hook = webhookConfig();
+  if (!bot || hook.mode === 'polling') return { status: 404, error: 'telegram webhook mode is off' };
+  if (hook.mode === 'refused') return { status: 403, error: 'telegram webhook is not configured' };
+  const authentic = !hook.secret || (typeof givenSecret === 'string' && sec.safeEqual(givenSecret, hook.secret));
+  if (!authentic) return { status: 403, error: 'invalid secret' };
+  if (!Number.isSafeInteger(update?.update_id)) return { status: 400, error: 'not a Telegram update' };
+  if (seenUpdates.seen(update.update_id)) return { status: 200, duplicate: true };
+  try {
+    await bot.handleUpdate(update);
+  } catch (err) {
+    // Acknowledged anyway, as polling does (b.catch): a 5xx would make Telegram re-send the same
+    // update into the same bug, and hold back that chat's later messages while it does.
+    console.error('[telegram] error:', scrub(err.error?.message ?? err));
+  }
+  return { status: 200 };
+}
+
+// Start receiving on a built bot. Split from start() so tests can drive it with a fake bot.
+export async function launch(b, hook = webhookConfig()) {
+  if (hook.mode === 'refused') {
+    receiving = 'refused';
+    console.error(`[telegram] webhook mode refused: ${hook.reason}. Incoming Telegram messages are OFF until this is fixed (sending and the dashboard still work).`);
+    return receiving;
+  }
+  if (hook.mode === 'webhook') {
+    try {
+      await b.init(); // handleUpdate needs the bot's identity; polling fetches it by itself
+      await b.api.setWebhook(hook.url, { ...(hook.secret && { secret_token: hook.secret }), allowed_updates: WEBHOOK_UPDATES });
+      receiving = 'webhook';
+      console.log(`[telegram] @${b.botInfo.username} webhook -> ${hook.url}`);
+      if (!hook.secret) console.warn('[telegram] TELEGRAM_WEBHOOK_SECRET is not set: webhook requests are not verified. Set it before exposing the server.');
+    } catch (err) {
+      receiving = 'failed';
+      console.error('[telegram] setWebhook failed (new messages arrive only if an earlier run registered this URL):', scrub(err));
+    }
+    return receiving;
+  }
+  receiving = 'polling';
+  // grammY removes any registered webhook before it polls, so switching back needs no cleanup.
+  b.start({ onStart: (me) => console.log(`[telegram] @${me.username} polling`) }).catch((err) => {
+    receiving = 'failed'; // 409 (a second poller) or 401: nothing is coming in any more
+    console.error(describePollingError(err));
+  });
+  return receiving;
+}
+
 export async function start() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
@@ -467,11 +557,16 @@ export async function start() {
   } catch (err) {
     console.error('[telegram] setMyCommands failed:', scrub(err));
   }
-  bot
-    .start({ onStart: (me) => console.log(`[telegram] @${me.username} polling`) })
-    .catch((err) => console.error(describePollingError(err)));
+  await launch(bot);
 }
 
-export async function stop() {
-  await bot?.stop();
+// Shutdown. A registered webhook is left in place on purpose: Telegram then keeps what arrives
+// during a restart and delivers it when we are back. deleteWebhook: true really unregisters it.
+export async function stop({ deleteWebhook = false } = {}) {
+  if (!bot) return;
+  await bot.stop(); // no-op unless polling
+  if (deleteWebhook && receiving === 'webhook') {
+    await bot.api.deleteWebhook().catch((err) => console.error('[telegram] deleteWebhook failed:', scrub(err)));
+  }
+  receiving = 'off';
 }

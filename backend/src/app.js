@@ -26,7 +26,9 @@ export function createApp() {
   app.use(['/api/demo', '/api/reset', '/api/insights/cohort/regenerate'], sec.demoOnly);
   app.use('/api/fhir', sec.rateLimit({ name: 'fhir', max: 30 }));
   app.use('/api/devices/readings', sec.rateLimit({ name: 'readings', max: 120 }));
-  app.use('/webhooks', sec.rateLimit({ name: 'webhooks', max: 120 }));
+  // Telegram delivers every chat's updates from a few addresses, so it gets its own, larger bucket.
+  app.use('/webhooks/telegram', sec.rateLimit({ name: 'telegram', max: 3000 }));
+  app.use('/webhooks', sec.rateLimit({ name: 'webhooks', max: 120, skip: (req) => req.path === '/telegram' }));
   app.use('/api/demo', demo);
   app.use('/api/insights', insights);
   app.use('/api/fhir', fhir);

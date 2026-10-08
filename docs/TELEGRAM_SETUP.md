@@ -132,6 +132,8 @@ For longer text use `googleTTS.getAllAudioUrls` and send them in sequence. A per
 - Don't commit `.env`.
 - Docs: https://grammy.dev (guide), https://core.telegram.org/bots/api (reference).
 
+- In webhook mode (§9) a `403` on `/webhooks/telegram` means the secret header doesn't match `TELEGRAM_WEBHOOK_SECRET`; a `404` means `TELEGRAM_WEBHOOK_URL` isn't set in that process.
+
 ## 8. SMS & WhatsApp (Twilio)
 
 Same agent, same check-in, no app to install. Useful for patients who don't have Telegram, and it's the channel a hospital would run behind a BAA (the "HIPAA path"). Everything is optional: with no Twilio variables set, the adapters stay disabled and nothing else changes.
@@ -157,3 +159,32 @@ Same agent, same check-in, no app to install. Useful for patients who don't have
 - Trial messages start with "Sent from your Twilio trial account".
 - The WhatsApp sandbox forgets a phone after 72 h without messages; resend the `join` words.
 - Try it locally without Twilio (replies come back as TwiML): `curl --data-urlencode "From=+14045550100" --data-urlencode "Body=JOIN GARCIA1" localhost:3001/webhooks/twilio/sms`
+
+## 9. Webhook mode (production)
+
+Long polling (§2) stays the default and is what you want on a laptop. A deployed server should use a webhook instead: Telegram calls us, nothing holds a connection open, several instances can sit behind one address, and Telegram re-sends anything we didn't acknowledge.
+
+**Turn it on**
+```bash
+TELEGRAM_WEBHOOK_URL=https://hb.example.org      # public HTTPS base URL (or the full .../webhooks/telegram)
+TELEGRAM_WEBHOOK_SECRET=<random string>          # A-Z a-z 0-9 _ - only, up to 256 characters
+```
+Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. On start the backend calls `setWebhook` with that URL and secret and logs `[telegram] @your_bot webhook -> https://…/webhooks/telegram`. It does not poll in this mode.
+
+**What the endpoint does** (`POST /webhooks/telegram`)
+- Every request must carry the secret in the `X-Telegram-Bot-Api-Secret-Token` header (Telegram adds it). Anything else gets `403`, compared in constant time.
+- Each `update_id` is handled once. Telegram re-sends an update when our answer was slow or lost; the repeat is acknowledged with `200` and ignored (remembered for 10 minutes).
+- A handler error is logged and still answered `200`, the same as polling, so Telegram doesn't keep re-sending one bad update and hold up that chat.
+- Only `message`, `callback_query` and `my_chat_member` updates are requested.
+
+**Fails closed**
+- `NODE_ENV=production` with a URL but no secret: the webhook is not registered, every request gets `403`, and the log says why. Incoming Telegram messages are off until it's fixed; sending and the dashboard keep working.
+- A URL that isn't `https://`, or a secret with characters Telegram rejects, is refused the same way (in any environment).
+- Outside production a missing secret is allowed with a warning, like the Twilio check.
+
+**Switching back and shutting down**
+- Unset `TELEGRAM_WEBHOOK_URL` and restart: polling removes the webhook by itself.
+- A normal shutdown leaves the webhook registered on purpose, so Telegram keeps what arrives during a restart and delivers it afterwards. To really unregister, call `telegram.stop({ deleteWebhook: true })`, or `curl https://api.telegram.org/bot<TOKEN>/deleteWebhook`.
+- Check what Telegram has on file: `curl https://api.telegram.org/bot<TOKEN>/getWebhookInfo` (look at `url`, `pending_update_count` and `last_error_message`).
+
+**Try it locally** with ngrok: `ngrok http 3001`, set `TELEGRAM_WEBHOOK_URL=https://<id>.ngrok.app` and a secret, restart, message the bot. Only one mode works per token at a time: while a webhook is registered, another process polling the same token removes it.

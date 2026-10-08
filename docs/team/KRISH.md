@@ -71,7 +71,7 @@
 **Context:** Prannav's Claude did a full audit and fixed most of it (27 commits, see the log and the Oct 8 entry in `docs/team/REQUESTS.md`; contract changes are in `docs/CONTRACTS.md`). These items were left out. Read `CONTRACTS.md` first: the outbox (`channels/index.js`), `security.js`, and `core/devicetriage.js` are new and you will build on them.
 **Permission:** Prannav approved editing files outside your lane for these tasks (same arrangement as the Oct 8 pass). Keep each change small, one feature per commit, and note the cross-lane files in the commit body. Same loop as always: tests that never touch the network, `npm run check` green, then push.
 
-- [ ] **K8. Telegram webhook mode (production path)**
+- [x] **K8. Telegram webhook mode (production path)**
   - Long polling stays the default. With `TELEGRAM_WEBHOOK_URL` (+ `TELEGRAM_WEBHOOK_SECRET`) set, call `setWebhook` with `secret_token`, mount `POST /webhooks/telegram`, and reject any request whose `X-Telegram-Bot-Api-Secret-Token` doesn't match (constant-time compare, see `security.js` `safeEqual`). Dedupe on `update_id` (short TTL). Fail closed in production if the URL is set but the secret is not.
   - Stop polling when webhook mode is on; `stop()` should delete the webhook only when asked.
   - **Accept:** tests with `bot.handleUpdate` for a valid secret, a wrong/missing secret (403), a replayed `update_id`, and the polling default unchanged. Document it in `docs/TELEGRAM_SETUP.md`.
