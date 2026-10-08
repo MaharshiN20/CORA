@@ -23,7 +23,7 @@ import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
 import * as twilio from './twilio.js';
 import * as sec from '../security.js';
-import { createRateLimiter, retryTransformer, describePollingError, readBodyCapped } from './resilience.js';
+import { createRateLimiter, retryTransformer, describePollingError, readBodyCapped, scrub } from './resilience.js';
 
 let bot = null;
 
@@ -92,7 +92,7 @@ async function sendVoice(api, chatId, text, language) {
       return await api.sendAudio(chatId, new InputFile(Buffer.from(await res.arrayBuffer()), 'heartbridge.mp3'));
     }
   } catch (err) {
-    console.error('[telegram] voice reply failed:', err.message);
+    console.error('[telegram] voice reply failed:', scrub(err));
   }
 }
 
@@ -238,7 +238,7 @@ export function statusText() {
 // rateLimit: { limit, windowMs } per private chat, or false to disable.
 export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60_000 } } = {}) {
   const b = new Bot(token, botInfo ? { botInfo } : undefined);
-  b.api.config.use(retryTransformer());
+  b.api.config.use(retryTransformer({ jitterMs: 250 }));
   const seenGroups = new Set();
   const limiter = rateLimit ? createRateLimiter(rateLimit) : null;
   const throttled = new Set();
@@ -269,7 +269,9 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
 
   // Groups only get nurse-side commands; a group is never treated as a patient.
   const group = b.chatType(['group', 'supergroup']);
-  const isNurseGroup = (ctx) => !process.env.NURSE_CHAT_ID || String(ctx.chat.id) === String(process.env.NURSE_CHAT_ID);
+  // Closed by default: until NURSE_CHAT_ID names the group, no group may run /demo or /status
+  // (any group the bot is added to would otherwise learn patient counts and demo links).
+  const isNurseGroup = (ctx) => !!process.env.NURSE_CHAT_ID && String(ctx.chat.id) === String(process.env.NURSE_CHAT_ID);
 
   // /demo: the judge-mode join links, so the nurse group can share them on the spot.
   group.command('demo', async (ctx) => {
@@ -395,7 +397,7 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
         transcript = await transcribe(audio, media.mime_type ?? 'audio/ogg', lang);
       } catch (err) {
         if (err instanceof FileTooLargeError) return ctx.reply(await say(lang, 'file_too_large'));
-        console.error('[telegram] voice download failed:', err.message);
+        console.error('[telegram] voice download failed:', scrub(err));
       }
       if (!transcript) return ctx.reply(await say(lang, 'voice_unavailable'));
       await ctx.reply(t(lang, 'heard', { text: transcript }));
@@ -415,7 +417,7 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
         buffer = await downloadFile(ctx, size);
       } catch (err) {
         if (err instanceof FileTooLargeError) return ctx.reply(await say(lang, 'file_too_large'));
-        console.error('[telegram] photo download failed:', err.message);
+        console.error('[telegram] photo download failed:', scrub(err));
         return ctx.reply(await say(lang, 'photo_failed'));
       }
       const photo = { base64: buffer.toString('base64'), mime };
@@ -448,7 +450,7 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
     await replyAll(ctx, link, replies);
   });
 
-  b.catch((err) => console.error('[telegram] error:', err.error?.message ?? err));
+  b.catch((err) => console.error('[telegram] error:', scrub(err.error?.message ?? err)));
   return b;
 }
 
@@ -463,7 +465,7 @@ export async function start() {
     await bot.api.setMyCommands(COMMANDS.en);
     await bot.api.setMyCommands(COMMANDS.es, { language_code: 'es' });
   } catch (err) {
-    console.error('[telegram] setMyCommands failed:', err.message);
+    console.error('[telegram] setMyCommands failed:', scrub(err));
   }
   bot
     .start({ onStart: (me) => console.log(`[telegram] @${me.username} polling`) })

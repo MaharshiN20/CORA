@@ -43,7 +43,7 @@ sendToCaregiver(patient, reply) → Promise<boolean>
 sendToNurses(reply)             → Promise<boolean>   // nurse group (NURSE_CHAT_ID)
 ```
 The adapter interface each channel implements: `{ name, isEnabled(), send(address, reply) }`.
-Delivery failure returns `false` and never throws. The message is already in the dashboard log.
+Delivery failure returns `false` and never throws. The message is already in the dashboard log, with `delivery`: `sent` | `queued` (every channel failed; it is in the `outbox` collection and retried with backoff by `flushOutbox()` on each scheduler tick: 5 tries for routine messages, 12 for urgent / nurse ones) | `failed` (given up, audit `delivery_dead`) | `unlinked` (nothing to send to). `sendToNurses({ text, patientId?, alertId? })`: if the nurse message is queued the alert gets `undelivered: true` until a retry succeeds (audit `delivery_recovered`); nurses are reached on `NURSE_CHAT_ID` (Telegram) and, as a fallback, `NURSE_PHONE` (SMS/WhatsApp). With neither configured the dashboard is the channel and alerts are not flagged.
 
 ### Linking & enrollment: `store.js`, `core/enroll.js`
 ```js

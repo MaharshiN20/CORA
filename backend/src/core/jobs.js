@@ -115,6 +115,7 @@ export function start({ intervalMs = TICK_MS } = {}) {
         console.error('[scheduler] planning failed', e);
       }
       scheduler.tick().catch((e) => console.error('[scheduler] tick failed', e));
+      channels.flushOutbox();
       store.prune();
     }, intervalMs);
     timer.unref?.();
@@ -131,6 +132,7 @@ export function stop() {
 // Called by POST /api/demo/advance after the clock moves: plan the skipped window, run due jobs.
 export async function afterAdvance(byMs) {
   planFrom(clock.now() - byMs);
+  await channels.flushOutbox(); // queued messages that came due while the clock jumped
   return scheduler.tick();
 }
 

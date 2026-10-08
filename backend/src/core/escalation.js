@@ -61,7 +61,7 @@ export async function escalate(patient, result, { source = 'check-in', reporter 
     `${ICON[result.tier]} ${result.tier}: ${patient.name} (${patient.age}y, ${patient.riskTier ?? '?'} risk)\n` +
     reasons.map((r) => `• ${r}`).join('\n') +
     `\n${action}\nSource: ${source}${who}`;
-  await channels.sendToNurses({ text: nurseMsg });
+  await channels.sendToNurses({ text: nurseMsg, patientId: patient.id, alertId: alert.id });
 
   if (reporter !== 'caregiver' && patient.caregiverConsent !== false) {
     const first = patient.name.split(' ')[0];

@@ -177,8 +177,8 @@ export function findByChatId(chatId) {
 
 // ---------- messages (conversation log shown on dashboard) ----------
 // direction: 'in' | 'out'; to: 'patient' | 'caregiver' | 'nurse'; from (inbound): 'patient' | 'caregiver'
-export function addMessage({ patientId, direction, to = 'patient', from, text, textEn, buttons, channel }) {
-  const msg = { id: newId(), ts: clock.nowISO(), patientId, direction, to, from, text, textEn, buttons, channel };
+export function addMessage({ patientId, direction, to = 'patient', from, text, textEn, buttons, channel, delivery }) {
+  const msg = { id: newId(), ts: clock.nowISO(), patientId, direction, to, from, text, textEn, buttons, channel, ...(delivery && { delivery }) };
   db.messages.push(msg);
   emit('message', msg);
   return msg;
@@ -293,6 +293,15 @@ export function prune() {
     else jobs[kept++] = j;
   }
   jobs.length = kept;
+  // Finished outbox rows (sent or given up) are only history after two days.
+  const outbox = (db.outbox ??= []);
+  const keepFrom = clock.now() - 2 * 24 * 60 * 60 * 1000;
+  let kept2 = 0;
+  for (const e of outbox) {
+    if (e.status !== 'pending' && Date.parse(e.sentAt ?? e.nextAt ?? e.ts) < keepFrom) removed++;
+    else outbox[kept2++] = e;
+  }
+  outbox.length = kept2;
   removed += dropOldest(db.audit, RETENTION.audit);
   removed += dropOldest(db.messages, RETENTION.messages);
   removed += dropOldest(db.readings, RETENTION.readings);

@@ -143,20 +143,21 @@ test('a 429 with a very long retry_after is returned instead of blocking the bot
   assert.equal(slept.length, 0);
 });
 
-test('5xx and network errors are retried exactly once', async () => {
+test('5xx and network errors on a repeatable call (answerCallbackQuery) are retried exactly once', async () => {
+  // Sends are different (a retry could message the patient twice): see channels.safety.test.js.
   const { t } = transformer();
   const s5 = scripted({ ok: false, error_code: 502, description: 'Bad Gateway' }, OK);
-  assert.deepEqual(await t(s5.prev, 'sendMessage', {}), OK);
+  assert.deepEqual(await t(s5.prev, 'answerCallbackQuery', {}), OK);
 
   const net = scripted(new Error('ECONNRESET'), OK);
-  assert.deepEqual(await t(net.prev, 'sendMessage', {}), OK);
+  assert.deepEqual(await t(net.prev, 'answerCallbackQuery', {}), OK);
 
   const twice = scripted(new Error('ECONNRESET'), new Error('ECONNRESET again'));
-  await assert.rejects(() => t(twice.prev, 'sendMessage', {}), /again/);
+  await assert.rejects(() => t(twice.prev, 'answerCallbackQuery', {}), /again/);
   assert.equal(twice.calls.length, 2);
 
   const still = scripted({ ok: false, error_code: 500 }, { ok: false, error_code: 500 });
-  assert.equal((await t(still.prev, 'sendMessage', {})).error_code, 500);
+  assert.equal((await t(still.prev, 'answerCallbackQuery', {})).error_code, 500);
   assert.equal(still.calls.length, 2);
 });
 
