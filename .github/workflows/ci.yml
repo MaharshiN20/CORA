@@ -1,0 +1,24 @@
+# Every push and PR: install, run all backend + frontend tests, build the dashboard.
+# No secrets and no network services needed (tests never call a real LLM or Telegram).
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
+      - run: npm run setup
+      - run: npm run check
