@@ -125,3 +125,39 @@ export function errorHandler(err, req, res, _next) {
     : 'internal error';
   res.status(status).json({ error: msg });
 }
+
+// ---------- care-code linking ----------
+// A care code (GARCIA1) hands over a patient's chat, so it must not be a master key:
+//  - once a slot (patient or caregiver) is linked to one chat/phone, a different one can't take it
+//    over until a nurse releases it (POST /api/patients/:id/unlink). Dev and tests stay friendly:
+//    re-linking is allowed unless ALLOW_RELINK=0, or NODE_ENV=production without ALLOW_RELINK=1.
+//  - guessing is throttled: 5 unknown codes per chat/phone per 10 minutes.
+export function relinkAllowed() {
+  const v = process.env.ALLOW_RELINK;
+  if (v === '1') return true;
+  if (v === '0') return false;
+  return process.env.NODE_ENV !== 'production';
+}
+// holder = who the slot is linked to now (chat id / normalized phone / null); requester = who asks.
+export const canClaim = (holder, requester) => holder == null || holder === requester || relinkAllowed();
+
+const JOIN_MAX_MISSES = 5;
+const JOIN_WINDOW_MS = 10 * 60_000;
+const misses = new Map();
+export const resetJoinThrottle = () => misses.clear();
+export function joinBlocked(key) {
+  const m = misses.get(key);
+  if (!m) return false;
+  if (now() > m.until) {
+    misses.delete(key);
+    return false;
+  }
+  return m.n >= JOIN_MAX_MISSES;
+}
+export function joinMissed(key) {
+  const t = now();
+  if (misses.size > 5000) for (const [k, v] of misses) if (t > v.until) misses.delete(k);
+  const m = misses.get(key);
+  if (!m || t > m.until) misses.set(key, { n: 1, until: t + JOIN_WINDOW_MS });
+  else m.n++;
+}

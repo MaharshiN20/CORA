@@ -136,6 +136,19 @@ api.post('/patients/:id/message', async (req, res) => {
   }
 });
 
+// POST /api/patients/:id/unlink { role?: 'patient' | 'caregiver' } -> releases that channel link
+// (default patient), so a new phone can JOIN with the care code. Nurse-only in effect: it sits
+// behind API_TOKEN like the rest of /api.
+api.post('/patients/:id/unlink', (req, res) => {
+  const p = store.getPatient(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not found' });
+  const role = req.body?.role === 'caregiver' ? 'caregiver' : 'patient';
+  if (role === 'caregiver') store.updatePatient(p.id, { caregiver: { ...p.caregiver, chatId: null, phone: null } });
+  else store.updatePatient(p.id, { chatId: null, phone: null });
+  store.audit('channel_unlink', p.id, { role });
+  res.json({ ok: true, role });
+});
+
 // ---- caregiver digest ----
 
 // GET /api/patients/:id/digest?lang= -> { text } preview (no sending)

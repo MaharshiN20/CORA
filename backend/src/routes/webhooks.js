@@ -15,6 +15,7 @@ import { t, localize } from '../core/i18n.js';
 import * as twilio from '../channels/twilio.js';
 import { remember, resolve, normalizePhone } from '../channels/options.js';
 import { transcribe } from '../integrations/speech.js';
+import * as sec from '../security.js';
 
 export const webhooks = Router();
 
@@ -75,6 +76,12 @@ async function join(code, phone, channel) {
   const isCaregiver = raw.startsWith('CG_');
   const patient = store.getPatientByCode(isCaregiver ? raw.slice(3) : raw);
   if (!patient) return null;
+  // Same rule as Telegram: a linked slot is locked to its phone until a nurse releases it.
+  const holder = normalizePhone(isCaregiver ? patient.caregiver?.phone : patient.phone);
+  if (!sec.canClaim(holder, normalizePhone(phone))) {
+    store.audit('link_refused', patient.id, { channel, role: isCaregiver ? 'caregiver' : 'patient' });
+    return { refused: true };
+  }
   unlinkPhone(phone);
   if (isCaregiver) store.updatePatient(patient.id, { caregiver: { ...patient.caregiver, phone, channel } });
   else store.updatePatient(patient.id, { phone, channel });
@@ -168,9 +175,14 @@ function handler(channel) {
       let link = null;
       let replies;
       if (joinMatch) {
-        const joined = await join(joinMatch[1], phone, channel);
-        if (joined) ({ link, replies } = joined);
-        else replies = [{ text: t('en', 'unknown_code_sms') }];
+        const throttleKey = `sms:${phone}`;
+        const joined = sec.joinBlocked(throttleKey) ? null : await join(joinMatch[1], phone, channel);
+        if (joined?.refused) replies = [{ text: t('en', 'code_in_use') }];
+        else if (joined) ({ link, replies } = joined);
+        else {
+          if (!/^DEMO/i.test(joinMatch[1])) sec.joinMissed(throttleKey);
+          replies = [{ text: t('en', 'unknown_code_sms') }];
+        }
         if (link) for (const r of replies) store.addMessage({ patientId: link.patient.id, direction: 'out', to: link.role, text: r.text, textEn: r.textEn, buttons: r.buttons, channel });
       } else {
         link = findByPhone(phone);

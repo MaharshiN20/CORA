@@ -22,6 +22,7 @@ import { transcribe, tts } from '../integrations/speech.js';
 import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
 import * as twilio from './twilio.js';
+import * as sec from '../security.js';
 import { createRateLimiter, retryTransformer, describePollingError } from './resilience.js';
 
 let bot = null;
@@ -166,6 +167,11 @@ async function welcome(ctx, link) {
   await renderReply(ctx.api, ctx.chat.id, reply);
 }
 
+// Best-effort nudge to the nurse group. Imported lazily: channels/index.js imports this file.
+function notifyNurses(text) {
+  import('./index.js').then((c) => c.sendToNurses({ text })).catch(() => {});
+}
+
 // Drop every existing link for this chat (patient or caregiver) before it links to someone else.
 function unlinkChat(chatId) {
   for (let link = store.findByChatId(chatId); link; link = store.findByChatId(chatId)) {
@@ -299,7 +305,22 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
       return replyAll(ctx, link, replies);
     }
 
-    if (!store.getPatientByCode(code.replace(/^CG_/i, ''))) return ctx.reply(t(guessLang(ctx), 'unknown_code'));
+    const throttleKey = `tg:${ctx.chat.id}`;
+    if (sec.joinBlocked(throttleKey)) return ctx.reply(t(guessLang(ctx), 'unknown_code')); // no hint that it's throttled
+    const isCg = /^CG_/i.test(code);
+    const target = store.getPatientByCode(code.replace(/^CG_/i, ''));
+    if (!target) {
+      sec.joinMissed(throttleKey);
+      return ctx.reply(t(guessLang(ctx), 'unknown_code'));
+    }
+    // A linked slot can't be taken over by another chat (the code is not a master key): tell the
+    // sender, leave a trace, and let the nurse group know. A nurse releases it from the dashboard.
+    const holder = isCg ? target.caregiver?.chatId : target.chatId;
+    if (!sec.canClaim(holder, ctx.chat.id)) {
+      store.audit('link_refused', target.id, { channel: 'telegram', role: isCg ? 'caregiver' : 'patient' });
+      notifyNurses(`⚠️ Someone tried to link ${target.name}'s ${isCg ? 'caregiver' : 'patient'} code from a second Telegram chat. It was refused; release the link from the dashboard if the patient got a new phone.`);
+      return ctx.reply(t(guessLang(ctx), 'code_in_use'));
+    }
     unlinkChat(ctx.chat.id); // one chat = one person; re-linking moves it
     const link = store.linkChat(code, ctx.chat.id);
     preferTelegram(link);

@@ -1,5 +1,6 @@
 // Enrollment: creating patients (FHIR import, dashboard) and on-the-fly demo patients
 // for judges who scan the QR code. Contract: docs/CONTRACTS.md.
+import crypto from 'node:crypto';
 import * as store from '../store.js';
 import { buildSeed, makePatient } from '../seed.js';
 import * as clock from './clock.js';
@@ -24,9 +25,14 @@ export const isSupportedLanguage = (code) => LANGUAGES.some((l) => l.code === co
 
 const shortId = () => Math.random().toString(36).slice(2, 7).toUpperCase();
 
-function uniqueCode(prefix) {
+// Care codes unlock a patient's chat, so they come from crypto randomness over an alphabet
+// without look-alikes (no 0/O, 1/I). Ids and DEMO codes below are not secrets.
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 chars: byte % 32 is unbiased
+const randomCode = (n) => Array.from(crypto.randomBytes(n), (b) => CODE_ALPHABET[b % 32]).join('');
+
+function uniqueCode(prefix, len = 6) {
   let code;
-  do code = `${prefix}${shortId()}`;
+  do code = `${prefix}${randomCode(len)}`;
   while (store.getPatientByCode(code));
   return code;
 }
@@ -63,7 +69,7 @@ export function createPatient(data) {
 // first check-in on their own phone produces a real YELLOW alert on the big screen.
 export function enrollDemoPatient({ chatId = null, language = 'en', name } = {}) {
   const maria = buildSeed().patients.find((p) => p.id === 'p1');
-  const code = uniqueCode('DEMO');
+  const code = uniqueCode('DEMO', 5);
   const lang = isSupportedLanguage(language) ? language : 'en';
   const patient = makePatient({
     ...structuredClone(maria),

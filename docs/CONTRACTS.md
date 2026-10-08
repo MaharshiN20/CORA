@@ -52,6 +52,7 @@ createPatient({ name, age?, language?, profile?, meds?, prescriptions?, weights?
 languages() → [{ code, name, nativeName, native }]              // native = offline templates (en, es)
 store.updatePatient(id, { language | voiceMode | phone | channel })
 ```
+Care codes are not master keys: once a patient/caregiver slot is linked, another chat/phone cannot take it over (the sender gets i18n `code_in_use`, audit `link_refused`, the nurse group is told) until a nurse calls `POST /api/patients/:id/unlink`. Outside production re-linking stays allowed unless `ALLOW_RELINK=0`. Unknown codes are throttled to 5 per chat/phone per 10 min. New codes (`createPatient`) are crypto-random.
 Deep links: `https://t.me/<bot>?start=GARCIA1`, `?start=CG_GARCIA1`, `?start=DEMO_ES` (see `GET /api/join`).
 
 ### Speech (Krish provides `integrations/speech.js`)
@@ -149,6 +150,7 @@ Other collections:
 ---
 
 ## 4. REST API (backend :3001, proxied by Vite at `/api`)
+Access: with `API_TOKEN` set, every `/api` route (except `/health`, `/join`) and the socket.io handshake need `Authorization: Bearer <token>` / `x-api-token` / `auth.token`. Unset = open. `/api/demo/*`, `/api/reset` and `/insights/cohort/regenerate` are 404 in production unless `DEMO_MODE=1`. Errors are JSON `{ error }`; JSON bodies are capped at 100 KB (10 MB on `/patients/:id/simulate`).
 | Method & path | Owner | Notes |
 |---|---|---|
 | `GET /api/health` | P | `{ ok, telegram, llm: { provider, model, available }, now, demoOffsetMs }` |
@@ -162,6 +164,7 @@ Other collections:
 | `GET /api/patients/:id/digest?lang=` · `POST /api/patients/:id/digest` | P | weekly caregiver digest: preview `{ text }` / send now → `{ sent, delivered?, text?, textEn?, reason? }` (auto-sent Sundays 18:00) |
 | `POST /api/patients/:id/sdoh/start` | P | send the 4-question social-needs screen now → `{ sent }` (auto-sent at the first noon ≥24h after discharge, once) |
 | `POST /api/patients/:id/prescriptions/:med/picked-up` | P | `{ by? }` → updated prescription; resolves open refill tasks (pharmacy-feed stand-in / dashboard button) |
+| `POST /api/patients/:id/unlink` | P | `{ role?: 'patient'\|'caregiver' }` → `{ ok, role }`; releases the chat/phone link so a new phone can JOIN |
 | `GET /api/alerts` | P | worklist, newest first |
 | `PATCH /api/alerts/:id` | P | `{ status?, outcome?, assignee?, note?, by? }`. First `acknowledged` on a RED/YELLOW triage/unreachable/device/question alert sends the patient "<nurse> saw your update" and sets `patientNotifiedAt`. Resolving a triage alert as `false_positive` recomputes the patient's `lastTier` |
 | `POST /api/alerts/:id/protocol` | P | `{ by? }` → `{ alert, task, message, fhir: { medicationRequest, communicationRequest } }`; 409 `{ error, checks }` if not eligible. Standing order HF-02 (`conditions/chf/protocols/hf-02.json`, clinic-authored; demo values). `protocolCheck` = `{ protocol: { id, version, title, authoredBy, demo, disclaimer }, triggered, eligible, applied?, checks: [{ id, label, status: pass\|fail\|unknown, detail, required, action?: 'ask_bp' }] }` |
