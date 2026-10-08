@@ -42,6 +42,8 @@ Locally nothing is required. Before you expose the server to other people, set t
 - Care codes lock to the first chat/phone that uses them (`ALLOW_RELINK=0`, the production default); a nurse releases one with `POST /api/patients/:id/unlink`.
 - Data lives in `backend/data/db.json` and is written atomically with a rolling `.bak`; a corrupt file is restored from it or the server refuses to start, never silently reset.
 - `GET /api/audit.csv` exports the audit log. `.github/workflows/ci.yml` runs `npm run check` on every push.
+- `GET /api/ready` is the probe for a load balancer or uptime monitor (public, no secrets in it): `503` when the store can't be written, plus the state of the scheduler, Telegram, Twilio, the LLM chain, the nurse channel and the outbox (`pending` / `dead` messages).
+- At startup the backend prints one `[config]` line per setting that is probably a mistake: `API_TOKEN` unset, production without `CORS_ORIGIN`, `TWILIO_AUTH_TOKEN` without `PUBLIC_URL`, no (or an unusable) nurse channel, the public FHIR sandbox in production.
 
 ### AI (optional, auto-detected)
 The backend picks the first available provider: **Claude → Gemini → Ollama → LM Studio → rules only**. The dashboard shows which one is in use.

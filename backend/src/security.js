@@ -8,7 +8,8 @@
 import crypto from 'node:crypto';
 
 // ---------- API token ----------
-const PUBLIC_PATHS = new Set(['/health', '/join']); // health is polled by the UI; join links are public QR targets
+// health is polled by the UI; ready by load balancers and monitors (counts and booleans only); join links are public QR targets
+const PUBLIC_PATHS = new Set(['/health', '/ready', '/join']);
 
 // Constant-time string compare (hashing first makes the lengths equal). Also used for webhook secrets.
 export function safeEqual(a, b) {

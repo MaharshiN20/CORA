@@ -6,11 +6,13 @@ import * as telegram from './channels/telegram.js';
 import * as llm from './core/llm/index.js';
 import * as jobs from './core/jobs.js';
 import * as sec from './security.js';
+import { configWarnings } from './readiness.js';
 
 const server = http.createServer(createApp());
 const io = new Server(server, { cors: { origin: (o, cb) => sec.corsOptions.origin(o, cb) } });
 io.use(sec.socketAuth);
-if (!sec.tokenRequired()) console.warn('[security] API_TOKEN is not set: the API and live feed are open to anyone who can reach this port. Set it before exposing the server.');
+// One line per setting that is probably not what the operator meant (src/readiness.js).
+for (const w of configWarnings(process.env)) console.warn(`[config] ${w.message}`);
 
 // Push every store change to the dashboard so it updates live.
 events.on('change', (evt) => io.emit('change', evt));

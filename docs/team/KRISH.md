@@ -76,7 +76,7 @@
   - Stop polling when webhook mode is on; `stop()` should delete the webhook only when asked.
   - **Accept:** tests with `bot.handleUpdate` for a valid secret, a wrong/missing secret (403), a replayed `update_id`, and the polling default unchanged. Document it in `docs/TELEGRAM_SETUP.md`.
 
-- [ ] **K9. `/api/ready` + startup config check**
+- [x] **K9. `/api/ready` + startup config check**
   - `GET /api/ready` (public like `/health`, but no secrets in it): `{ ready, checks: { store, scheduler, telegram, twilio, llm, nurseChannel, outbox: { pending, dead } } }`, 503 when the store is unwritable. Count `outbox` rows by status.
   - A startup validator in `index.js` that logs one clear warning per misconfiguration: `API_TOKEN` unset, `NODE_ENV=production` without `CORS_ORIGIN`, `TWILIO_AUTH_TOKEN` set without `PUBLIC_URL`, no nurse channel (`NURSE_CHAT_ID` / `NURSE_PHONE`), default public `FHIR_BASE_URL` in production. Pure function `configWarnings(env)` so it is unit-testable.
   - **Accept:** tests for `configWarnings` (each case + a clean config returns `[]`) and for `/api/ready`.

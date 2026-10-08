@@ -20,6 +20,7 @@ import { triageReading } from '../core/devicetriage.js';
 import { timeline, auditCsv, TIMELINE_KINDS } from '../core/timeline.js';
 import { riskHistory } from '../insights/riskHistory.js';
 import { RANGES } from '../integrations/devices.js'; // one set of limits for the API and the virtual devices
+import { readiness } from '../readiness.js';
 
 export const api = Router();
 
@@ -32,6 +33,13 @@ api.get('/health', (_req, res) =>
     demoOffsetMs: clock.offset(),
   }),
 );
+
+// GET /api/ready -> { ready, checks: { store, scheduler, telegram, twilio, llm, nurseChannel, outbox } }
+// For load balancers and monitors: 503 when the store can't be written (src/readiness.js).
+api.get('/ready', (_req, res) => {
+  const state = readiness();
+  res.status(state.ready ? 200 : 503).json(state);
+});
 
 api.get('/languages', (_req, res) => res.json(languages()));
 

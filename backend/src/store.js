@@ -107,6 +107,21 @@ process.on('exit', () => {
   if (saveTimer) flush();
 });
 
+// Can a save reach the disk right now? A save needs to create a file next to the db file, so this
+// creates and removes an empty one there. -> { ok, error? } (the error code only, never the path:
+// GET /api/ready is public).
+export function checkWritable(file = DB_FILE) {
+  const probe = `${file}.${process.pid}.probe`;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(probe, '');
+    fs.unlinkSync(probe);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.code ?? 'write failed' };
+  }
+}
+
 function emit(type, payload) {
   save();
   events.emit('change', { type, payload });

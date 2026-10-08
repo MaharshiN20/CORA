@@ -112,6 +112,10 @@ export function planAll(fromMs, toMs) {
 
 let lastPlannedAt = null;
 let timer = null;
+// Heartbeat for GET /api/ready. Real (monotonic) time on purpose: it says whether the loop is
+// alive, which the demo clock must not be able to fake by jumping forward.
+let tickEveryMs = 0;
+let lastTickAt = null;
 
 function planFrom(fromMs) {
   const now = clock.now();
@@ -119,12 +123,22 @@ function planFrom(fromMs) {
   lastPlannedAt = now;
 }
 
+// -> { running, intervalMs, msSinceTick }: running = the tick loop is on; msSinceTick = null before the first tick.
+export const status = () => ({
+  running: timer !== null,
+  intervalMs: tickEveryMs,
+  msSinceTick: lastTickAt === null ? null : Math.round(performance.now() - lastTickAt),
+});
+
 export function start({ intervalMs = TICK_MS } = {}) {
   scheduler.recoverInterrupted();
   store.prune();
   planFrom(clock.now());
+  tickEveryMs = intervalMs;
+  lastTickAt = performance.now();
   if (intervalMs) {
     timer = setInterval(() => {
+      lastTickAt = performance.now();
       try {
         planFrom(lastPlannedAt ?? clock.now());
       } catch (e) {
@@ -143,6 +157,7 @@ export function stop() {
   clearInterval(timer);
   timer = null;
   lastPlannedAt = null;
+  lastTickAt = null;
 }
 
 // Called by POST /api/demo/advance after the clock moves: plan the skipped window, run due jobs.

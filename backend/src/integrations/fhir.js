@@ -10,7 +10,18 @@
 // (backend/test/fixtures/fhir), so tests never touch the network.
 import * as clock from '../core/clock.js';
 
-export const baseUrl = () => (process.env.FHIR_BASE_URL || 'https://hapi.fhir.org/baseR4').replace(/\/$/, '');
+const PUBLIC_SANDBOX = 'https://hapi.fhir.org/baseR4';
+export const baseUrl = () => (process.env.FHIR_BASE_URL || PUBLIC_SANDBOX).replace(/\/$/, '');
+// True when searches and imports go to the public HAPI test server (the default, or set by hand):
+// right for a demo with synthetic names, never for real patients.
+export function usesPublicSandbox(env = process.env) {
+  if (!env.FHIR_BASE_URL) return true;
+  try {
+    return new URL(env.FHIR_BASE_URL).hostname === new URL(PUBLIC_SANDBOX).hostname;
+  } catch {
+    return false;
+  }
+}
 const TIMEOUT_MS = Number(process.env.FHIR_TIMEOUT_MS) || 15_000;
 
 export class FhirError extends Error {

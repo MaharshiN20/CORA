@@ -154,10 +154,11 @@ Other collections:
 ---
 
 ## 4. REST API (backend :3001, proxied by Vite at `/api`)
-Access: with `API_TOKEN` set, every `/api` route (except `/health`, `/join`) and the socket.io handshake need `Authorization: Bearer <token>` / `x-api-token` / `auth.token`. Unset = open. `/api/demo/*`, `/api/reset` and `/insights/cohort/regenerate` are 404 in production unless `DEMO_MODE=1`. Errors are JSON `{ error }`; JSON bodies are capped at 100 KB (10 MB on `/patients/:id/simulate`).
+Access: with `API_TOKEN` set, every `/api` route (except `/health`, `/ready`, `/join`) and the socket.io handshake need `Authorization: Bearer <token>` / `x-api-token` / `auth.token`. Unset = open. `/api/demo/*`, `/api/reset` and `/insights/cohort/regenerate` are 404 in production unless `DEMO_MODE=1`. Errors are JSON `{ error }`; JSON bodies are capped at 100 KB (10 MB on `/patients/:id/simulate`).
 | Method & path | Owner | Notes |
 |---|---|---|
 | `GET /api/health` | P | `{ ok, telegram, llm: { provider, model, available }, now, demoOffsetMs }` |
+| `GET /api/ready` | K | public, for load balancers and monitors (no tokens, ids, phone numbers or paths in it): `{ ready, checks: { store: { ok, error? }, scheduler: { ok, running, secondsSinceTick, pending, failed }, telegram: { ok, enabled, mode: off\|polling\|webhook\|refused\|failed }, twilio: { sms, whatsapp, signatureCheck }, llm: llm.status(), nurseChannel: { ok, via: [channel] }, outbox: { pending, dead } } }`. **503** (`ready: false`) only when the store can't be written; every other check degrades and carries its own `ok` |
 | `GET /api/languages` | P | `languages()` |
 | `GET /api/patients` | P | patients with `signals` |
 | `GET /api/patients/:id` | P | patient + `signals`, `adherence`, `messages`, `alerts`, `readings`, `audit` |
