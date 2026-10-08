@@ -80,14 +80,27 @@ addPlanner((p, fromMs, toMs) => {
   }
 });
 
+// Button data is capped at 64 bytes by Telegram and split on ":", so a long, accented or
+// colon-containing medication name can't ride inside it. Those use the prescription's position
+// instead ("rx:#2:picked"). Short plain names keep the old form, which old chat messages use too.
+function rxKey(p, med) {
+  const plain = Buffer.byteLength(`rx:${med}:other`) <= 64 && !med.includes(':') && !med.startsWith('#');
+  return plain ? med : `#${p.prescriptions.findIndex((r) => r.med === med)}`;
+}
+function rxFromKey(p, key) {
+  if (key?.startsWith('#')) return p.prescriptions?.[Number(key.slice(1))] ?? null;
+  return p.prescriptions?.find((r) => r.med === key) ?? null;
+}
+
 function nudgeReply(p, med) {
   const L = p.language;
+  const k = rxKey(p, med);
   return {
     ...both(p, 'rx_nudge', { med }),
     buttons: [
-      [{ label: t(L, 'rx_picked'), data: `rx:${med}:picked` }],
-      [{ label: t(L, 'rx_ride'), data: `rx:${med}:ride` }, { label: t(L, 'rx_cost'), data: `rx:${med}:cost` }],
-      [{ label: t(L, 'rx_other'), data: `rx:${med}:other` }],
+      [{ label: t(L, 'rx_picked'), data: `rx:${k}:picked` }],
+      [{ label: t(L, 'rx_ride'), data: `rx:${k}:ride` }, { label: t(L, 'rx_cost'), data: `rx:${k}:cost` }],
+      [{ label: t(L, 'rx_other'), data: `rx:${k}:other` }],
     ],
   };
 }
@@ -125,9 +138,10 @@ export function markPickedUp(patientId, med, { by = 'patient' } = {}) {
 
 // Handle an rx:* button tap. Returns Reply[].
 export function handleButton(patient, data) {
-  const [, med, choice] = data.split(':');
-  const rx = patient.prescriptions?.find((r) => r.med === med);
+  const [, key, choice] = data.split(':');
+  const rx = rxFromKey(patient, key);
   if (!rx) return [both(patient, 'med_already')];
+  const med = rx.med;
 
   if (choice === 'picked') {
     markPickedUp(patient.id, med);

@@ -32,7 +32,7 @@ Button = { label, data }                     // data ≤ 64 bytes, returned as b
 - Caregiver messages: call `handleInbound({ role: 'caregiver', patientId })` with the *patient's* id. The core handles:
   `cmd:proxy` button or "check in"/"chequeo" → proxy check-in (questions in the caregiver's language, answers tagged `reporter: 'caregiver'`);
   `ci:*` taps during that proxy check-in; emergency phrases ("he has chest pain") → RED escalation + 911 reply to the caregiver; a medicine-change request → YELLOW dosing task (`reporter: caregiver`); a question → discharge companion in the caregiver's language; anything else → acknowledgement (i18n `caregiver_ack`).
-- Check-in `ci:*` values: `ci:rf:none|chest|dizzy|confused|fainted`, `ci:breath:normal|exertion|rest`, `ci:orth:pillows|pnd|no` (legacy `ci:orth:yes` = pillows), `ci:swell:none|mild|worse`, `ci:diu:yes|later|no`, `ci:spo2:none`, `ci:wconf:yes|no`.
+- Check-in `ci:*` values: `ci:rf:none|chest|dizzy|confused|fainted`, `ci:breath:normal|exertion|rest`, `ci:orth:pillows|pnd|no` (legacy `ci:orth:yes` = pillows), `ci:swell:none|mild|worse`, `ci:diu:yes|later|no`, `ci:spo2:none`, `ci:wconf:yes|no`, `ci:wt:skip` (can't weigh today). A `ci:rf:chest|fainted|confused` or `ci:breath:rest` tap with no check-in running is still treated as an emergency. Button data for refills: `rx:<med>:<choice>`, or `rx:#<index>:<choice>` when the medication name would not fit in 64 bytes.
 - A photo during the weight question is read by a vision model (if any) and always confirmed with `ci:wconf:*`; other photos are saved for the care team.
   Replies go back to the caregiver chat, in `caregiver.language`.
 

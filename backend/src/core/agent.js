@@ -31,7 +31,7 @@ import * as parser from './parser.js';
 import * as llm from './llm/index.js';
 import * as clock from './clock.js';
 import { redLock, appendToRedAlert } from './escalation.js';
-import { t, localize, toEnglish, hasNative } from './i18n.js';
+import { t, localize, localizeUrgent, toEnglish, hasNative } from './i18n.js';
 
 const START_WORDS = /^\/?(check[- ]?in|start|chequeo|empezar|hola|hi|hello)\b/i;
 // Caregivers must ask explicitly (or tap the button): a "hi" shouldn't start a proxy check-in.
@@ -85,7 +85,7 @@ export function handleInbound(msg) {
 
 async function processInbound({ patientId, role = 'patient', channel, text, buttonData, voiceTranscript, photo }) {
   const patient = store.getPatient(patientId);
-  if (!patient) return [{ text: 'Sorry, I could not find your record. Ask your care team for your link code.' }];
+  if (!patient) return [{ text: t('en', 'record_not_found') }];
 
   const input = voiceTranscript ?? text;
   const shown = photo ? '[photo]' : input ?? buttonLabel(patientId, buttonData);
@@ -128,6 +128,10 @@ async function processInbound({ patientId, role = 'patient', channel, text, butt
     replies = checkin.start(patient);
   } else if (checkin.isActive(patient)) {
     ({ replies, textEn } = await checkin.handle(patient, { text: input, buttonData }));
+  } else if (buttonData?.startsWith('ci:')) {
+    // A check-in button from an old message, tapped with no check-in running. Most are just
+    // stale (offer a fresh check-in), but "chest pain" / "can't breathe" never are.
+    replies = (await checkin.handleStaleTap(patient, buttonData)) ?? offerCheckin(patient);
   } else if (input) {
     ({ replies, textEn } = await handleFreeText(patient, input, { injection }));
   } else {
@@ -164,7 +168,8 @@ async function processInbound({ patientId, role = 'patient', channel, text, butt
 async function handleFreeText(patient, input, { injection = false } = {}) {
   const urgent = await checkin.handleUrgentFreeText(patient, input);
   if (urgent) return { replies: urgent };
-  if (START_WORDS.test(input.trim())) return { replies: checkin.start(patient) };
+  // "hola" starts a check-in; "hola, mis tobillos están hinchados" must keep the swelling (below).
+  if (START_WORDS.test(input.trim()) && !Object.keys(parser.parseFreeText(input)).length) return { replies: checkin.start(patient) };
   if (companion.DOSING_CHANGE.test(input)) return { replies: (await companion.answer(patient, input)).replies };
   // "118/72": a blood pressure (e.g. the nurse asked for it before a standing order).
   const bp = parser.parseBloodPressure(input);
@@ -263,6 +268,8 @@ function offerCheckin(patient) {
 
 // Languages without built-in strings (vi, hi, ...) get translated by the LLM chain; en/es pass through.
 async function localizeReply(lang, r) {
+  // "Call 911" never waits on a slow model and is never garbled into something without 911.
+  if (r.urgent && !r.localized && !hasNative(lang)) return { ...r, text: await localizeUrgent(lang, r.text), textEn: r.textEn ?? r.text };
   if (r.localized) {
     // Already written in the patient's language (e.g. a companion answer from the LLM).
     const { localized, ...rest } = r;

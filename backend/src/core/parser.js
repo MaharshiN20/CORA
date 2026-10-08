@@ -292,6 +292,11 @@ export function parseFreeText(text) {
   return a;
 }
 
+// "I don't have a scale" / "no tengo báscula" / "can't weigh myself today": skip the weight.
+const NO_SCALE =
+  /\b(?:no|don'?t have|do not have|dont have|without|sin)\s+(?:a |an |my |la |una |mi )?(?:bathroom )?(?:scale|bascula|pesa)\b|\b(?:can'?t|cannot|couldn'?t|unable to|did ?n'?t)\s+(?:weigh|get on (?:the|my) scale)|\bno (?:me )?pude pesar|\bno puedo pesarme|\bno tengo (?:una )?(?:bascula|pesa)\b/;
+export const isNoScale = (text) => NO_SCALE.test(norm(text));
+
 export const isYes = (text) => KEYWORDS.yes.test(String(text).trim());
 export const isLater = (text) => KEYWORDS.later.test(String(text).trim());
 export const isNo = (text) => !isLater(text) && KEYWORDS.no.test(String(text).trim());

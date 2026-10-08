@@ -3,6 +3,7 @@
 import * as store from '../store.js';
 import * as channels from '../channels/index.js';
 import * as clock from './clock.js';
+import { t, hasNative, localizeUrgent } from './i18n.js';
 
 const ICON = { RED: '🚨', YELLOW: '⚠️' };
 
@@ -66,11 +67,13 @@ export async function escalate(patient, result, { source = 'check-in', reporter 
     const first = patient.name.split(' ')[0];
     // Family gets plain language: drop the clinical thresholds in parentheses.
     const plain = reasons.map((r) => r.replace(/\s*\(.*?\)/g, '')).join('; ');
-    const cgMsg =
-      result.tier === 'RED'
-        ? `🚨 HeartBridge alert for ${first}: ${plain}. ${first} has been told to call 911 and the care team was alerted. Please check on ${first} right away.`
-        : `⚠️ HeartBridge update for ${first}: ${plain}. A nurse will call ${first} today. You may want to check in.`;
-    await channels.sendToCaregiver(patient, { text: cgMsg, textEn: cgMsg });
+    // In the caregiver's language (the clinical reasons stay as the care team wrote them).
+    const key = result.tier === 'RED' ? 'cg_alert_red' : 'cg_alert_yellow';
+    const vars = { name: first, reasons: plain };
+    const lang = patient.caregiver?.language ?? 'en';
+    const textEn = t('en', key, vars);
+    const text = hasNative(lang) ? t(lang, key, vars) : await localizeUrgent(lang, textEn);
+    await channels.sendToCaregiver(patient, { text, textEn });
   }
 
   return alert;

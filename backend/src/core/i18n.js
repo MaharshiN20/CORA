@@ -64,6 +64,11 @@ const STRINGS = {
     // --- channel-level strings (used by channels/*) ---
     welcome_patient: "Hi {name}! 💙 I'm HeartBridge, your heart-health helper from the hospital. I'll check in with you every day. It only takes a minute. You can answer with the buttons, by typing, or with a voice note.",
     welcome_caregiver: "Hi! 💙 You're now connected as a caregiver for {name}. You'll get an alert here if something needs attention, plus a weekly summary.",
+    record_not_found: 'Sorry, I could not find your record. Ask your care team for your link code.',
+    cg_alert_red: '🚨 HeartBridge alert for {name}: {reasons}. {name} has been told to call 911 and the care team was alerted. Please check on {name} right away.',
+    cg_alert_yellow: '⚠️ HeartBridge update for {name}: {reasons}. A nurse will call {name} today. You may want to check in.',
+    weight_skip: "I can't weigh today",
+    weight_skipped: "No problem, we'll skip the weight today. 💙",
     unknown_code: 'Welcome to HeartBridge 💙 Please open the link your care team gave you (or send /start YOURCODE).',
     code_in_use: 'That code is already linked to another phone. Please ask your care team to reset it for you.',
     unknown_code_sms: 'Welcome to HeartBridge 💙 Please text JOIN followed by the code your care team gave you (for example: JOIN GARCIA1).',
@@ -216,6 +221,11 @@ const STRINGS = {
     photo_failed: 'Perdón, no pude recibir esa foto. ¿Podría enviarla otra vez?',
     welcome_patient: '¡Hola {name}! 💙 Soy HeartBridge, su asistente de salud del corazón del hospital. La contactaré cada día; solo toma un minuto. Puede responder con los botones, escribiendo o con una nota de voz.',
     welcome_caregiver: '¡Hola! 💙 Ahora está conectado como cuidador de {name}. Recibirá una alerta aquí si algo necesita atención, y un resumen semanal.',
+    record_not_found: 'Perdón, no encuentro su registro. Pida su código de enlace a su equipo médico.',
+    cg_alert_red: '🚨 Alerta de HeartBridge para {name}: {reasons}. A {name} se le dijo que llame al 911 y se avisó al equipo médico. Por favor vaya a ver a {name} de inmediato.',
+    cg_alert_yellow: '⚠️ Aviso de HeartBridge para {name}: {reasons}. Una enfermera llamará a {name} hoy. Quizás quiera comunicarse con {name}.',
+    weight_skip: 'Hoy no puedo pesarme',
+    weight_skipped: 'No hay problema, hoy omitimos el peso. 💙',
     unknown_code: 'Bienvenido a HeartBridge 💙 Por favor abra el enlace que le dio su equipo médico (o envíe /start SUCODIGO).',
     code_in_use: 'Ese código ya está vinculado a otro teléfono. Pida a su equipo médico que lo restablezca.',
     unknown_code_sms: 'Bienvenido a HeartBridge 💙 Por favor envíe JOIN seguido del código que le dio su equipo médico (por ejemplo: JOIN GARCIA1).',
@@ -409,6 +419,33 @@ export async function localize(lang, text) {
   if (!out) return text;
   cachePut(key, out);
   return out;
+}
+
+// For messages that must reach the patient NOW ("call 911"): a bounded wait, and a translation
+// is only trusted if it still says 911. Otherwise the English text goes out (it always does say
+// 911): a patient reading English beats a patient waiting a minute or reading a garbled number.
+export async function localizeUrgent(lang, text, { deadlineMs = 2500 } = {}) {
+  if (hasNative(lang) || !text) return text;
+  const gen = fromGenerated(lang, text);
+  if (gen?.complete) return gen.text;
+  const mustSay911 = /911/.test(text);
+  const ok = (s) => !!s && (!mustSay911 || /911/.test(s));
+  const key = `urgent:${lang}:${text}`;
+  if (cache.has(key)) return cache.get(key);
+  if (llm.enabled()) {
+    const out = await llm.complete(
+      `Translate the user's urgent medical message into ${LANG_NAMES[lang] ?? lang} for an elderly heart-failure patient. ` +
+        'Be short, clear and respectful. Keep emojis, numbers and "911" exactly as they are. Output only the translation.',
+      text,
+      300,
+      { deadlineMs, timeoutMs: deadlineMs },
+    );
+    if (ok(out)) {
+      cachePut(key, out);
+      return out;
+    }
+  }
+  return ok(gen?.text) ? gen.text : text;
 }
 
 // Translate free text written in English (e.g. a nurse's message) into ANY patient

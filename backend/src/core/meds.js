@@ -109,14 +109,22 @@ export function handleButton(patient, data) {
 // The check-in's "did you take your water pill?" answer merges into today's
 // diuretic dose (from the reminder) instead of creating a duplicate record.
 // Returns the new doses array; the caller persists it.
+//
+// The answer belongs to the doses that have come due and are still unanswered: an evening "no"
+// must not flip the morning dose the patient already confirmed, and a morning "yes" must not
+// pre-mark the evening dose. If nothing is due yet the answer is recorded as its own dose; if
+// every dose today is already answered it changes nothing.
 export function applyDiureticAnswer(patient, taken, nowIso = clock.nowISO()) {
   const doses = (patient.doses ?? []).map((d) => ({ ...d }));
-  const today = localDayKey(Date.parse(nowIso));
+  const nowMs = Date.parse(nowIso);
+  const today = localDayKey(nowMs);
   const todays = doses.filter((d) => d.diuretic && localDayKey(Date.parse(d.ts)) === today);
-  if (todays.length) {
-    for (const d of todays) Object.assign(d, { taken, respondedAt: nowIso, confirmedBy: 'checkin' });
+  const due = todays.filter((d) => Date.parse(d.ts) <= nowMs && d.taken == null);
+  if (due.length) {
+    for (const d of due) Object.assign(d, { taken, respondedAt: nowIso, confirmedBy: 'checkin' });
     return doses;
   }
+  if (todays.some((d) => d.taken != null)) return doses; // today's doses are already answered
   const med = (patient.meds ?? []).find((m) => m.diuretic);
   doses.push({ id: shortId(), ts: nowIso, med: med?.name ?? 'water pill', dose: med?.dose, diuretic: true, taken, source: 'checkin', respondedAt: nowIso });
   return doses;

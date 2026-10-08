@@ -22,7 +22,7 @@ import * as companion from './companion.js';
 // `enabled(plan)` lets risk tier decide how deep the check-in goes.
 const STEPS = [
   { id: 'redflags', done: (a) => a.redflagsAsked },
-  { id: 'weight', done: (a) => a.weightLb != null },
+  { id: 'weight', done: (a) => a.weightLb != null || a.weightSkipped },
   { id: 'breath', done: (a) => a.breath != null },
   { id: 'orthopnea', done: (a) => a.orthopnea != null || a.pnd != null, enabled: (plan) => plan.askOrthopnea },
   { id: 'swelling', done: (a) => a.swelling != null },
@@ -51,7 +51,8 @@ function prompt(p, stepId) {
   const L = langOf(p);
   switch (stepId) {
     case 'weight':
-      return reply(p, 'ask_weight');
+      // No scale / too weak to stand on it: a way past the question, so the check-in can finish.
+      return reply(p, 'ask_weight', {}, [[btn(L, 'weight_skip', 'ci:wt:skip')]]);
     case 'breath':
       return reply(p, 'ask_breath', {}, [
         [btn(L, 'breath_normal', 'ci:breath:normal')],
@@ -125,6 +126,12 @@ function applyButton(a, data) {
       if (value === 'yes' && a.weightPending != null) confirmWeight(a);
       else delete a.weightPending;
       break;
+    case 'wt':
+      if (value === 'skip') {
+        a.weightSkipped = true;
+        delete a.weightPending;
+      }
+      break;
     case 'breath': a.breath = value; break;
     case 'orth':
       if (value === 'pnd') a.pnd = true;
@@ -153,10 +160,20 @@ async function applyText(a, text, step, lang) {
   const before = JSON.stringify(a);
   const snapshot = { ...a };
 
+  // A weight volunteered before it was asked ("172 lbs, nothing scary" at the first question):
+  // keep it. Past the first step only a number with a weight unit counts.
+  if (step !== 'weight' && step !== 'spo2' && step !== 'diuretic' && a.weightLb == null && a.weightPending == null && (step === 'redflags' || /\b(?:lbs?|pounds?|libras?|kg|kilos?)\b/i.test(text))) {
+    const early = parser.parseWeight(text);
+    if (early) a.weightLb = early;
+  }
+
   // Step-specific parsing first (numbers and yes/no only make sense in context).
   if (step === 'weight') {
     const lb = parser.parseWeight(text);
-    if (lb) {
+    if (!lb && parser.isNoScale(text)) {
+      a.weightSkipped = true;
+      delete a.weightPending;
+    } else if (lb) {
       a.weightLb = lb;
       delete a.weightPending;
     } else if (a.weightPending && parser.isYes(text)) confirmWeight(a);
@@ -199,7 +216,7 @@ async function applyText(a, text, step, lang) {
     llmTrace = { fields: traced.raw?.fields ?? null, dropped: traced.dropped, unverified: traced.unverified, timedOut: traced.timedOut, ms: traced.ms };
     if (c) {
       textEn = c.textEn ?? null;
-      if (c.weightLb && a.weightLb == null && step === 'weight') {
+      if (c.weightLb && a.weightLb == null && !a.weightSkipped) {
         a.weightLb = c.weightLb;
         delete a.weightPending; // a newly typed weight replaces the one awaiting confirmation
       }
@@ -313,7 +330,7 @@ export async function handle(patient, { text, buttonData }) {
   store.updatePatient(patient.id, { checkin: { ...state, state: next.id, answers: a } });
   const sameStep = next.id === state.state;
   if (next.id === 'weight' && a.weightPending != null) replies.push(weightConfirmPrompt(patient, a));
-  else if (!understood && next.id === 'weight') replies.push(reply(patient, 'bad_weight'));
+  else if (!understood && next.id === 'weight') replies.push(reply(patient, 'bad_weight', {}, [[btn(langOf(patient), 'weight_skip', 'ci:wt:skip')]]));
   // Never re-send the identical question: say we noted what they told us, or that we
   // didn't catch it (and point at the buttons).
   else if (!understood) replies.push(combine(reply(patient, 'didnt_catch'), prompt(patient, next.id)));
@@ -448,4 +465,19 @@ export async function handleBloodPressure(patient, bp) {
   await escalate(store.getPatient(patient.id), result, { source: 'blood pressure' });
   if (result.tier === 'RED') return [{ ...replyIn(patient.language, 'red_interrupt', { name: firstName(patient) }), urgent: true }];
   return [{ text: t(patient.language, 'bp_flagged', vars), textEn: t('en', 'bp_flagged', vars) }];
+}
+
+// A check-in button from an old message, tapped when no check-in is running. Returns urgent
+// replies if the tap itself is an emergency (chest pain, fainted, confused, breathless at rest),
+// else null so the caller offers a fresh check-in.
+export async function handleStaleTap(patient, data) {
+  const a = {};
+  applyButton(a, data);
+  const copd = copdOf(patient);
+  if (!isEmergency(a, copd)) return null;
+  const result = triage({ weights: patient.weights, answers: a, dryWeightLb: patient.dryWeightLb, copd });
+  store.updatePatient(patient.id, { lastTier: result.tier });
+  store.audit('stale_tap_emergency', patient.id, { data });
+  await escalate(store.getPatient(patient.id), result, { source: 'old button tap' });
+  return [{ ...replyIn(patient.language, 'red_interrupt', { name: firstName(patient) }), urgent: true }];
 }
