@@ -44,6 +44,7 @@ function latestBp(patient, maxAgeHours) {
 
 export function eligibility(patient, alert, protocolId = DEFAULT_ID) {
   const protocol = PROTOCOLS[protocolId];
+  if (!protocol) throw httpError(400, `unknown protocol ${String(protocolId).slice(0, 40)}`);
   const summary = { id: protocol.id, version: protocol.version, title: protocol.title, authoredBy: protocol.authoredBy, demo: !!protocol.demo, disclaimer: protocol.disclaimer };
   const checkin = checkinFor(patient, alert);
   const flags = checkin?.flags ?? [];
@@ -76,14 +77,22 @@ export function eligibility(patient, alert, protocolId = DEFAULT_ID) {
   // Labs within the protocol window.
   const L = protocol.labs;
   const labs = patient.labs;
-  if (!labs?.at) add('labs', 'Recent K⁺ / creatinine', 'unknown', 'No labs on file');
+  const LABEL = 'Recent K⁺ / creatinine';
+  const labAt = Date.parse(labs?.at);
+  if (!labs?.at) add('labs', LABEL, 'unknown', 'No labs on file');
+  // Missing or non-numeric values compare false against every limit below, which used to fall
+  // through to "pass": an unreadable lab must never count as a normal one.
+  else if (!Number.isFinite(Number(labs.potassium)) || labs.potassium == null || !Number.isFinite(Number(labs.creatinine)) || labs.creatinine == null) add('labs', LABEL, 'unknown', 'Potassium or creatinine missing');
+  else if (!Number.isFinite(labAt) || labAt > clock.now() + 60_000) add('labs', LABEL, 'unknown', 'Lab date is not valid');
   else {
-    const ageDays = Math.floor((clock.now() - Date.parse(labs.at)) / DAY);
-    const detail = `K⁺ ${labs.potassium} · Cr ${labs.creatinine} (${ageDays}d ago)`;
-    if (ageDays > L.maxAgeDays) add('labs', 'Recent K⁺ / creatinine', 'fail', `${detail}: older than ${L.maxAgeDays} days`);
-    else if (labs.potassium < L.potassium[0] || labs.potassium > L.potassium[1]) add('labs', 'Recent K⁺ / creatinine', 'fail', `${detail}: K⁺ outside ${L.potassium.join('–')}`);
-    else if (labs.creatinine > L.creatinineMax) add('labs', 'Recent K⁺ / creatinine', 'fail', `${detail}: Cr above ${L.creatinineMax}`);
-    else add('labs', 'Recent K⁺ / creatinine', 'pass', detail);
+    const K = Number(labs.potassium);
+    const Cr = Number(labs.creatinine);
+    const ageDays = Math.floor((clock.now() - labAt) / DAY);
+    const detail = `K⁺ ${K} · Cr ${Cr} (${ageDays}d ago)`;
+    if (ageDays > L.maxAgeDays) add('labs', LABEL, 'fail', `${detail}: older than ${L.maxAgeDays} days`);
+    else if (K < L.potassium[0] || K > L.potassium[1]) add('labs', LABEL, 'fail', `${detail}: K⁺ outside ${L.potassium.join('–')}`);
+    else if (Cr > L.creatinineMax) add('labs', LABEL, 'fail', `${detail}: Cr above ${L.creatinineMax}`);
+    else add('labs', LABEL, 'pass', detail);
   }
 
   // Blood pressure: optional in HF-02; unknown shows an "ask the patient" action.
@@ -129,15 +138,31 @@ function fhirPreview(patient, protocol, med, instructionsEn, by, followUpAt) {
 
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
+// Alerts being applied right now. The eligibility check and the "applied" stamp are separated by
+// awaits (the send), so two clicks in the same moment would both pass and both message the patient.
+const applying = new Set();
+
 export async function apply(alertId, { by = 'Nurse', protocolId = DEFAULT_ID } = {}) {
+  if (typeof by !== 'string') throw httpError(400, 'by must be a string');
+  if (!PROTOCOLS[protocolId]) throw httpError(400, `unknown protocol ${String(protocolId).slice(0, 40)}`);
   const alert = store.getAlert(alertId);
   if (!alert) throw httpError(404, 'alert not found');
+  if (applying.has(alertId)) throw httpError(409, `not eligible for ${protocolId}: already being applied`);
   const patient = store.getPatient(alert.patientId);
   const check = eligibility(patient, alert, protocolId);
   if (!check.eligible) {
     const why = check.applied ? 'already applied' : !check.triggered ? 'protocol not triggered by this alert' : check.checks.filter((c) => c.status !== 'pass' && c.required).map((c) => `${c.label}: ${c.detail}`).join('; ');
     throw Object.assign(httpError(409, `not eligible for ${protocolId}: ${why}`), { checks: check.checks });
   }
+  applying.add(alertId); // synchronously after the check, before the first await
+  try {
+    return await applyEligible(alert, patient, check, by, protocolId);
+  } finally {
+    applying.delete(alertId);
+  }
+}
+
+async function applyEligible(alert, patient, check, by, protocolId) {
   const protocol = PROTOCOLS[protocolId];
   const med = diureticOf(patient);
   const nurse = by.trim() || 'Your nurse';
