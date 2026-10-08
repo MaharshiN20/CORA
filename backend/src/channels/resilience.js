@@ -66,3 +66,31 @@ export function describePollingError(err) {
   if (code === 401) return '[telegram] 401 Unauthorized: TELEGRAM_BOT_TOKEN is wrong or revoked. Get a fresh one from @BotFather.';
   return `[telegram] polling stopped: ${err?.message ?? err}`;
 }
+
+// Read a fetch Response body but stop as soon as it passes maxBytes, so a hostile or broken
+// server can't make us buffer gigabytes before a size check. -> Buffer, or null when too big.
+export async function readBodyCapped(res, maxBytes) {
+  const declared = Number(res.headers.get('content-length'));
+  if (declared > maxBytes) {
+    await res.body?.cancel().catch(() => {});
+    return null;
+  }
+  if (!res.body) {
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.length > maxBytes ? null : buf;
+  }
+  const chunks = [];
+  let total = 0;
+  const reader = res.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}

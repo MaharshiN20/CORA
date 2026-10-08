@@ -23,7 +23,7 @@ import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
 import * as twilio from './twilio.js';
 import * as sec from '../security.js';
-import { createRateLimiter, retryTransformer, describePollingError } from './resilience.js';
+import { createRateLimiter, retryTransformer, describePollingError, readBodyCapped } from './resilience.js';
 
 let bot = null;
 
@@ -121,8 +121,8 @@ async function downloadFile(ctx, declaredSize) {
   if (file.file_size > MAX_FILE_BYTES) throw new FileTooLargeError();
   const res = await fetch(`https://api.telegram.org/file/bot${ctx.api.token}/${file.file_path}`, { signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw new Error(`file download HTTP ${res.status}`);
-  const buffer = Buffer.from(await res.arrayBuffer());
-  if (buffer.length > MAX_FILE_BYTES) throw new FileTooLargeError();
+  const buffer = await readBodyCapped(res, MAX_FILE_BYTES); // stops reading at the cap
+  if (!buffer) throw new FileTooLargeError();
   return buffer;
 }
 

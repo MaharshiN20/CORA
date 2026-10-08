@@ -44,7 +44,7 @@ beforeEach(() => {
       posts.push(Object.fromEntries(new URLSearchParams(init.body)));
       return Response.json({ sid: 'SM1' }, { status: twilioStatus });
     }
-    if (u.startsWith('https://media.example/')) {
+    if (u.startsWith('https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM1/Media/')) {
       mediaFetches.push({ url: u, headers: init.headers });
       return new Response(Buffer.from('media-bytes'));
     }
@@ -197,7 +197,7 @@ test('an urgent reply keeps its emergency styling when it rides back in TwiML', 
 test('an MMS / WhatsApp image is downloaded with Twilio auth and handed to the core as a photo', async () => {
   await sms('JOIN GARCIA1');
   twilioOn();
-  await signedSms('', { NumMedia: '1', MediaUrl0: 'https://media.example/img1', MediaContentType0: 'image/jpeg' });
+  await signedSms('', { NumMedia: '1', MediaUrl0: 'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM1/Media/img1', MediaContentType0: 'image/jpeg' });
   assert.equal(mediaFetches[0].headers.Authorization, `Basic ${Buffer.from('AC123:secret').toString('base64')}`);
   const audit = store.listAudit('p1').find((e) => e.type === 'photo_received');
   assert.equal(audit.data.mime, 'image/jpeg');
@@ -206,12 +206,12 @@ test('an MMS / WhatsApp image is downloaded with Twilio auth and handed to the c
 test('a failed image download tells the patient instead of reaching the core', async () => {
   await sms('JOIN GARCIA1');
   const inner = globalThis.fetch;
-  globalThis.fetch = async (url, init) => (String(url).startsWith('https://media.example/') ? new Response('gone', { status: 404 }) : inner(url, init));
+  globalThis.fetch = async (url, init) => (String(url).startsWith('https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM1/Media/') ? new Response('gone', { status: 404 }) : inner(url, init));
   const err = console.error;
   console.error = () => {};
   let res;
   try {
-    res = await sms('', { NumMedia: '1', MediaUrl0: 'https://media.example/img2', MediaContentType0: 'image/jpeg' });
+    res = await sms('', { NumMedia: '1', MediaUrl0: 'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM1/Media/img2', MediaContentType0: 'image/jpeg' });
   } finally {
     console.error = err;
   }
@@ -221,7 +221,7 @@ test('a failed image download tells the patient instead of reaching the core', a
 
 test('a voice note with no transcription key asks the patient to type', async () => {
   await sms('JOIN GARCIA1');
-  const res = await sms('', { NumMedia: '1', MediaUrl0: 'https://media.example/a1', MediaContentType0: 'audio/ogg' });
+  const res = await sms('', { NumMedia: '1', MediaUrl0: 'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM1/Media/a1', MediaContentType0: 'audio/ogg' });
   assert.deepEqual(messagesIn(res.body).map(unescape), [i18n.t('es', 'voice_unavailable')]);
 });
 

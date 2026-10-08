@@ -16,6 +16,7 @@ import * as twilio from '../channels/twilio.js';
 import { remember, resolve, normalizePhone } from '../channels/options.js';
 import { transcribe } from '../integrations/speech.js';
 import * as sec from '../security.js';
+import { readBodyCapped } from '../channels/resilience.js';
 
 export const webhooks = Router();
 
@@ -32,9 +33,21 @@ function publicUrl(req) {
   return `${proto}://${host}${req.originalUrl}`;
 }
 
+// Fails closed in production: no auth token (or no PUBLIC_URL to rebuild the signed URL from)
+// means anyone could forge an inbound message as any linked patient. TWILIO_SKIP_VERIFY=1 is the
+// explicit, loud opt-out for a deploy that verifies at a proxy instead.
 function checkSignature(req, res, next) {
   const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!token) return next(); // local dev / tests without Twilio: nothing to verify against
+  const prod = process.env.NODE_ENV === 'production' && process.env.TWILIO_SKIP_VERIFY !== '1';
+  if (!token) {
+    if (!prod) return next(); // local dev / tests without Twilio: nothing to verify against
+    console.warn('[webhooks] rejected: TWILIO_AUTH_TOKEN is not set in production (set it, or TWILIO_SKIP_VERIFY=1 to opt out)');
+    return res.status(403).type('text/plain').send('webhooks not configured');
+  }
+  if (prod && !process.env.PUBLIC_URL) {
+    console.warn('[webhooks] rejected: PUBLIC_URL must be set in production to verify Twilio signatures');
+    return res.status(403).type('text/plain').send('webhooks not configured');
+  }
   if (twilio.validSignature(token, req.get('x-twilio-signature'), publicUrl(req), req.body ?? {})) return next();
   console.warn('[webhooks] rejected Twilio request with a bad signature (check PUBLIC_URL)');
   res.status(403).type('text/plain').send('invalid signature');
@@ -97,15 +110,27 @@ async function welcome(link) {
   return { text: await localize(lang, t(lang, key, vars)), textEn: t('en', key, vars) };
 }
 
-// Twilio media URLs need the account credentials to download.
-async function downloadMedia(url) {
+// Twilio media URLs need the account credentials to download. MediaUrl0 comes from the request
+// body, so it is only ever fetched (and the credentials only ever sent) when it is an https URL
+// on api.twilio.com; anything else would make us a proxy to internal hosts or leak the token.
+const TWILIO_MEDIA_HOST = 'api.twilio.com';
+function trustedMediaUrl(raw) {
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' && u.hostname === TWILIO_MEDIA_HOST ? u : null;
+  } catch {
+    return null;
+  }
+}
+
+async function downloadMedia(rawUrl) {
+  const url = trustedMediaUrl(rawUrl);
+  if (!url) throw new Error('media URL is not on api.twilio.com');
   const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token } = process.env;
   const headers = sid && token ? { Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}` } : {};
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw new Error(`media HTTP ${res.status}`);
-  const buffer = Buffer.from(await res.arrayBuffer());
-  if (buffer.length > MAX_MEDIA_BYTES) return 'too_large';
-  return buffer;
+  return (await readBodyCapped(res, MAX_MEDIA_BYTES)) ?? 'too_large';
 }
 
 // Inbound message (already linked) -> Reply[]
