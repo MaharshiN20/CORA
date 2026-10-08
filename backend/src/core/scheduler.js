@@ -17,8 +17,27 @@ const handlers = new Map(); // kind -> { run(job), collapse, collapseKey(job)? }
 let running = null;
 
 // skipIf(job) -> reason string to skip (job is marked done with { skipped }), or falsy to run.
-export function defineJob(kind, { run, collapse = false, collapseKey, skipIf }) {
-  handlers.set(kind, { run, collapse, collapseKey, skipIf });
+// retries: how many times a throwing run is retried (2 min, 4 min, ... later) before the job is
+// marked failed for good. Only for handlers that are safe to run again after a partial attempt.
+export function defineJob(kind, { run, collapse = false, collapseKey, skipIf, retries = 0, retryDelayMs = 2 * 60_000 }) {
+  handlers.set(kind, { run, collapse, collapseKey, skipIf, retries, retryDelayMs });
+}
+
+// A crash mid-job leaves status 'running' in the saved file, and nothing ever picks it up again:
+// that patient's check-in (and the silence ladder behind it) would be lost without a trace.
+// Called once at boot, before the first tick. At-least-once beats never: check-in start is
+// idempotent (collapse + "already in progress" guard). -> number recovered.
+export function recoverInterrupted() {
+  let n = 0;
+  for (const j of jobs()) {
+    if (j.status !== 'running') continue;
+    j.status = 'pending';
+    j.recoveredAt = clock.nowISO();
+    store.audit('job_recovered', j.patientId, { kind: j.kind, jobId: j.id });
+    n++;
+  }
+  if (n) store.persist('job', { recovered: n });
+  return n;
 }
 
 const groupOf = (j) => `${j.kind}:${handlers.get(j.kind)?.collapseKey?.(j) ?? j.patientId}`;
@@ -118,11 +137,22 @@ async function runDue() {
         j.status = 'done';
         summary.ran++;
       } catch (err) {
+        summary.failed++;
+        j.attempts = (j.attempts ?? 0) + 1;
+        store.audit('job_failed', j.patientId, { kind: j.kind, error: err.message, attempt: j.attempts });
+        console.error(`[scheduler] ${j.kind} for ${j.patientId} failed (attempt ${j.attempts}):`, err.message);
+        if (j.attempts <= (h?.retries ?? 0)) {
+          // Try again later: back to pending, due after a growing delay, so one failed send
+          // doesn't lose the day's check-in.
+          j.status = 'pending';
+          j.retryOf = j.dueAt;
+          j.dueAt = new Date(clock.now() + h.retryDelayMs * j.attempts).toISOString();
+          j.lastError = err.message;
+          store.persist('job', { tick: summary });
+          continue;
+        }
         j.status = 'failed';
         j.error = err.message;
-        summary.failed++;
-        store.audit('job_failed', j.patientId, { kind: j.kind, error: err.message });
-        console.error(`[scheduler] ${j.kind} for ${j.patientId} failed:`, err.message);
       }
       j.ranAt = clock.nowISO();
     }

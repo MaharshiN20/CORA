@@ -18,6 +18,7 @@ import * as scheduler from './scheduler.js';
 import * as channels from '../channels/index.js';
 import { t } from './i18n.js';
 import { currentPrompt } from './checkin.js';
+import { skipDuringRedLock } from './escalation.js';
 
 export const RUNGS = [
   { rung: 1, afterMs: 2 * clock.HOUR, name: 'patient_reminder' },
@@ -59,6 +60,7 @@ export function onPatientReply(patient, { via = 'patient' } = {}) {
 const repliedSince = (p, iso) => p.lastReplyAt && Date.parse(p.lastReplyAt) >= Date.parse(iso);
 
 scheduler.defineJob('outreach_step', {
+  skipIf: skipDuringRedLock,
   async run(job) {
     const p = store.getPatient(job.patientId);
     const { rung, ladderStart } = job.payload;

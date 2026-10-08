@@ -16,6 +16,7 @@ import * as scheduler from './scheduler.js';
 import * as channels from '../channels/index.js';
 import { t } from './i18n.js';
 import { addPlanner, occurrences, isMonitored } from './planning.js';
+import { skipDuringRedLock } from './escalation.js';
 
 const GRACE_MS = 48 * clock.HOUR;
 const MIN_GAP_MS = 20 * clock.HOUR; // at most one nudge per day
@@ -36,6 +37,7 @@ export function overdue(p, now = clock.now()) {
 // ---------- scheduling ----------
 
 scheduler.defineJob('refill_check', {
+  skipIf: skipDuringRedLock,
   collapse: true,
   async run(job) {
     const p = store.getPatient(job.patientId);

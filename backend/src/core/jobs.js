@@ -28,7 +28,9 @@ import { skipDuringRedLock } from './escalation.js';
 const HORIZON_MS = 48 * clock.HOUR;
 const TICK_MS = 30_000;
 // A check-in started this long before the next scheduled one is stale (never finished).
-const STALE_CHECKIN_MS = 12 * clock.HOUR;
+// High-risk patients get 09:00 and 19:00 (10 h apart), so this must be shorter than that gap or
+// the evening check-in is skipped for exactly the patients who stopped answering in the morning.
+const STALE_CHECKIN_MS = 6 * clock.HOUR;
 
 // Check-in times by plan (local time). High risk (2/day) adds an evening check.
 export const CHECKIN_TIMES = { 1: ['09:00'], 2: ['09:00', '19:00'] };
@@ -38,6 +40,7 @@ export const CHECKIN_TIMES = { 1: ['09:00'], 2: ['09:00', '19:00'] };
 scheduler.defineJob('checkin_due', {
   skipIf: skipDuringRedLock,
   collapse: true,
+  retries: 2, // a failed start/send is retried (starting a check-in twice is guarded below)
   async run(job) {
     const p = store.getPatient(job.patientId);
     if (checkinActive(p)) {
@@ -76,8 +79,17 @@ export function planPatient(p, fromMs, toMs) {
   for (const planner of allPlanners()) planner(p, fromMs, toMs);
 }
 
+// One malformed patient (a bad FHIR import, a hand-edited record) must not stop everyone else's
+// check-ins from being planned, nor crash the 30 s timer with an uncaught exception.
 export function planAll(fromMs, toMs) {
-  for (const p of store.listPatients()) planPatient(p, fromMs, toMs);
+  for (const p of store.listPatients()) {
+    try {
+      planPatient(p, fromMs, toMs);
+    } catch (err) {
+      console.error(`[scheduler] could not plan ${p?.id}:`, err.message);
+      store.audit('job_failed', p?.id ?? null, { kind: 'plan', error: err.message });
+    }
+  }
 }
 
 // ---------- lifecycle ----------
@@ -92,10 +104,15 @@ function planFrom(fromMs) {
 }
 
 export function start({ intervalMs = TICK_MS } = {}) {
+  scheduler.recoverInterrupted();
   planFrom(clock.now());
   if (intervalMs) {
     timer = setInterval(() => {
-      planFrom(lastPlannedAt ?? clock.now());
+      try {
+        planFrom(lastPlannedAt ?? clock.now());
+      } catch (e) {
+        console.error('[scheduler] planning failed', e);
+      }
       scheduler.tick().catch((e) => console.error('[scheduler] tick failed', e));
     }, intervalMs);
     timer.unref?.();

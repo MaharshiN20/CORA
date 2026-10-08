@@ -8,6 +8,7 @@ import * as channels from '../channels/index.js';
 import { t, hasNative, localize } from './i18n.js';
 import { adherence } from './meds.js';
 import { addPlanner, occurrences, isMonitored } from './planning.js';
+import { skipDuringRedLock } from './escalation.js';
 
 const DIGEST_TIME = '18:00';
 const DIGEST_WEEKDAY = 0; // Sunday
@@ -66,6 +67,7 @@ export async function sendDigest(patientId) {
 }
 
 scheduler.defineJob('digest_weekly', {
+  skipIf: skipDuringRedLock,
   collapse: true,
   async run(job) {
     return sendDigest(job.patientId);
