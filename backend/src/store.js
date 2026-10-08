@@ -252,8 +252,8 @@ export const listAudit = (patientId) => (patientId ? db.audit.filter((e) => e.pa
 
 // ---------- readings: weight / SpO2 / heart rate from self-report or devices ----------
 // type: 'weight' (lb) | 'spo2' (%) | 'hr' (bpm); source: 'self' | 'device' | 'caregiver'
-export function addReading({ patientId, type, value, source = 'self', device, ts }) {
-  const r = { id: newId(), ts: ts ?? clock.nowISO(), patientId, type, value, source, device };
+export function addReading({ patientId, type, value, source = 'self', device, ts, readingId }) {
+  const r = { id: newId(), ts: ts ?? clock.nowISO(), patientId, type, value, source, device, ...(readingId && { readingId }) };
   db.readings.push(r);
   emit('reading', r);
   return r;

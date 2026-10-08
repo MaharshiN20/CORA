@@ -65,7 +65,7 @@ export async function postJSON(url, body, { retries = 2, retryDelayMs = 500, fet
     if (attempt) await sleep(retryDelayMs * attempt);
     let res;
     try {
-      res = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      res = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(process.env.DEVICE_KEY && { 'x-device-key': process.env.DEVICE_KEY }) }, body: JSON.stringify(body) });
     } catch (err) {
       lastErr = new Error(`cannot reach ${url} (${err.cause?.code ?? err.message}). Is the backend running?`);
       continue;

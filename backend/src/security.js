@@ -24,8 +24,25 @@ function bearer(req) {
   return req.headers['x-api-token'];
 }
 
+// Home devices authenticate with their own key (DEVICE_KEY), and it opens one endpoint only.
+const isDeviceEndpoint = (req) => req.method === 'POST' && req.path.replace(/\/$/, '') === '/devices/readings';
+export function deviceKeyOk(req) {
+  const key = process.env.DEVICE_KEY;
+  const given = req.headers['x-device-key'];
+  return !!key && typeof given === 'string' && !!given && safeEqual(given, key);
+}
+
 // Mount on '/api'. req.path is relative to the mount point.
 export function apiAuth(req, res, next) {
+  if (isDeviceEndpoint(req) && process.env.DEVICE_KEY) {
+    // A configured device key is required on this endpoint, and replaces the nurse token there.
+    if (deviceKeyOk(req)) return next();
+    if (tokenRequired()) {
+      const given = bearer(req);
+      if (typeof given === 'string' && given && safeEqual(given, process.env.API_TOKEN)) return next();
+    }
+    return res.status(401).json({ error: 'unauthorized' });
+  }
   if (!tokenRequired() || req.method === 'OPTIONS' || PUBLIC_PATHS.has(req.path.replace(/\/$/, '') || '/')) return next();
   const given = bearer(req);
   if (typeof given === 'string' && given && safeEqual(given, process.env.API_TOKEN)) return next();
