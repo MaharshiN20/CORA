@@ -1,5 +1,5 @@
 // "Import from EHR": search a FHIR server by name, preview what we'd create, enroll.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { api } from '../api.js';
 import { languageName } from '../lib/format.js';
@@ -22,6 +22,20 @@ export default function ImportDialog({ onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [override, setOverride] = useState(false);
+  // Which EHR this talks to (GET /api/fhir): the public test server gets a banner, and a
+  // production server still pointed at it has import switched off.
+  const [ehr, setEhr] = useState(null);
+  useEffect(() => {
+    let open = true;
+    api
+      .fhirInfo()
+      .then((info) => open && setEhr(info))
+      .catch(() => {}); // the search itself will report a real problem
+    return () => {
+      open = false;
+    };
+  }, []);
+  const off = ehr?.available === false;
   // HeartBridge is an adult heart-failure program: anyone else needs a deliberate "yes".
   const blockers = preview && !selected?.importedAs ? importBlockers(preview) : [];
 
@@ -78,10 +92,21 @@ export default function ImportDialog({ onClose }) {
             ×
           </button>
         </div>
-        <p className="mb-3 text-sm text-slate-500">Search the hospital's FHIR server (HAPI R4 sandbox in the demo). Medications, diagnoses and weights come across; nothing is written back.</p>
+        <p className="mb-3 text-sm text-slate-500">Search the hospital's FHIR server. Medications, diagnoses and weights come across; nothing is written back.</p>
+        {off ? (
+          <p role="alert" className="mb-3 rounded-md bg-red-50 p-2 text-sm font-medium text-red-900">
+            {ehr.error ?? 'EHR import is switched off for this deployment.'}
+          </p>
+        ) : (
+          ehr?.sandbox && (
+            <p role="note" className="mb-3 rounded-md bg-amber-50 p-2 text-sm text-amber-900">
+              <b>Demo EHR.</b> Searches go to the public HAPI test server, which anyone can read. Use made-up names only, never a real patient's.
+            </p>
+          )
+        )}
         <form onSubmit={search} className="flex gap-2">
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Patient name, e.g. Smith" aria-label="Patient name" className="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm" />
-          <Button disabled={busy || name.trim().length < 2}>Search</Button>
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Patient name, e.g. Smith" aria-label="Patient name" disabled={off} className="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm disabled:bg-slate-100" />
+          <Button disabled={busy || off || name.trim().length < 2}>Search</Button>
         </form>
 
         {error && <p className="mt-3 rounded-md bg-red-50 p-2 text-sm text-red-800">{error}</p>}

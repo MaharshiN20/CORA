@@ -1,6 +1,8 @@
 // EHR import over FHIR R4 (Maharshi lane): "enroll straight from the EHR".
 // Reads from any FHIR R4 server; defaults to the public HAPI sandbox (FHIR_BASE_URL to change).
 // Read-only: nothing is ever written back to the EHR.
+// In production the public sandbox is refused (see fhirTarget): a search there would send a real
+// patient's name to a server anyone can read.
 //
 //   searchPatients(name)          -> [{ fhirId, name, age, birthDate, gender, language }]
 //   fetchRecord(fhirId)           -> { patient, medications, conditions, weights }  (raw resources)
@@ -22,6 +24,23 @@ export function usesPublicSandbox(env = process.env) {
     return false;
   }
 }
+
+// Where EHR requests go, and whether they may go there at all.
+// -> { base, sandbox, allowed, reason? }
+// The public sandbox is fine for a demo with made-up patients (development, or production with
+// DEMO_MODE=1, which already means "synthetic data"). Anywhere else it is refused, whether it
+// was left as the default or written into FHIR_BASE_URL (.env.example ships that value).
+export function fhirTarget(env = process.env) {
+  const base = (env.FHIR_BASE_URL || PUBLIC_SANDBOX).replace(/\/$/, '');
+  const sandbox = usesPublicSandbox(env);
+  const allowed = !(sandbox && env.NODE_ENV === 'production' && env.DEMO_MODE !== '1');
+  return {
+    base,
+    sandbox,
+    allowed,
+    ...(!allowed && { reason: 'EHR import is off: this server would send patient names to the public HAPI test server. Set FHIR_BASE_URL to your own FHIR server.' }),
+  };
+}
 const TIMEOUT_MS = Number(process.env.FHIR_TIMEOUT_MS) || 15_000;
 
 export class FhirError extends Error {
@@ -32,6 +51,9 @@ export class FhirError extends Error {
 }
 
 async function get(path) {
+  // The one place every EHR request passes through, so nothing can reach the sandbox around it.
+  const target = fhirTarget();
+  if (!target.allowed) throw new FhirError(target.reason, 503);
   let res;
   try {
     res = await fetch(`${baseUrl()}/${path}`, { headers: { Accept: 'application/fhir+json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });

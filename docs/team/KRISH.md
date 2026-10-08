@@ -105,7 +105,7 @@
   - Rules catch free-text emergencies in Vietnamese, Hindi and Chinese in only about 1 of 6 messages (`backend/test/evals.gate.test.js` pins it). Add hand-written red-flag patterns for those three languages in `core/parser.js` (chest pain, can't breathe, fainted, confused; negation-aware, with a native speaker or reviewer note for each list), and raise the floors in `evals.gate.test.js` as recall improves. Where no LLM is available, append the "call 911 if you have chest pain or can't breathe" line to every outbound check-in prompt for those languages (new i18n key, en + es + generated templates).
   - **Accept:** new rows in `evals/messages.jsonl` (keep the validator green), the gate test floors raised, zero false alarms on the calm rows.
 
-- [ ] **K16. Refuse the public FHIR sandbox in production**
+- [x] **K16. Refuse the public FHIR sandbox in production**
   - `integrations/fhir.js` defaults to the public HAPI server. When `NODE_ENV=production` and `FHIR_BASE_URL` is unset, refuse to import (clear 503 `{ error }`) instead of sending patient identifiers to a public sandbox; `GET /api/fhir` reports `{ base, sandbox: true }`. Dashboard import dialog shows a banner when `sandbox` is true.
   - **Accept:** tests for production-unset (refused), production-set (works), development (works, flagged sandbox).
 

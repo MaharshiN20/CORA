@@ -1,6 +1,8 @@
 // EHR import via FHIR (Maharshi lane). Mounted at /api/fhir.
 //
-//   GET  /api/fhir                     -> { ok, base }
+//   GET  /api/fhir                     -> { ok, base, sandbox, available, error? }
+//        sandbox: requests go to the public HAPI test server (demo data only)
+//        available: false in production on that sandbox; search / preview / import then answer 503
 //   GET  /api/fhir/search?name=        -> [{ fhirId, name, age, birthDate, gender, language }]
 //   GET  /api/fhir/preview/:fhirId     -> { data, summary }   what an import would create (nothing saved)
 //   POST /api/fhir/import { fhirPatientId, override? } -> 201 { patient, summary }
@@ -11,7 +13,7 @@ import { Router } from 'express';
 import * as store from '../store.js';
 import { createPatient, languages } from '../core/enroll.js';
 import { scoreRisk } from '../core/risk.js';
-import { baseUrl, searchPatients, fetchRecord, toPatientData, toFhirBundle, FhirError } from '../integrations/fhir.js';
+import { baseUrl, fhirTarget, searchPatients, fetchRecord, toPatientData, toFhirBundle, FhirError } from '../integrations/fhir.js';
 
 export const fhir = Router();
 
@@ -37,7 +39,10 @@ function alreadyImported(fhirId) {
 // create two patients: the check above only sees patients that already exist.
 const importing = new Set();
 
-fhir.get('/', (_req, res) => res.json({ ok: true, base: baseUrl() }));
+fhir.get('/', (_req, res) => {
+  const { base, sandbox, allowed, reason } = fhirTarget();
+  res.json({ ok: true, base, sandbox, available: allowed, ...(reason && { error: reason }) });
+});
 
 fhir.get('/search', async (req, res) => {
   const name = String(req.query.name ?? '').trim();

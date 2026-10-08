@@ -14,7 +14,7 @@ import * as telegram from './channels/telegram.js';
 import * as twilio from './channels/twilio.js';
 import * as llm from './core/llm/index.js';
 import * as jobs from './core/jobs.js';
-import { usesPublicSandbox } from './integrations/fhir.js';
+import { fhirTarget } from './integrations/fhir.js';
 
 // Test hook: swap the disk probe (null puts the real one back).
 let probeStore = () => store.checkWritable();
@@ -101,8 +101,14 @@ export function configWarnings(env = process.env) {
       warn('nurse_channel_unusable', `The nurse channel can't deliver (${why}): alerts only appear on the dashboard, nobody is paged.`);
     }
   }
-  if (prod && usesPublicSandbox(env)) {
-    warn('fhir_public_sandbox', 'FHIR_BASE_URL points at the public HAPI sandbox in production: an EHR search would send patient names to a public server. Set it to your own FHIR server.');
+  const ehr = fhirTarget(env);
+  if (prod && ehr.sandbox) {
+    warn(
+      'fhir_public_sandbox',
+      ehr.allowed
+        ? 'FHIR_BASE_URL points at the public HAPI sandbox and DEMO_MODE=1 allows it: EHR searches go to a public server. Made-up patients only.'
+        : 'FHIR_BASE_URL points at the public HAPI sandbox in production: EHR search and import are refused (503) until it is set to your own FHIR server.',
+    );
   }
   return out;
 }

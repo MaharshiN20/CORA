@@ -83,6 +83,7 @@ export const api = {
   runScenario: (name) => req('POST', `/demo/scenario/${encodeURIComponent(name)}`),
   jobs: (params = {}) => req('GET', `/demo/jobs${qs(params)}`),
   // EHR import (M5)
+  fhirInfo: () => req('GET', '/fhir'), // -> { base, sandbox, available, error? }
   fhirSearch: (name) => req('GET', `/fhir/search${qs({ name })}`),
   fhirPreview: (fhirId) => req('GET', `/fhir/preview/${encodeURIComponent(fhirId)}`),
   fhirImport: (fhirPatientId, { override } = {}) => req('POST', '/fhir/import', { fhirPatientId, ...(override && { override: true }) }),

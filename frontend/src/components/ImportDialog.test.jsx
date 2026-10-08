@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useParams } from 'react-router';
 
-const api = { fhirSearch: vi.fn(), fhirPreview: vi.fn(), fhirImport: vi.fn() };
+const api = { fhirInfo: vi.fn(), fhirSearch: vi.fn(), fhirPreview: vi.fn(), fhirImport: vi.fn() };
 vi.mock('../api.js', () => ({ api, socket: { on() {}, off() {} } }));
 const { default: ImportDialog } = await import('./ImportDialog.jsx');
 
@@ -37,6 +37,7 @@ const search = async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  api.fhirInfo.mockResolvedValue({ ok: true, base: 'https://fhir.hospital.example.org/r4', sandbox: false, available: true });
   api.fhirSearch.mockResolvedValue(RESULTS);
   api.fhirPreview.mockResolvedValue(PREVIEW);
 });
@@ -96,5 +97,57 @@ describe('ImportDialog', () => {
     renderDialog();
     fireEvent.change(screen.getByLabelText('Patient name'), { target: { value: 'd' } });
     expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
+  });
+});
+
+// K16: which EHR the dialog talks to (GET /api/fhir).
+describe('ImportDialog: sandbox banner', () => {
+  it('shows a banner when searches go to the public test server', async () => {
+    api.fhirInfo.mockResolvedValue({ ok: true, base: 'https://hapi.fhir.org/baseR4', sandbox: true, available: true });
+    renderDialog();
+    const banner = await screen.findByRole('note');
+    expect(banner).toHaveTextContent('Demo EHR.');
+    expect(banner).toHaveTextContent(/public HAPI test server/);
+    expect(banner).toHaveTextContent(/never a real patient/);
+    // it is a warning, not a block: searching still works
+    await search();
+    expect(api.fhirSearch).toHaveBeenCalledWith('delgado');
+  });
+
+  it('shows no banner for a hospital FHIR server', async () => {
+    renderDialog();
+    await waitFor(() => expect(api.fhirInfo).toHaveBeenCalled());
+    await search();
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Demo EHR/)).not.toBeInTheDocument();
+  });
+
+  it('when the server refuses the sandbox (production), it says why and search is disabled', async () => {
+    api.fhirInfo.mockResolvedValue({ ok: true, base: 'https://hapi.fhir.org/baseR4', sandbox: true, available: false, error: 'EHR import is off: this server would send patient names to the public HAPI test server. Set FHIR_BASE_URL to your own FHIR server.' });
+    renderDialog();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/^EHR import is off: .*Set FHIR_BASE_URL to your own FHIR server\.$/);
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Patient name')).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Patient name'), { target: { value: 'delgado' } });
+    expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
+    expect(api.fhirSearch).not.toHaveBeenCalled();
+  });
+
+  it('if the info request fails the dialog still works (the search reports real problems)', async () => {
+    api.fhirInfo.mockRejectedValue(new Error('GET /fhir -> 500'));
+    renderDialog();
+    await search();
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('ImportDialog: switched off with no reason given', () => {
+  it('still says import is off', async () => {
+    api.fhirInfo.mockResolvedValue({ ok: true, base: 'x', sandbox: true, available: false });
+    renderDialog();
+    expect(await screen.findByRole('alert')).toHaveTextContent('EHR import is switched off for this deployment.');
+    expect(screen.getByLabelText('Patient name')).toBeDisabled();
   });
 });
