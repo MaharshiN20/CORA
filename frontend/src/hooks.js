@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { socket } from './api.js';
+import { readNurse, saveNurse } from './lib/nurse.js';
 
 // Load data and keep it fresh.
 //   live   (default true): reload on the backend's socket.io `change` events. Data that never
@@ -104,4 +105,19 @@ export function useStored(key, initial) {
     }
   }, [key, value]);
   return [value, setValue];
+}
+
+// The nurse's name for this browser, shared by every component that shows or uses it.
+const nurseListeners = new Set();
+export function useNurse() {
+  const [name, setName] = useState(readNurse);
+  useEffect(() => {
+    nurseListeners.add(setName);
+    return () => nurseListeners.delete(setName);
+  }, []);
+  const save = useCallback((value) => {
+    const clean = saveNurse(value);
+    for (const fn of nurseListeners) fn(clean);
+  }, []);
+  return [name, save];
 }

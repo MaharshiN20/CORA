@@ -4,11 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Siren } from 'lucide-react';
 import { Link } from 'react-router';
 import { api } from '../api.js';
-import { useLive, useNow } from '../hooks.js';
+import { useLive, useNow, useNurse } from '../hooks.js';
 import { useHealth } from '../App.jsx';
-import { sortWorklist, filterWorklist, messageOutcome, stabilize, KINDS, TIER_RANK } from '../lib/worklist.js';
+import { sortWorklist, filterWorklist, messageOutcome, stabilize, silentPatients, KINDS, TIER_RANK, SORTS } from '../lib/worklist.js';
+import { canNotify, notifyPermission, enableNotifications, notifyRed, titleFor } from '../lib/notify.js';
 import { languageName } from '../lib/format.js';
 import AlertCard from '../components/AlertCard.jsx';
+import Wallboard from '../components/Wallboard.jsx';
 import ImportDialog from '../components/ImportDialog.jsx';
 import { Card, Empty, ErrorNotice, TierBadge, RiskBadge, Button } from '../components/ui.jsx';
 
@@ -16,7 +18,7 @@ const LAST_TIER_RANK = { RED: 0, YELLOW: 1, GREEN: 2 };
 
 // Alerts that arrived while the page is open: flash their card once and toast the newest,
 // so a nurse (or a judge) sees the RED land instead of hunting for it.
-function useArrivals(open) {
+function useArrivals(open, patientsById = {}) {
   const seen = useRef(null);
   const timers = useRef([]);
   const [fresh, setFresh] = useState([]);
@@ -32,6 +34,8 @@ function useArrivals(open) {
     if (!added.length) return;
     setFresh(added.map((a) => a.id));
     setToast(added.find((a) => a.tier === 'RED') ?? added[0]);
+    // A nurse in another window still hears about a new RED (if they allowed notifications).
+    for (const a of added) if (a.tier === 'RED') notifyRed(a, patientsById[a.patientId]?.name ?? a.patientId);
     timers.current.push(setTimeout(() => setFresh([]), 1800), setTimeout(() => setToast(null), 6000));
   }, [open]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -51,16 +55,30 @@ export default function Worklist() {
   const memo = useRef(new Map());
   const [kind, setKind] = useState('all');
   const [tier, setTier] = useState('all');
+  const [status, setStatus] = useState('all');
+  const [assignee, setAssignee] = useState('all');
+  const [sort, setSort] = useState('urgency');
+  const [q, setQ] = useState('');
+  const [me] = useNurse();
+  const [alertsPerm, setAlertsPerm] = useState(notifyPermission);
 
   const patientsById = useMemo(() => Object.fromEntries((data?.patients ?? []).map((p) => [p.id, p])), [data]);
   const stableAlerts = useMemo(() => stabilize(memo.current, data?.alerts), [data]);
-  const open = useMemo(() => sortWorklist(stableAlerts, patientsById), [stableAlerts, patientsById]);
-  const shown = filterWorklist(open, { kind, tier });
+  const open = useMemo(() => sortWorklist(stableAlerts, patientsById, sort), [stableAlerts, patientsById, sort]);
+  const shown = filterWorklist(open, { kind, tier, status, assignee, me, q, patientsById });
   const counts = Object.fromEntries(['RED', 'YELLOW', 'INFO'].map((t) => [t, open.filter((a) => a.tier === t).length]));
   const overdue = open.filter((a) => Date.parse(a.dueBy) < now).length;
   const reds = open.filter((a) => a.tier === 'RED' && (a.kind ?? 'triage') === 'triage');
   const redNames = [...new Set(reds.map((a) => patientsById[a.patientId]?.name?.split(' ')[0] ?? a.patientId))];
-  const { fresh, toast, dismiss } = useArrivals(data ? open : null);
+  const { fresh, toast, dismiss } = useArrivals(data ? open : null, patientsById);
+  // The tab title carries the RED count, for a nurse working in another tab.
+  useEffect(() => {
+    document.title = titleFor(reds.length);
+    return () => {
+      document.title = titleFor(0);
+    };
+  }, [reds.length]);
+  const filtering = kind !== 'all' || tier !== 'all' || status !== 'all' || assignee !== 'all' || q.trim() !== '';
 
   if (!data) return error ? <ErrorNotice what="the worklist" error={error} onRetry={reload} /> : <Empty>Loading worklist…</Empty>;
 
@@ -74,13 +92,35 @@ export default function Worklist() {
             {redNames.length} {redNames.length === 1 ? 'patient was' : 'patients were'} told to call 911: {redNames.join(', ')}. Call now.
           </button>
         )}
+        <Wallboard alerts={open} patientsById={patientsById} now={now} onJump={scrollToAlert} />
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-xl font-bold">Worklist</h2>
           <span className="text-sm text-slate-500">
             {open.length} open · <span className="font-semibold text-red-700">{counts.RED} RED</span> · <span className="font-semibold text-amber-700">{counts.YELLOW} YELLOW</span> · {counts.INFO} INFO
             {overdue > 0 && <span className="ml-2 rounded bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">{overdue} overdue</span>}
           </span>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <input type="search" aria-label="Search the worklist" placeholder="Search patient, reason, nurse…" value={q} onChange={(e) => setQ(e.target.value)} className="w-52 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm" />
+            <select aria-label="Filter by status" value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm">
+              <option value="all">Any status</option>
+              <option value="open">Open</option>
+              <option value="acknowledged">Acknowledged</option>
+              <option value="contacted">Contacted</option>
+            </select>
+            <select aria-label="Filter by assignee" value={assignee} onChange={(e) => setAssignee(e.target.value)} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm">
+              <option value="all">Anyone</option>
+              <option value="mine" disabled={!me}>
+                {me ? `Mine (${me})` : 'Mine (set your name)'}
+              </option>
+              <option value="unassigned">Unassigned</option>
+            </select>
+            <select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm">
+              {SORTS.map(([v, label]) => (
+                <option key={v} value={v}>
+                  {label}
+                </option>
+              ))}
+            </select>
             <select aria-label="Filter by kind" value={kind} onChange={(e) => setKind(e.target.value)} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm">
               <option value="all">All kinds</option>
               {Object.entries(KINDS).map(([k, v]) => (
@@ -100,6 +140,13 @@ export default function Worklist() {
         {shown.length === 0 ? (
           <Card>
             <Empty>{open.length ? 'Nothing matches these filters.' : '🎉 Nothing needs attention right now.'}</Empty>
+            {filtering && open.length > 0 && (
+              <div className="text-center">
+                <Button variant="subtle" onClick={() => (setKind('all'), setTier('all'), setStatus('all'), setAssignee('all'), setQ(''))}>
+                  Clear filters
+                </Button>
+              </div>
+            )}
           </Card>
         ) : (
           <div className="space-y-3 projector:grid projector:grid-cols-2 projector:items-start projector:gap-3 projector:space-y-0">
@@ -111,6 +158,11 @@ export default function Worklist() {
       </div>
 
       <aside className="space-y-3 projector:hidden">
+        {canNotify() && alertsPerm !== 'granted' && alertsPerm !== 'denied' && (
+          <Button variant="subtle" className="w-full" onClick={async () => setAlertsPerm(await enableNotifications())}>
+            🔔 Get desktop alerts for new RED cases
+          </Button>
+        )}
         <PatientPanel patients={data.patients} />
         <MessageBox patients={data.patients} />
       </aside>
@@ -137,6 +189,8 @@ function PatientPanel({ patients }) {
     (a, b) => (LAST_TIER_RANK[a.lastTier] ?? 3) - (LAST_TIER_RANK[b.lastTier] ?? 3) || (b.riskScore ?? 0) - (a.riskScore ?? 0),
   );
   const [importing, setImporting] = useState(false);
+  // Patients who have stopped answering: the ones that need a call even though no alert says so.
+  const silent = new Map(silentPatients(patients).map((x) => [x.patient.id, x.days]));
   return (
     <Card
       title={`Patients (${patients.length})`}
@@ -156,6 +210,7 @@ function PatientPanel({ patients }) {
                 <div className="text-xs text-slate-500">
                   {p.age != null ? `${p.age}y` : 'age unknown'} · {languageName(p.language)} · day {p.signals?.daysSinceDischarge ?? '—'}
                   {p.signals?.missedCheckins7d > 0 && <span className="text-amber-700"> · {p.signals.missedCheckins7d} missed</span>}
+                  {silent.has(p.id) && <span className="font-medium text-red-700"> · silent {silent.get(p.id)}d</span>}
                 </div>
               </div>
               {p.lastTier && <TierBadge tier={p.lastTier} />}

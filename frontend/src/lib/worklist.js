@@ -56,23 +56,62 @@ const dueMs = (a) => {
   return Number.isFinite(t) ? t : Infinity; // no SLA -> after everything that has one
 };
 
-// Tier (RED first) -> SLA deadline (soonest first) -> patient risk (highest first) -> newest.
-export function sortWorklist(alerts, patientsById = {}) {
+// Default ("urgency"): tier (RED first) -> SLA deadline (soonest first) -> patient risk (highest
+// first) -> newest. Other modes: 'newest', 'oldest', 'sla' (deadline only, ignoring tier).
+export const SORTS = [
+  ['urgency', 'Most urgent'],
+  ['sla', 'Soonest deadline'],
+  ['newest', 'Newest'],
+  ['oldest', 'Oldest'],
+];
+export function sortWorklist(alerts, patientsById = {}, mode = 'urgency') {
   const risk = (a) => patientsById[a.patientId]?.riskScore ?? 0;
-  return alerts
-    .filter(isOpen)
-    .slice()
-    .sort(
-      (a, b) =>
-        (TIER_RANK[a.tier] ?? 9) - (TIER_RANK[b.tier] ?? 9) ||
-        dueMs(a) - dueMs(b) ||
-        risk(b) - risk(a) ||
-        Date.parse(b.ts) - Date.parse(a.ts),
-    );
+  const urgency = (a, b) =>
+    (TIER_RANK[a.tier] ?? 9) - (TIER_RANK[b.tier] ?? 9) || dueMs(a) - dueMs(b) || risk(b) - risk(a) || Date.parse(b.ts) - Date.parse(a.ts);
+  const by = {
+    urgency,
+    sla: (a, b) => dueMs(a) - dueMs(b) || urgency(a, b),
+    newest: (a, b) => Date.parse(b.ts) - Date.parse(a.ts) || urgency(a, b),
+    oldest: (a, b) => Date.parse(a.ts) - Date.parse(b.ts) || urgency(a, b),
+  };
+  return alerts.filter(isOpen).slice().sort(by[mode] ?? urgency);
 }
 
-export function filterWorklist(items, { kind = 'all', tier = 'all' } = {}) {
-  return items.filter((a) => (kind === 'all' || (a.kind ?? 'triage') === kind) && (tier === 'all' || a.tier === tier));
+const plain = (s) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+// kind / tier / status / assignee ('mine' = `me`, 'unassigned') and a free-text search across
+// the patient's name, the alert title, reasons, assignee and kind. Every word of the query must match.
+export function filterWorklist(items, { kind = 'all', tier = 'all', status = 'all', assignee = 'all', me = '', q = '', patientsById = {} } = {}) {
+  const terms = plain(q).split(/\s+/).filter(Boolean);
+  const mine = plain(me);
+  return items.filter((a) => {
+    if (kind !== 'all' && (a.kind ?? 'triage') !== kind) return false;
+    if (tier !== 'all' && a.tier !== tier) return false;
+    if (status !== 'all' && a.status !== status) return false;
+    if (assignee === 'mine' && (!mine || plain(a.assignee) !== mine)) return false;
+    if (assignee === 'unassigned' && a.assignee) return false;
+    if (!terms.length) return true;
+    const hay = plain([patientsById[a.patientId]?.name ?? a.patientId, a.title, ...(a.reasons ?? []), a.assignee, kindOf(a).label, a.kind].join(' '));
+    return terms.every((t) => hay.includes(t));
+  });
+}
+
+// The wallboard: what needs a nurse right now. Open alerts past their deadline, and ones due
+// within `soonMs`. RED first, then most overdue / soonest. -> { overdue, soon, count }
+export function dueSoon(alerts, now, { soonMs = 10 * 60_000 } = {}) {
+  const open = alerts.filter(isOpen).filter((a) => Number.isFinite(Date.parse(a.dueBy)));
+  const order = (a, b) => (TIER_RANK[a.tier] ?? 9) - (TIER_RANK[b.tier] ?? 9) || dueMs(a) - dueMs(b);
+  const overdue = open.filter((a) => dueMs(a) < now).sort(order);
+  const soon = open.filter((a) => dueMs(a) >= now && dueMs(a) - now <= soonMs).sort(order);
+  return { overdue, soon, count: overdue.length + soon.length };
+}
+
+// Patients who have stopped answering (signals.silentDays from the API), longest silence first.
+export function silentPatients(patients, minDays = 2) {
+  return (patients ?? [])
+    .map((patient) => ({ patient, days: patient.signals?.silentDays }))
+    .filter((x) => Number.isFinite(x.days) && x.days >= minDays)
+    .sort((a, b) => b.days - a.days);
 }
 
 export function formatDuration(ms) {

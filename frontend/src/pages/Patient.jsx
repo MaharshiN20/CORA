@@ -10,6 +10,8 @@ import { languageName, shortDate, timeOf, pct } from '../lib/format.js';
 import { Card, Empty, ErrorNotice, TierBadge, RiskBadge, Button, AsyncButton, KindBadge, TREND_ICON } from '../components/ui.jsx';
 import PhoneSimulator from '../components/PhoneSimulator.jsx';
 import { AiBrief } from '../components/AlertCard.jsx';
+import TimelineCard, { RiskTrend } from '../components/TimelineCard.jsx';
+import { downloadText } from '../lib/download.js';
 import DebugDrawer from '../components/DebugDrawer.jsx';
 import ExportDialog from '../components/ExportDialog.jsx';
 
@@ -30,11 +32,13 @@ export default function Patient() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
         <div className="min-w-0 space-y-4">
           <RiskCard p={p} />
+          <RiskTrend patientId={p.id} />
           <WeightChart p={p} />
           <div className="grid gap-4 md:grid-cols-2">
             <CheckinTimeline p={p} />
             <WhyPanel p={p} />
           </div>
+          <TimelineCard patientId={p.id} />
           <AdherenceHeatmap p={p} />
           <div className="grid gap-4 md:grid-cols-3">
             <Prescriptions p={p} />
@@ -99,7 +103,12 @@ function Header({ p }) {
           </>
         )}
       </div>
-      <Button variant="ghost" className="ml-auto" onClick={() => setExporting(true)}>
+      <span className="ml-auto">
+        <AsyncButton variant="ghost" onClick={async () => downloadText(`audit-${p.id}.csv`, await api.auditCsv({ patientId: p.id }))}>
+          ⤓ Audit CSV
+        </AsyncButton>
+      </span>
+      <Button variant="ghost" onClick={() => setExporting(true)}>
         ⤴ Export to EHR
       </Button>
       {exporting && <ExportDialog patient={p} onClose={() => setExporting(false)} />}

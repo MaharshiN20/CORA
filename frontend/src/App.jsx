@@ -5,6 +5,7 @@ import { NavLink, Route, Routes, useLocation } from 'react-router';
 import { api } from './api.js';
 import { useConnected, useLive } from './hooks.js';
 import { Pill } from './components/ui.jsx';
+import NurseName from './components/NurseName.jsx';
 import Worklist from './pages/Worklist.jsx';
 import Patient from './pages/Patient.jsx';
 import Impact from './pages/Impact.jsx';
@@ -86,6 +87,9 @@ export default function App() {
               <div className="ml-auto flex items-center gap-3">
                 <span className="projector:hidden">
                   <HealthStrip health={health} />
+                </span>
+                <span className="projector:hidden">
+                  <NurseName />
                 </span>
                 <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600">
                   <input type="checkbox" checked={projector} onChange={(e) => setProjector(e.target.checked)} />

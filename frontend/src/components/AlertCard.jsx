@@ -8,6 +8,7 @@ import { api } from '../api.js';
 import { useNow } from '../hooks.js';
 import { useHealth } from '../App.jsx';
 import { sla, nextAction, OUTCOMES, resolvePatch, aiOf } from '../lib/worklist.js';
+import { readNurse, nurseBy } from '../lib/nurse.js';
 import { timeOf, languageName } from '../lib/format.js';
 import { TierBadge, KindBadge, Button } from './ui.jsx';
 import ProtocolCard from './ProtocolCard.jsx';
@@ -116,10 +117,16 @@ function AlertCard({ alert, patient, now, update = api.updateAlert, highlight = 
     }
   };
 
-  const advance = () => (next.status === 'resolved' ? setResolving(true) : run({ status: next.status, by: 'nurse' }));
+  // The signed-in nurse (NurseName in the header) is recorded on every step, and takes the alert
+  // when they acknowledge it, so "mine" in the worklist means something.
+  const advance = () => {
+    if (next.status === 'resolved') return setResolving(true);
+    const me = readNurse();
+    return run({ status: next.status, by: nurseBy(), ...(me && !alert.assignee && next.status === 'acknowledged' && { assignee: me }) });
+  };
   const resolve = () => {
     try {
-      run(resolvePatch(outcome, note));
+      run(resolvePatch(outcome, note, nurseBy()));
     } catch (e) {
       setError(e.message);
     }
