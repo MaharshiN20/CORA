@@ -149,3 +149,22 @@ test('without an injection flag an unverified emergency is still kept for the nu
   assert.equal(v.fields.chestPain, true);
   assert.deepEqual(v.unverified, ['chestPain']);
 });
+
+// ---- Hinglish: Hindi spoken in Latin letters, negation AFTER the symptom ("chest pain nahi hai") ----
+// Found by Krish's pass (K15) and left as a known false RED. English negation comes before the symptom, so
+// the English rules read "chest pain nahi hai" as chest pain. A negator right after the symptom now
+// cancels it, except for the phrases that mean "it is not going away" (which are still emergencies).
+test('Hinglish negation after the symptom is calm', () => {
+  for (const t of ['chest pain nahi hai', 'chest pain nahin hai ab', 'chest pain nhi hai', 'mujhe chest pain nahi hai', 'chest pain bilkul nahi hai', 'cant breathe nahi hai', 'fainting nahi hui']) {
+    assert.ok(!RED(parseFreeText(t)), t + ' -> ' + JSON.stringify(parseFreeText(t)));
+  }
+});
+test('Hinglish "it is not going away" and plain statements are still emergencies', () => {
+  for (const t of ['chest pain hai', 'chest pain nahi ja raha', 'chest pain kam nahi ho raha', 'mujhe chest pain ho raha hai', 'chest pain nahi ruk raha', 'chest pain theek nahi ho raha']) {
+    assert.ok(RED(parseFreeText(t)), t);
+  }
+});
+test('the Hinglish rule does not weaken ordinary English ("nahi" is not an English word, so nothing else changes)', () => {
+  for (const t of ['chest pain', 'I have chest pain now', 'No, I have chest pain', 'chest pain and then I fainted']) assert.ok(RED(parseFreeText(t)), t);
+  assert.ok(!RED(parseFreeText('no chest pain')));
+});

@@ -122,13 +122,22 @@ function mentioned(text, re) {
   return !negated(lastClause, lastClause.length);
 }
 
+// Hinglish (Hindi in Latin letters) puts the negator AFTER the symptom: "chest pain nahi hai" is
+// "no chest pain". English rules only look before, so they raised a false RED. A "nahi/nahin/nhi"
+// straight after the match cancels it, unless it is one of the phrases that mean "it is NOT going
+// away / NOT getting better" ("pain nahi ja raha", "kam nahi ho raha"), which stay emergencies.
+const HINGLISH_NO_AFTER = /^\s*(?:(?:bilkul|ab|abhi|koi|aur|mujhe)\s+)?(?:nahi|nahin|nhi|nahee)\b(?!\s+(?:hai\s+)?(?:ja|jaa|jata|jaata|ruk|rukk|kam|ghat|theek|thik|sahi)\b)/;
+const hinglishNegated = (clause, m) => HINGLISH_NO_AFTER.test(clause.slice(m.index + m[0].length));
+// ...and "kam nahi ho raha" puts the negator after "kam" (less): the symptom is before it, so check the span too.
+const HINGLISH_NOT_LESS = /^\s*(?:kam|ghat)\s+(?:nahi|nahin|nhi)\b/;
+
 function clauseFlags(clause) {
   const found = {};
   for (const [flag, regexes] of Object.entries(PATTERNS)) {
     for (const re of regexes) {
       const m = re.exec(clause);
       if (!m) continue;
-      if (negated(clause, m.index)) continue;
+      if (negated(clause, m.index) || (hinglishNegated(clause, m) && !HINGLISH_NOT_LESS.test(clause.slice(m.index + m[0].length)))) continue;
       if (flag === 'chestPain' && /heart attack|infarto|ataque al corazon/.test(m[0])) {
         if (IDIOM_BEFORE_HEART_ATTACK.test(clause.slice(0, m.index))) continue;
         if (HEART_ATTACK_HISTORY.test(clause.slice(m.index + m[0].length))) continue; // "...5 years ago"
@@ -140,7 +149,7 @@ function clauseFlags(clause) {
   for (const [code, regexes] of Object.entries(OTHER_EMERGENCY)) {
     for (const re of regexes) {
       const m = re.exec(clause);
-      if (!m || negated(clause, m.index)) continue;
+      if (!m || negated(clause, m.index) || hinglishNegated(clause, m)) continue;
       found.otherEmergency = code;
       break;
     }
