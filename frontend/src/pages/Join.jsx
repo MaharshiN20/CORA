@@ -14,7 +14,13 @@ export default function Join() {
         Pick your language, open Telegram, and do a heart-failure check-in. Your answers show up live on the nurse dashboard.
       </p>
       {!data ? null : !data.bot ? (
-        <p className="mt-16 rounded-xl bg-white/10 p-6 text-lg">Telegram isn't configured on this server (TELEGRAM_BOT_USERNAME).</p>
+        <div className="mt-16 max-w-xl rounded-xl bg-white/10 p-6 text-center text-lg">
+          <p>Telegram isn't set up on this server yet (TELEGRAM_BOT_USERNAME).</p>
+          <p className="mt-3 text-base text-blue-100">You can still try the whole patient experience in the browser.</p>
+          <Link to="/demo" className="mt-4 inline-block rounded-lg bg-white px-5 py-2 font-semibold text-blue-800">
+            Open the phone simulator
+          </Link>
+        </div>
       ) : (
         <div className="mt-10 grid w-full max-w-6xl grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4">
           {data.links.map((l) => (

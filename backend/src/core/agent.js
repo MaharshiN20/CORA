@@ -32,6 +32,7 @@ import * as parser from './parser.js';
 import * as llm from './llm/index.js';
 import * as clock from './clock.js';
 import { redLock, appendToRedAlert } from './escalation.js';
+import { languages } from './enroll.js';
 import { t, localize, localizeUrgent, toEnglish, hasNative } from './i18n.js';
 
 const PURE_QUESTION = /^\s*(?:what|how|when|why|should|can|could|is|are|do|does|qu[eé]|c[oó]mo|cu[aá]ndo|puedo|debo)\b[^.]*\?\s*$/i;
@@ -102,6 +103,37 @@ export function handleInbound(msg) {
 
 const MAX_TEXT = 4000;
 
+const SIM_COMMAND = /^\s*(?:\/(?:help|meds|language|voice|checkin)\b|lang:)/i;
+function simCommand(patient, input, buttonData) {
+  const lang = patient.language;
+  const say = (key, vars) => ({ text: t(lang, key, vars), textEn: t('en', key, vars) });
+  if (buttonData?.startsWith('lang:')) {
+    const l = languages().find((x) => x.code === buttonData.slice(5));
+    if (!l) return [say('help')];
+    store.updatePatient(patient.id, { language: l.code });
+    return [{ text: t(l.code, 'language_set', { language: l.nativeName }), textEn: t('en', 'language_set', { language: l.nativeName }) }];
+  }
+  const cmd = input.trim().slice(1).split(/\s+/)[0].toLowerCase();
+  if (cmd === 'checkin') return checkin.start(patient);
+  if (cmd === 'language') {
+    const rows = [];
+    const all = languages().map((l) => ({ label: l.nativeName, data: `lang:${l.code}` }));
+    for (let i = 0; i < all.length; i += 2) rows.push(all.slice(i, i + 2));
+    return [{ ...say('language_prompt'), buttons: rows }];
+  }
+  if (cmd === 'voice') {
+    const on = !patient.voiceMode;
+    store.updatePatient(patient.id, { voiceMode: on });
+    return [say(on ? 'voice_on' : 'voice_off')];
+  }
+  if (cmd === 'meds') {
+    const lines = (patient.meds ?? []).map((m) => `💊 ${[m.name, m.dose].filter(Boolean).join(' ')}${m.times?.length ? ` (${m.times.join(', ')})` : ''}`);
+    const text = lines.length ? lines.join('\n') : '—';
+    return [{ text, textEn: text }];
+  }
+  return [say('help')];
+}
+
 async function processInbound({ patientId, role = 'patient', channel, text, buttonData, voiceTranscript, photo }) {
   const patient = store.getPatient(patientId);
   if (!patient) return [{ text: t('en', 'record_not_found') }];
@@ -148,6 +180,9 @@ async function processInbound({ patientId, role = 'patient', channel, text, butt
     replies = await sdoh.handleButton(patient, buttonData);
   } else if (buttonData === 'cmd:checkin') {
     replies = checkin.start(patient);
+  } else if (channel === 'sim' && SIM_COMMAND.test(input ?? buttonData ?? '')) {
+    // The website's phone has no Telegram menu: the same slash commands work when typed (/help /meds /language /voice /checkin).
+    replies = simCommand(patient, input ?? '', buttonData);
   } else if (checkin.isActive(patient)) {
     ({ replies, textEn } = await checkin.handle(patient, { text: input, buttonData }));
   } else if (buttonData?.startsWith('ci:')) {

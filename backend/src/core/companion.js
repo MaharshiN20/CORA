@@ -27,10 +27,10 @@ const MED_ES = '(?:pastilla|pastillas|dosis|medicina|medicinas|medicamento|furos
 const NOT_FOOD = String.raw`(?:(?!\b(?:salt|sodium|food|foods|meal|meals|fluid|fluids|sugar|coffee|alcohol|wine|beer|sal|comida|liquidos?)\b).)`;
 export const DOSING_CHANGE = new RegExp(
   [
-    `\\b(?:skip|stop|quit|double|extra|more|less|half|cut|change|increase|decrease|lower|raise|another)\\b${NOT_FOOD}{0,30}\\b${MED_EN}`,
-    `\\b(?:how (?:much|many)|what dose|dosage|dose of|mg of|milligrams? of)\\b${NOT_FOOD}{0,40}\\b${MED_EN}`,
+    `\\b(?:skip|stop|quit|double|extra|more|less|half|cut|change|increase|decrease|lower|raise|another)\\b${NOT_FOOD}{0,30}\\b${MED_EN}\\b`,
+    `\\b(?:how (?:much|many)|what dose|dosage|dose of|mg of|milligrams? of)\\b${NOT_FOOD}{0,40}\\b${MED_EN}\\b`,
     `\\b${MED_EN}\\b.{0,30}\\b(?:how (?:much|many)|how many mg|what dose|dosage)\\b`,
-    `\\b(?:dejar|dejo|saltar|salto|suspender|doble|duplicar|más|menos|mitad|cambiar|aumentar|bajar|otra)\\b.{0,30}\\b${MED_ES}`,
+    `\\b(?:dejar|dejo|saltar|salto|suspender|doble|duplicar|más|menos|mitad|cambiar|aumentar|bajar|otra)\\b.{0,30}\\b${MED_ES}\\b`,
     `\\bcu[aá]nt[oa]s? (?:mg|miligramos|pastillas)\\b|\\bqu[eé] dosis\\b`,
   ].join('|'),
   'i',
@@ -38,6 +38,8 @@ export const DOSING_CHANGE = new RegExp(
 
 const QUESTION_START =
   /^(can|could|should|may|is|are|do|does|did|what|when|where|why|how|which|who|will|am|puedo|puede|debo|debería|es|está|qué|que|cuándo|cuando|dónde|por qué|cómo|como|cuál|cuánto|cuanto)\b/i;
+
+const UNCOVERED = /\b(?:insurance|medicare|medicaid|coverage|covered|bill|billing|copay|price|prices|cost|taxi|uber|lyft|bus|flight|flights|fly|airplane|travel|vacation|driving|drive|license|pregnan\w*|sex|surgery|dentist|vaccine|vaccines|seguro|factura|taxi|viajar|vuelo|manejar|conducir)\b/i;
 
 export function looksLikeQuestion(text) {
   const s = String(text ?? '').trim();
@@ -124,6 +126,14 @@ export async function answer(patient, question, { lang = patient.language, repor
     await nurseTask(patient, question, { dosing: true, lang, reporter });
     store.audit('companion', patient.id, { kind: 'dosing', reporter });
     return { kind: 'dosing', replies: [dosingReply()] };
+  }
+
+  // Logistics and life questions the instructions don't cover ("will insurance pay for a taxi to the
+  // clinic?" matched the follow-up-visit text on the word "clinic"): the nurse, never a near-miss answer.
+  if (UNCOVERED.test(question)) {
+    await nurseTask(patient, question, { lang, reporter });
+    store.audit('companion', patient.id, { kind: 'nurse', reporter, why: 'uncovered topic' });
+    return { kind: 'nurse', replies: [both(L, 'companion_nurse')] };
   }
 
   const sections = allSections(patient);

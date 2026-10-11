@@ -213,3 +213,8 @@ test('malformed model JSON (sourceIds as a string, answer as an object) never be
     store.reset();
   }
 });
+
+test('"extra pillows" / "pillow" is sleeping, not a medication-change question (found in the UI walkthrough)', () => {
+  for (const t of ['slept in the recliner, extra pillows', 'I need more pillows at night', 'I used two extra pillows']) assert.equal(companion.DOSING_CHANGE.test(t), false, t);
+  assert.equal(companion.DOSING_CHANGE.test('can I take an extra pill'), true);
+});

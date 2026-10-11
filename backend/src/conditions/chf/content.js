@@ -49,7 +49,7 @@ export function dischargeSections(p) {
     {
       id: 'd_diet',
       source: 'discharge',
-      keywords: ['salt', 'sodium', 'eat', 'food', 'soup', 'canned', 'chip', 'pizza', 'restaurant', 'fast food', 'diet', 'sal', 'sodio', 'comer', 'comida', 'sopa', 'lata', 'enlatad', 'papitas', 'restaurante', 'dieta'],
+      keywords: ['salt', 'sodium', 'eat', 'food', 'soup', 'canned', 'chip', 'pizza', 'restaurant', 'fast food', 'diet', 'bacon', 'ham', 'sausage', 'hot dog', 'bologna', 'salami', 'pickle', 'soy sauce', 'ramen', 'cheese', 'burger', 'fries', 'takeout', 'snack', 'sal', 'sodio', 'comer', 'comida', 'sopa', 'lata', 'enlatad', 'papitas', 'restaurante', 'dieta'],
       en: {
         title: 'Low-salt eating',
         text: `Keep salt (sodium) under ${sodium.toLocaleString('en-US')} mg a day. Salt makes your body hold water. Avoid canned soups, deli meats, chips, frozen dinners and fast food, or choose "low sodium" versions. Read labels: under 140 mg per serving is low.`,

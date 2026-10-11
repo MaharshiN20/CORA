@@ -190,6 +190,8 @@ const HEART_ATTACK_HISTORY =
 // (nurse today), not breathless at rest (911).
 const LYING_DOWN =
   /\b(?:lie|lay|lying|laying) (?:down|flat)\b|\blying down\b|\bflat on my back\b|\bin bed\b|\bat night\b|\b(?:woke|wake|waking) up\b|\bacostad[oa]\b|\bal acostarme\b|\ben la cama\b|\bde noche\b|\bboca arriba\b|\bme desperte\b/;
+const EXERTION = /\b(?:walk\w*|stairs|climb\w*|exert\w*|jog\w*|running|carrying|uphill|mailbox|around the house|up the)\b/;
+const SOFT_CANT_BREATHE = /\b(?:can'?t|cant|cannot) breathe?\s+(?:very |too )?(?:well|good|properly|easily|right|much)\b/;
 const NEGATION =
   /\b(?:no|not|never|without|denies|deny|dont|don't|didnt|didn't|havent|haven't|hasnt|hasn't|isnt|isn't|aren't|wasnt|wasn't|neither|nor|sin|nunca|ni|tampoco)\b/;
 
@@ -297,6 +299,12 @@ function clauseFlags(clause) {
     }
     if (found.otherEmergency) break;
   }
+  // "can't breathe well when I walk to the mailbox" is breathlessness on exertion (nurse today), not 911.
+  // Only the softened wording counts: a bare "can't breathe" stays an emergency whatever came before it.
+  if (found.breathRest && EXERTION.test(clause) && SOFT_CANT_BREATHE.test(clause) && !new RegExp(AT_REST).test(clause)) {
+    delete found.breathRest;
+    found.breathExertion = true;
+  }
   if (found.breathRest && LYING_DOWN.test(clause) && !new RegExp(AT_REST).test(clause)) {
     delete found.breathRest;
     found.orthopnea = true;
@@ -390,7 +398,11 @@ export function wordsToNumber(text) {
   else if (ws[0] in UNITS && ws[1] === 'hundred') [hundreds, rest] = [UNITS[ws[0]] * 100, ws.slice(2)];
   else if (ws[0] in UNITS && UNITS[ws[0]] > 0 && ws.length > 1) [hundreds, rest] = [UNITS[ws[0]] * 100, ws.slice(1)]; // "one sixty two"
   const tail = small(rest);
-  return tail == null ? null : hundreds + tail;
+  if (tail == null) return null;
+  // "one sixty nine point eight" -> 169.8
+  const dec = /\b(?:point|dot|punto)\s+(zero|oh|one|two|three|four|five|six|seven|eight|nine|\d)\b/.exec(norm(text));
+  const tenth = dec ? (/^\d$/.test(dec[1]) ? Number(dec[1]) : UNITS[dec[1]]) / 10 : 0;
+  return hundreds + tail + tenth;
 }
 
 // "118/72", "bp 130 over 85" -> { sbp, dbp } or null (plausible ranges only).
@@ -442,6 +454,7 @@ export function parseFreeText(text) {
   if (rf?.breathRest) a.breath = 'rest';
   if (rf?.fainting) a.fainting = true;
   if (rf?.confusion) a.confusion = true;
+  if (rf?.breathExertion && !a.breath) a.breath = 'exertion';
   if (rf?.orthopnea) a.orthopnea = true; // "can't breathe when I lie down"
   if (rf?.otherEmergency) a.otherEmergency = rf.otherEmergency;
   if (!a.breath && mentioned(s, KEYWORDS.breathExertion)) a.breath = 'exertion';

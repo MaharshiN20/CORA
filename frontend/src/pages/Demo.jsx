@@ -50,7 +50,8 @@ export default function Demo() {
       return { scenario: s, ...r };
     });
 
-  const simPatientId = patients?.some((p) => p.id === simId) ? simId : patients?.[0]?.id;
+  // English is the primary experience: the phone starts on an English-speaking patient (the other languages are one tap away in the picker).
+  const simPatientId = patients?.some((p) => p.id === simId) ? simId : (patients?.find((p) => p.language === 'en') ?? patients?.[0])?.id;
 
   return (
     <div className="space-y-4">

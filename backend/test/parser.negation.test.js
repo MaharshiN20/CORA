@@ -49,3 +49,16 @@ test('distributeNegation: only bare list items are negated', () => {
   assert.equal(d('no chest pain, i feel dizzy'), 'no chest pain, i feel dizzy');
   assert.equal(d('i feel dizzy or faint'), 'i feel dizzy or faint');
 });
+
+// ---- found in the end-to-end walkthrough ----
+test('"can\'t breathe well when I walk" is exertion, not 911; a bare "can\'t breathe" still is', () => {
+  assert.equal(parser.parseFreeText('cant breath well when i walk to the mailbox').breath, 'exertion');
+  assert.equal(parser.parseFreeText("I can't breathe").breath, 'rest');
+  assert.equal(parser.parseFreeText("can't breathe well even sitting").breath, 'rest');
+  assert.equal(parser.parseFreeText('I walked up the stairs and I can\'t breathe').breath, 'rest');
+});
+
+test('"one sixty nine point eight" is 169.8', () => {
+  assert.equal(parser.parseWeight('scale says one sixty nine point eight'), 169.8);
+  assert.equal(parser.parseWeight('one seventy two'), 172);
+});
