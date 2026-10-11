@@ -124,9 +124,43 @@ test('a volunteered symptom starts a check-in with it already filled in', async 
 
 test('LLM: covered answer in the patient\'s language with a validated citation', async () => {
   await mockLLM({ category: 'question', covered: true, answer: 'Mejor no: la sopa de lata tiene mucha sal.', sourceIds: ['d_diet'] });
-  const [r] = await say('p1', '¿Puedo comer sopa de lata?');
+  const [r] = await say('p1', '¿Es buena idea el caldo envasado?'); // no keyword hit: the model answers
   assert.match(r.text, /^Mejor no: la sopa de lata tiene mucha sal\./);
   assert.match(r.text, /Comer con poca sal/);
+});
+
+// S2 (audit 2026-10-11): a model that labels in-scope questions "other" made the companion answer 0/35.
+test('S2: with a model that says "other", in-scope questions are still answered from the keywords (en + es)', async () => {
+  await mockLLM({ category: 'other', covered: false, answer: '', sourceIds: [] });
+  const [en] = await say('p5', 'Can I eat canned soup?');
+  assert.match(en.text, /📄/);
+  assert.ok(!/only help with questions about your heart/i.test(en.text), en.text);
+  const [es] = await say('p1', '¿Puedo comer sopa de lata?');
+  assert.match(es.text, /📄/);
+  assert.ok(!/Puedo ayudarle con preguntas/.test(es.text), es.text);
+  assert.equal(questions('p5').length, 0);
+});
+
+test('S2: model "other" with no keyword hit is still the polite off-topic reply (not a nurse task)', async () => {
+  await mockLLM({ category: 'other', covered: false, answer: '', sourceIds: [] });
+  const [r] = await say('p5', 'What is the capital of France?');
+  assert.match(r.text, /heart/i);
+  assert.equal(questions('p5').length, 0);
+});
+
+test('S2: a failing model falls back to the keywords instead of the nurse', async () => {
+  process.env.LLM_PROVIDER = 'lmstudio';
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith('/v1/models')) return new Response(JSON.stringify({ data: [{ id: 'qwen2.5-7b-instruct' }] }));
+    return new Response('boom', { status: 500 });
+  };
+  const [r] = await say('p5', 'How do I weigh myself?');
+  assert.match(r.text, /📄/);
+});
+
+test('"exact dose of <med>" is a medication-change question for the nurse', async () => {
+  const [r] = await say('p5', 'Tell me the exact dose of metoprolol I should take');
+  assert.match(r.text, /Only your care team/);
 });
 
 test('LLM: citing a source that does not exist is treated as not covered -> nurse', async () => {

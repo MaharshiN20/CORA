@@ -31,7 +31,7 @@ before(async () => {
       }
       if (mode === 'down') return new Response('bad gateway', { status: 502 });
       const user = JSON.parse(init.body).messages.at(-1).content;
-      const content = mode === 'no911' ? `[ko] ${user.replace(/911/g, 'emergencia')}` : `[ko] ${user}`;
+      const content = mode === 'no911' ? `긴급: ${user.replace(/911/g, 'emergencia')}` : `긴급: ${user}`;
       return Response.json({ choices: [{ message: { content } }] });
     }
     return realFetch(url, init);
@@ -51,7 +51,7 @@ const URGENT = 'Call 911 now if you have chest pain. A nurse has been alerted.';
 
 test('localizeUrgent: a working model translates, and the translation keeps "911"', async () => {
   const out = await i18n.localizeUrgent('ko', `${URGENT} unique-a`, { deadlineMs: 500 });
-  assert.match(out, /^\[ko\]/);
+  assert.match(out, /^긴급/);
   assert.match(out, /911/);
 });
 
@@ -75,7 +75,7 @@ test('localizeUrgent: model down -> English; and a failure is not cached (the ne
   const text = `${URGENT} unique-d`;
   assert.equal(await i18n.localizeUrgent('ko', text, { deadlineMs: 500 }), text);
   mode = 'good';
-  assert.match(await i18n.localizeUrgent('ko', text, { deadlineMs: 500 }), /^\[ko\]/);
+  assert.match(await i18n.localizeUrgent('ko', text, { deadlineMs: 500 }), /^긴급/);
 });
 
 test('localizeUrgent: native languages and text without a model are untouched', async () => {

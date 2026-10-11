@@ -4,9 +4,12 @@
 // check before this):
 //   1. medication-change questions ("can I skip my water pill?") -> always the nurse
 //      (deterministic regex, before any LLM sees it)
-//   2. LLM (if available): answer strictly from numbered sources, validated; says
-//      when it's not covered, flags symptoms and dosing
-//   3. no LLM: keyword match over bilingual sections
+//   2. retrieval first: en/es keyword match over the bilingual sections answers directly,
+//      with or without a model (a 7B model labelled in-scope questions "other" and the
+//      companion answered 0 of 35 with it on, audit 2026-10-11 S2)
+//   3. LLM (if available): answer strictly from numbered sources, validated; says
+//      when it's not covered, flags symptoms and dosing. If it refuses or fails, the
+//      keyword match is tried again before anything is declared off-topic
 //   4. not covered -> "I'll ask your nurse" + nurse task (never a guess)
 import * as store from '../store.js';
 import * as llm from './llm/index.js';
@@ -22,7 +25,7 @@ const MED_ES = '(?:pastilla|pastillas|dosis|medicina|medicinas|medicamento|furos
 export const DOSING_CHANGE = new RegExp(
   [
     `\\b(?:skip|stop|quit|double|extra|more|less|half|cut|change|increase|decrease|lower|raise|another)\\b.{0,30}\\b${MED_EN}`,
-    `\\b(?:how (?:much|many)|what dose|dosage|mg of|milligrams? of)\\b.{0,40}\\b${MED_EN}`,
+    `\\b(?:how (?:much|many)|what dose|dosage|dose of|mg of|milligrams? of)\\b.{0,40}\\b${MED_EN}`,
     `\\b${MED_EN}\\b.{0,30}\\b(?:how (?:much|many)|how many mg|what dose|dosage)\\b`,
     `\\b(?:dejar|dejo|saltar|salto|suspender|doble|duplicar|más|menos|mitad|cambiar|aumentar|bajar|otra)\\b.{0,30}\\b${MED_ES}`,
     `\\bcu[aá]nt[oa]s? (?:mg|miligramos|pastillas)\\b|\\bqu[eé] dosis\\b`,
@@ -89,6 +92,22 @@ async function nurseTask(patient, question, { dosing = false, lang = patient.lan
   });
 }
 
+function keywordAnswer(patient, question, L) {
+  const sec = matchSection(patient, question);
+  if (!sec) return null;
+  store.audit('companion', patient.id, { kind: 'answer', via: 'keywords', sectionIds: [sec.id] });
+  const s = sectionIn(sec, L);
+  return {
+    kind: 'answer',
+    sectionIds: [sec.id],
+    replies: [{ text: `${s.text}
+
+${citation(L, sec)}`, textEn: `${sec.en.text}
+
+${citation('en', sec)}` }],
+  };
+}
+
 // -> { kind: 'answer'|'nurse'|'dosing'|'symptom'|'other', replies, sectionIds? }
 // kind 'symptom' means the caller should start a check-in instead.
 // opts: { lang, reporter } for a caregiver asking on the patient's behalf (answered in the
@@ -106,6 +125,13 @@ export async function answer(patient, question, { lang = patient.language, repor
 
   const sections = allSections(patient);
 
+  // Retrieval first for the languages the keywords cover: deterministic, grounded, instant.
+  if (hasNative(lang)) {
+    const hit = keywordAnswer(patient, question, L);
+    if (hit) return hit;
+  }
+
+  let modelSaidOther = false;
   if (llm.enabled()) {
     const sources = sections.map((s) => `[${s.id}] ${s.en.title}: ${s.en.text}`).join('\n');
     const out = await llm.completeJSON(
@@ -124,7 +150,7 @@ export async function answer(patient, question, { lang = patient.language, repor
         return { kind: 'dosing', replies: [dosingReply()] };
       }
       if (out.category === 'symptom') return { kind: 'symptom', replies: [] };
-      if (out.category === 'other') return { kind: 'other', replies: [both(L, 'companion_other')] };
+      modelSaidOther = out.category === 'other';
       const ids = (out.sourceIds ?? []).filter((id) => sections.some((s) => s.id === id));
       if (out.covered && out.answer?.trim() && ids.length) {
         const sec = sections.find((s) => s.id === ids[0]);
@@ -137,18 +163,10 @@ export async function answer(patient, question, { lang = patient.language, repor
     }
   }
 
-  if (!llm.enabled()) {
-    const sec = matchSection(patient, question);
-    if (sec) {
-      store.audit('companion', patient.id, { kind: 'answer', via: 'keywords', sectionIds: [sec.id] });
-      const s = sectionIn(sec, L);
-      return {
-        kind: 'answer',
-        sectionIds: [sec.id],
-        replies: [{ text: `${s.text}\n\n${citation(L, sec)}`, textEn: `${sec.en.text}\n\n${citation('en', sec)}` }],
-      };
-    }
-  }
+  // The model failed, refused or called an in-scope question "other": the keywords get the last word.
+  const hit = keywordAnswer(patient, question, L);
+  if (hit) return hit;
+  if (modelSaidOther) return { kind: 'other', replies: [both(L, 'companion_other')] };
 
   await nurseTask(patient, question, { lang, reporter });
   store.audit('companion', patient.id, { kind: 'nurse', reporter });

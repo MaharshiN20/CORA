@@ -51,15 +51,41 @@ export async function detect({ force = false } = {}) {
 // Kicks off a background re-probe when the cache is stale.
 export function enabled() {
   if (Date.now() - probedAt >= REPROBE_MS) detect().catch(() => {});
-  return providers.length > 0;
+  return providers.length > 0 && !breakerOpen();
 }
+
+// Circuit breaker. A model that is up but hung, slow or erroring is worse than none: every patient
+// message pays the full timeout again (measured: 184 s for one Korean "chest pain"). After
+// BREAKER_THRESHOLD consecutive failures (timeout, deadline overrun, 5xx, network) the chain is
+// "unhealthy" for BREAKER_OPEN_MS: enabled() is false and complete() returns null at once, so every
+// caller takes its no-model path (rules, English fallback, the "call 911 if..." safety-net line).
+// After the window one call is let through; success closes the breaker, failure reopens it.
+// Real time on purpose (infrastructure, not the demo clock).
+const BREAKER_THRESHOLD = Number(process.env.LLM_BREAKER_THRESHOLD ?? 2);
+const BREAKER_OPEN_MS = Number(process.env.LLM_BREAKER_OPEN_MS ?? 30_000);
+let failures = 0;
+let openUntil = 0;
+const breakerOpen = () => Date.now() < openUntil;
+function recordFailure(why) {
+  failures++;
+  if (failures >= BREAKER_THRESHOLD) {
+    if (!breakerOpen()) console.error(`[llm] ${failures} failures in a row (${why}): treating the model as unavailable for ${BREAKER_OPEN_MS / 1000}s`);
+    openUntil = Date.now() + BREAKER_OPEN_MS;
+  }
+}
+function recordSuccess() {
+  failures = 0;
+  openUntil = 0;
+}
+// A 4xx other than 429 is our request being refused (bad schema, context too long), not the model being down.
+const countsAsOutage = (err) => !err?.status || err.status >= 500 || err.status === 429;
 
 // The provider that will actually answer next (skips ones cooling down after a quota/key error).
 export function status() {
   const now = Date.now();
   const cooling = providers.filter((x) => (coolingUntil.get(x.name) ?? 0) > now).map((x) => x.name);
   const p = providers.find((x) => !cooling.includes(x.name));
-  return { provider: p?.name ?? 'none', model: p?.model ?? null, available: providers.map((x) => x.name), ...(cooling.length && { cooling }) };
+  return { provider: p?.name ?? 'none', model: p?.model ?? null, available: providers.map((x) => x.name), ...(cooling.length && { cooling }), ...(breakerOpen() && { unhealthy: true }) };
 }
 
 // Try each available provider in order; fall through on errors.
@@ -81,17 +107,25 @@ function coolDownIfNeeded(p, err) {
 // waiting on: past it we return null and the caller falls back to rules. The slow provider
 // call is left to finish in the background; its answer is ignored.
 async function run(opts) {
-  if (!opts.deadlineMs) return runChain(opts);
+  if (breakerOpen()) return null; // unhealthy: behave exactly like "no model"
+  const state = { late: false };
+  if (!opts.deadlineMs) return runChain(opts, state);
   let timer;
-  const expired = new Promise((resolve) => (timer = setTimeout(() => resolve(null), opts.deadlineMs)));
+  const expired = new Promise((resolve) =>
+    (timer = setTimeout(() => {
+      state.late = true; // a straggler's success no longer counts as health
+      if (!opts.signal?.aborted) recordFailure(`no answer within ${opts.deadlineMs} ms`);
+      resolve(null);
+    }, opts.deadlineMs)),
+  );
   try {
-    return await Promise.race([runChain(opts).catch(() => null), expired]);
+    return await Promise.race([runChain(opts, state).catch(() => null), expired]);
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function runChain(opts) {
+async function runChain(opts, state) {
   for (const p of await detect()) {
     // The caller gave up (opts.signal): don't start, or move on to, another provider.
     if (opts.signal?.aborted) return null;
@@ -99,9 +133,13 @@ async function runChain(opts) {
     if (opts.image && !p.vision) continue; // a text-only model can't read the photo
     try {
       const text = (await p.chat(opts))?.trim();
-      if (text) return text;
+      if (text) {
+        if (!state.late) recordSuccess();
+        return text;
+      }
     } catch (err) {
       if (opts.signal?.aborted) return null; // cancelled by the caller, not a provider failure
+      if (countsAsOutage(err) && !state.late) recordFailure(err.message.slice(0, 80));
       coolDownIfNeeded(p, err);
       console.error(`[llm] ${p.name} failed, trying next:`, err.message);
     }
@@ -150,6 +188,8 @@ export function _use(list) {
 }
 export function _reset() {
   coolingUntil.clear();
+  failures = 0;
+  openUntil = 0;
   providers = [];
   probedAt = 0;
   probing = null;
