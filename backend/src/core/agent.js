@@ -20,6 +20,7 @@
 // replies (text + buttons, honour urgent/voice; ignore textEn). No clinical logic.
 // ============================================================================
 import * as store from '../store.js';
+import { INJECTION } from './injection.js';
 import * as checkin from './checkin.js';
 import * as meds from './meds.js';
 import * as pharmacy from './pharmacy.js';
@@ -36,10 +37,10 @@ import { t, localize, localizeUrgent, toEnglish, hasNative } from './i18n.js';
 const START_WORDS = /^\/?(check[- ]?in|start|chequeo|empezar|hola|hi|hello)\b/i;
 // Caregivers must ask explicitly (or tap the button): a "hi" shouldn't start a proxy check-in.
 const PROXY_WORDS = /^\/?(check[- ]?in|chequeo)\b/i;
-// Messages that try to re-program the bot. Deterministic, audited, and never shown to an LLM;
-// symptoms in the same message still count ("SYSTEM OVERRIDE ... btw I passed out").
-export const INJECTION =
-  /\b(ignore|disregard|forget)\b.{0,30}\b(previous|prior|above|all|your)\b.{0,20}\b(instructions?|rules|prompts?)\b|\bsystem (override|prompt)\b|\byou are now\b|\bact as (a|an|my)\b|\bdeveloper mode\b|\bjailbreak\b|\b(ignora|olvida)\b.{0,30}\binstrucciones\b/i;
+// Messages that try to re-program the bot: deterministic, audited, and never shown to an LLM as
+// instructions; symptoms in the same message still count ("SYSTEM OVERRIDE ... btw I passed out").
+// The patterns (and the cut that keeps them away from the model) live in core/injection.js.
+export { INJECTION };
 
 // Background English translations of inbound messages (tests / e2e can wait for them).
 const pendingTranslations = new Set();

@@ -3,6 +3,7 @@
 // redflags-intl.js); the LLM chain fills gaps for other phrasing/languages.
 import * as llm from './llm.js';
 import { detectIntlRedFlags } from './redflags-intl.js';
+import { stripInjection, neutralize } from './injection.js';
 
 // ---------- red flags: the phrases that mean "call 911 now" ----------
 // Deterministic on purpose (this decides 911). Measured against evals/messages.jsonl
@@ -421,7 +422,7 @@ const UNRESPONSIVE_WHOLE =
 // (orthopnea here = "can't breathe when I lie down": reported so it isn't mistaken for RED.)
 export function detectRedFlags(text) {
   const found = {};
-  const normalized = distributeNegation(canon(text)).replace(CHEST_AND_LIMB, '$1');
+  const normalized = distributeNegation(canon(neutralize(text))).replace(CHEST_AND_LIMB, '$1');
   for (const clause of normalized.split(CLAUSE_SPLIT)) {
     if (clause?.trim()) Object.assign(found, clauseFlags(clause));
   }
@@ -595,7 +596,11 @@ export function validateExtraction(text, out) {
 // -> { result: flat answers + textEn (or null), raw, dropped, unverified, timedOut, ms }
 export async function parseWithLLMTraced(text, { step = null, deadlineMs = PARSE_DEADLINE_MS } = {}) {
   const started = Date.now(); // latency measurement only (infrastructure, not patient time)
-  const raw = await llm.completeJSON(PARSE_PROMPT, `current_question: ${step ?? 'none'}\n<msg>${String(text).replace(/<\/?\s*msg\s*>/gi, ' ')}</msg>`, {
+  // The model reads the patient's words, not their instructions to it (audit 2026-10-11 S8): cut those
+  // out first. If nothing else is left there is nothing to read, and no model call is made.
+  const visible = stripInjection(text);
+  if (!visible.trim()) return { result: null, raw: null, dropped: [], unverified: [], timedOut: false, ms: 0 };
+  const raw = await llm.completeJSON(PARSE_PROMPT, `current_question: ${step ?? 'none'}\n<msg>${visible.replace(/<\/?\s*msg\s*>/gi, ' ')}</msg>`, {
     maxTokens: 600,
     timeoutMs: deadlineMs,
     deadlineMs,
