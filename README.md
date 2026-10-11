@@ -35,6 +35,7 @@ No keys needed to start. Without a Telegram token you can still chat as a patien
 ### Before anyone else can reach it (security and operations)
 Locally nothing is required. Before you expose the server to other people, set these in `backend/.env` (all documented in `.env.example`):
 - `API_TOKEN`: the dashboard and the live feed then require it (the dashboard asks for it once). Unset = open, with a warning at startup.
+- With no `API_TOKEN` the API refuses writes from a web page on another site and answers only `localhost` / private-LAN `Host`s in dev; add a tunnel host to `ALLOWED_HOSTS` (or set `API_TOKEN`).
 - `CORS_ORIGIN`: the dashboard's origin. `NODE_ENV=production` also turns **off** the reset / clock-advance / cohort-regenerate controls unless `DEMO_MODE=1`.
 - `DEVICE_KEY`: home devices send it as `x-device-key` to `POST /api/devices/readings` (that endpoint only).
 - `TWILIO_AUTH_TOKEN` and `PUBLIC_URL`: required in production, or the SMS/WhatsApp webhooks refuse every request.

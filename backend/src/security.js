@@ -75,20 +75,58 @@ export function demoOnly(_req, res, next) {
 
 // ---------- CORS ----------
 // CORS_ORIGIN="https://dash.example.org,https://other" restricts browsers to those origins.
-// Unset: open in dev (the Vite proxy is same-origin anyway), closed in production.
+// Unset: only this machine's own pages in dev (localhost / loopback / private-LAN, so the Vite
+// dashboard and a phone on the same wifi work), closed in production. It used to reflect ANY
+// origin in dev, which let a page on another site read every patient (audit 2026-10-11 S6).
+const PRIVATE_HOST =
+  /^(?:localhost|\[?::1\]?|0\.0\.0\.0|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|[a-z0-9-]+\.local)$/i;
+const hostnameOf = (hostOrOrigin) => {
+  try {
+    return new URL(/^[a-z]+:\/\//i.test(hostOrOrigin) ? hostOrOrigin : `http://${hostOrOrigin}`).hostname.replace(/^\[|\]$/g, '');
+  } catch {
+    return '';
+  }
+};
 export function corsOrigin() {
   const list = (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (list.length) return list;
   return process.env.NODE_ENV === 'production' ? false : true;
 }
+// May a page from `origin` talk to this API from a browser? (No Origin header = not a browser page.)
+export function originAllowed(origin) {
+  if (!origin) return true;
+  const allowed = corsOrigin();
+  if (allowed === false) return false;
+  if (allowed === true) return PRIVATE_HOST.test(hostnameOf(origin));
+  return allowed.includes(origin);
+}
 export const corsOptions = {
-  origin: (origin, cb) => {
-    const allowed = corsOrigin();
-    if (allowed === true) return cb(null, true);
-    if (allowed === false || !origin) return cb(null, false);
-    cb(null, allowed.includes(origin));
-  },
+  origin: (origin, cb) => cb(null, !!origin && originAllowed(origin)),
 };
+
+// ---------- cross-site request protection (audit 2026-10-11 S6) ----------
+// With no API_TOKEN the API is open by design (no key needed to run or test). Without more, any web
+// page the nurse visits could POST a plain HTML form to it (no CORS preflight) and create patients,
+// message patients as "Nurse", move the demo clock or wipe the database; a rebinding domain could read.
+//  - writes from a browser page must come from an allowed Origin (browsers always send Origin on a
+//    cross-site POST; curl, tests and servers send none and are unaffected);
+//  - in dev with no token, the Host must be this machine (blocks DNS rebinding); ALLOWED_HOSTS adds more.
+// Setting API_TOKEN makes both moot (a header a foreign page cannot set), so they step aside.
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+export function crossSiteGuard(req, res, next) {
+  if (tokenRequired()) return next();
+  if (!SAFE_METHODS.has(req.method)) {
+    const origin = req.headers.origin;
+    if (origin !== undefined && (origin === 'null' || !originAllowed(origin))) return res.status(403).json({ error: 'cross-site request blocked' });
+    if (origin === undefined && req.headers['sec-fetch-site'] === 'cross-site') return res.status(403).json({ error: 'cross-site request blocked' });
+  }
+  if (process.env.NODE_ENV !== 'production' && req.headers.host) {
+    const host = hostnameOf(req.headers.host);
+    const extra = (process.env.ALLOWED_HOSTS || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+    if (!PRIVATE_HOST.test(host) && !extra.includes(host)) return res.status(421).json({ error: 'unexpected Host header' });
+  }
+  next();
+}
 
 // ---------- headers ----------
 export function securityHeaders(_req, res, next) {

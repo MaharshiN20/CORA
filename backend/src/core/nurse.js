@@ -33,7 +33,10 @@ function wrapNurseSays(lang, nurse, text, translated) {
 export async function sendNurseMessage(patientId, { text, template, time, from } = {}) {
   const p = store.getPatient(patientId);
   if (!p) throw Object.assign(new Error('patient not found'), { status: 404 });
-  const nurse = from?.trim() || 'Your nurse';
+  if ((text != null && typeof text !== 'string') || (from != null && typeof from !== 'string') || (time != null && typeof time !== 'string') || (template != null && typeof template !== 'string')) {
+    throw Object.assign(new Error('text, template, time and from must be strings'), { status: 400 });
+  }
+  const nurse = from?.trim().slice(0, 80) || 'Your nurse';
   let msg;
 
   if (template) {

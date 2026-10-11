@@ -128,7 +128,7 @@ api.post('/alerts/:id/protocol', async (req, res) => {
   try {
     res.json(await protocols.apply(req.params.id, { by: req.body?.by, protocolId: req.body?.protocolId }));
   } catch (err) {
-    res.status(err.status ?? 500).json({ error: err.message, ...(err.checks && { checks: err.checks }) });
+    sendError(res, err, err.checks && { checks: err.checks });
   }
 });
 
@@ -212,13 +212,22 @@ function clearFalseAlarmTier(alert) {
   store.audit('tier_cleared', p.id, { alertId: alert.id, from: alert.tier, to: lastTier, reason: 'false_positive' });
 }
 
+// An error the route chose (4xx, with its own status) tells the client why; anything else is an
+// internal failure and must not leak its message ("text?.trim is not a function").
+function sendError(res, err, extra = {}) {
+  const status = Number(err?.status);
+  if (status >= 400 && status < 500) return res.status(status).json({ error: err.message, ...extra });
+  console.error(`[api] ${err?.message ?? err}`);
+  return res.status(500).json({ error: 'internal error' });
+}
+
 // POST /api/patients/:id/message { text } | { template: 'call_scheduled', time } (+ from?)
 // Nurse -> patient via their channel, translated to the patient's language.
 api.post('/patients/:id/message', async (req, res) => {
   try {
     res.json(await sendNurseMessage(req.params.id, req.body ?? {}));
   } catch (err) {
-    res.status(err.status ?? 500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -249,7 +258,7 @@ api.post('/patients/:id/digest', async (req, res) => {
   try {
     res.json(await sendDigest(req.params.id));
   } catch (err) {
-    res.status(err.status ?? 500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -263,7 +272,7 @@ api.post('/patients/:id/sdoh/start', async (req, res) => {
     for (const r of replies) await channels.sendToPatient(store.getPatient(p.id), r);
     res.json({ sent: replies.length });
   } catch (err) {
-    res.status(err.status ?? 500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -305,6 +314,11 @@ api.post('/patients/:id/checkin', async (req, res) => {
 api.post('/patients/:id/simulate', async (req, res) => {
   const { text, buttonData, role, photo } = req.body ?? {};
   if (!store.getPatient(req.params.id)) return res.status(404).json({ error: 'not found' });
+  // Wrong types used to throw inside the handler (500); say what is wrong instead.
+  if ((text != null && typeof text !== 'string') || (buttonData != null && typeof buttonData !== 'string') || (role != null && typeof role !== 'string')) {
+    return res.status(400).json({ error: 'text, buttonData and role must be strings' });
+  }
+  if (photo != null && (typeof photo !== 'object' || typeof photo.base64 !== 'string')) return res.status(400).json({ error: 'photo must be { base64, mime }' });
   if (!text?.trim() && !buttonData && !photo) return res.status(400).json({ error: 'text, buttonData or photo is required' });
   const replies = await handleInbound({ patientId: req.params.id, text, buttonData, role, photo, channel: 'sim' });
   res.json(replies);

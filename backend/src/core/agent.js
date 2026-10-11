@@ -83,11 +83,16 @@ export function handleInbound(msg) {
   return promise;
 }
 
+const MAX_TEXT = 4000;
+
 async function processInbound({ patientId, role = 'patient', channel, text, buttonData, voiceTranscript, photo }) {
   const patient = store.getPatient(patientId);
   if (!patient) return [{ text: t('en', 'record_not_found') }];
 
-  const input = voiceTranscript ?? text;
+  // Whatever a channel hands over is text of a sane size: a 100 KB "message" used to reach the model and
+  // blow its context (audit 2026-10-11). Telegram's own limit is 4096 characters.
+  const clean = (v) => (typeof v === 'string' ? v.slice(0, MAX_TEXT) : undefined);
+  const input = clean(voiceTranscript) ?? clean(text);
   const shown = photo ? '[photo]' : input ?? buttonLabel(patientId, buttonData);
   const inbound = store.addMessage({ patientId, direction: 'in', from: role, to: role, text: shown, channel });
 
