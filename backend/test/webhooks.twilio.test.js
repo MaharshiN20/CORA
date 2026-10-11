@@ -193,6 +193,50 @@ test('an urgent reply keeps its emergency styling when it rides back in TwiML', 
   assert.deepEqual(messagesIn(viaWhatsapp.body).map(unescape), [`*${i18n.t('es', 'red_interrupt')}*`], 'WhatsApp: bold, like the REST path');
 });
 
+// ---------- retries ----------
+// Twilio posts a message again (same MessageSid) when our answer was slow or lost. The core already
+// handles the message once; the webhook used to send the replies out a second time.
+test('a retry of the same MessageSid does not send the replies again', async () => {
+  await sms('JOIN GARCIA1');
+  twilioOn();
+  await signedSms('hola', { MessageSid: 'SM-retry-1' });
+  const sentOnce = posts.length;
+  assert.ok(sentOnce > 0);
+  const again = await signedSms('hola', { MessageSid: 'SM-retry-1' });
+  assert.equal(again.status, 200);
+  assert.equal(posts.length, sentOnce, 'the patient did not get a second copy');
+  assert.equal(store.listMessages('p1').filter((m) => m.direction === 'in' && m.text === 'hola').length, 1);
+});
+
+test('two deliveries of one MessageSid racing each other send one set of replies', async () => {
+  await sms('JOIN GARCIA1');
+  twilioOn();
+  await Promise.all([signedSms('hola', { MessageSid: 'SM-retry-2' }), signedSms('hola', { MessageSid: 'SM-retry-2' })]);
+  assert.equal(posts.filter((p) => p.Body.startsWith(i18n.t('es', 'ask_redflags'))).length, 1);
+});
+
+test('with no REST credentials a retry is answered with the same TwiML (Twilio uses whichever answer arrives)', async () => {
+  await sms('JOIN GARCIA1');
+  const first = await sms('hola', { MessageSid: 'SM-retry-3' });
+  const again = await sms('hola', { MessageSid: 'SM-retry-3' });
+  assert.ok(messagesIn(first.body).length > 0);
+  assert.equal(again.body, first.body);
+});
+
+test('a retried JOIN DEMO enrolls one demo patient, not two', async () => {
+  const before = store.listPatients().length;
+  await sms('JOIN DEMO_ES', { MessageSid: 'SM-retry-4' });
+  await sms('JOIN DEMO_ES', { MessageSid: 'SM-retry-4' });
+  assert.equal(store.listPatients().length, before + 1);
+});
+
+test('a different MessageSid with the same words is a new message', async () => {
+  await sms('JOIN GARCIA1');
+  await sms('gracias', { MessageSid: 'SM-new-1' });
+  await sms('gracias', { MessageSid: 'SM-new-2' });
+  assert.equal(store.listMessages('p1').filter((m) => m.direction === 'in' && m.text === 'gracias').length, 2);
+});
+
 // ---------- media ----------
 test('an MMS / WhatsApp image is downloaded with Twilio auth and handed to the core as a photo', async () => {
   await sms('JOIN GARCIA1');

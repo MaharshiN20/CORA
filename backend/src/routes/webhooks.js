@@ -203,31 +203,54 @@ async function deliver(channel, phone, replies, language) {
   return rest.map((r) => r.text);
 }
 
+// One delivery, start to finish: link or handle, send the replies. -> the texts that still have to
+// ride back in the TwiML answer (everything the REST API did not take).
+async function handleDelivery(channel, phone, body) {
+  const text = String(body.Body ?? '').trim();
+  const joinMatch = text.match(/^JOIN\s+(\S+)$/i);
+  let link = null;
+  let replies;
+  if (joinMatch) {
+    const throttleKey = `sms:${phone}`;
+    const joined = sec.joinBlocked(throttleKey) ? null : await join(joinMatch[1], phone, channel);
+    if (joined?.refused) replies = [{ text: t('en', 'code_in_use') }];
+    else if (joined) ({ link, replies } = joined);
+    else {
+      if (!/^DEMO/i.test(joinMatch[1])) sec.joinMissed(throttleKey);
+      replies = [{ text: t('en', 'unknown_code_sms') }];
+    }
+    if (link) for (const r of replies) store.addMessage({ patientId: link.patient.id, direction: 'out', to: link.role, text: r.text, textEn: r.textEn, buttons: r.buttons, channel });
+  } else {
+    link = findByPhone(phone);
+    replies = link ? await inbound(link, phone, channel, body) : [{ text: t('en', 'unknown_code_sms') }];
+  }
+  return deliver(channel, phone, replies, link ? langOf(link) : 'en');
+}
+
+// Twilio posts a message again (same MessageSid) when our answer was slow or lost. The core handles
+// such a message once, but its replies used to go out over the REST API a second time, and a repeated
+// "JOIN DEMO" enrolled a second patient. A repeat now waits for the first delivery and gets the same
+// TwiML back (Twilio uses whichever answer reaches it), and nothing is sent or linked twice.
+const DELIVERY_TTL_MS = 10 * 60_000;
+const deliveries = new Map(); // "channel:MessageSid" -> { at, done: Promise<string[]> }
+function once(key, work) {
+  const now = performance.now(); // monotonic: pacing, not domain time
+  const hit = deliveries.get(key);
+  if (hit && now - hit.at < DELIVERY_TTL_MS) return hit.done;
+  if (deliveries.size > 2000) for (const [k, v] of deliveries) if (now - v.at >= DELIVERY_TTL_MS) deliveries.delete(k);
+  const done = work();
+  deliveries.set(key, { at: now, done });
+  return done;
+}
+
 function handler(channel) {
   return async (req, res) => {
     const body = req.body ?? {};
     const phone = normalizePhone(body.From);
     if (!phone) return res.status(400).type('text/plain').send('missing From');
     try {
-      const text = String(body.Body ?? '').trim();
-      const joinMatch = text.match(/^JOIN\s+(\S+)$/i);
-      let link = null;
-      let replies;
-      if (joinMatch) {
-        const throttleKey = `sms:${phone}`;
-        const joined = sec.joinBlocked(throttleKey) ? null : await join(joinMatch[1], phone, channel);
-        if (joined?.refused) replies = [{ text: t('en', 'code_in_use') }];
-        else if (joined) ({ link, replies } = joined);
-        else {
-          if (!/^DEMO/i.test(joinMatch[1])) sec.joinMissed(throttleKey);
-          replies = [{ text: t('en', 'unknown_code_sms') }];
-        }
-        if (link) for (const r of replies) store.addMessage({ patientId: link.patient.id, direction: 'out', to: link.role, text: r.text, textEn: r.textEn, buttons: r.buttons, channel });
-      } else {
-        link = findByPhone(phone);
-        replies = link ? await inbound(link, phone, channel, body) : [{ text: t('en', 'unknown_code_sms') }];
-      }
-      const leftover = await deliver(channel, phone, replies, link ? langOf(link) : 'en');
+      const sid = typeof body.MessageSid === 'string' && body.MessageSid ? `${channel}:${body.MessageSid}` : null;
+      const leftover = await (sid ? once(sid, () => handleDelivery(channel, phone, body)) : handleDelivery(channel, phone, body));
       res.type('text/xml').send(twiml(leftover));
     } catch (err) {
       console.error(`[webhooks] ${channel} inbound failed:`, err);
