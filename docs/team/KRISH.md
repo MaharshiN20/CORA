@@ -110,5 +110,10 @@
   - `integrations/fhir.js` defaults to the public HAPI server. When `NODE_ENV=production` and `FHIR_BASE_URL` is unset, refuse to import (clear 503 `{ error }`) instead of sending patient identifiers to a public sandbox; `GET /api/fhir` reports `{ base, sandbox: true }`. Dashboard import dialog shows a banner when `sandbox` is true.
   - **Accept:** tests for production-unset (refused), production-set (works), development (works, flagged sandbox).
 
+## Independent test set + bug hunt (asked for by Prannav, Oct 11)
+
+- [x] **K17. Independent red-flag set and bug hunt.** Report: `docs/independent-eval/REPORT.md`. The set: `evals/independent-2026-10-11.jsonl` (working batch) and `evals/independent-2026-10-11-heldout.jsonl` (unread), described in `evals/independent-README.md`. Seven channel bugs fixed, one commit each with a test that failed first. Everything found in another lane is in `docs/team/REQUESTS.md` with a `todo` test in `backend/test/independent.open.test.js`.
+  - **Not done here, on purpose:** the rule fixes in `core/parser.js` / `core/redflags-*.js` (Prannav's lane; he has not confirmed in writing that I may edit them), so the report has "before" numbers only. The held-out batch must stay unread until those fixes are in.
+
 ## Definition of done (every task)
 Tests written and green, `npm run check` green, a manual check noted in the commit body, box ticked here, then commit `[channels] …` and push.
