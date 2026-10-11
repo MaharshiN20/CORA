@@ -86,3 +86,24 @@ test('very high blood pressure (180+/110+) is YELLOW', () => {
 test('a bad bp object (missing or NaN) is ignored, never a crash or a false alarm', () => {
   for (const bp of [null, undefined, {}, { sbp: NaN, dbp: 80 }, { sbp: 'x' }]) assert.equal(triage({ weights: [], bp }).tier, 'GREEN');
 });
+
+// ---- steady creep (audit 2026-10-11 S7): a rule now, not a model's guess ----
+test('steady creep under every day-to-day rule is YELLOW (+3.8 lb in 5 days)', () => {
+  const r = triage({ weights: at([120, 205], [96, 205.6], [72, 206.3], [48, 207], [24, 207.9], [0, 208.8]) });
+  assert.deepEqual(codes(r), ['weight_creep']);
+  assert.equal(r.tier, 'YELLOW');
+});
+test('creep with one flat day in the middle still counts', () => {
+  assert.deepEqual(codes(triage({ weights: at([120, 190], [96, 190.8], [72, 191.5], [48, 191.5], [24, 192.4], [0, 193.2]) })), ['weight_creep']);
+});
+test('a flat or wobbling weight is not creep', () => {
+  assert.equal(triage({ weights: at([72, 193], [48, 193.2], [24, 193.1], [0, 193.3]) }).tier, 'GREEN');
+  assert.equal(triage({ weights: at([96, 170], [72, 171.5], [48, 169.8], [24, 171.2], [0, 170.4]) }).tier, 'GREEN');
+});
+test('three readings are too few, and a slow drift under 2.5 lb is not enough', () => {
+  assert.equal(triage({ weights: at([48, 170], [24, 171], [0, 172.2]) }).tier, 'GREEN');
+  assert.equal(triage({ weights: at([144, 170], [120, 170.3], [96, 170.7], [72, 171], [48, 171.3], [24, 171.6], [0, 172]) }).tier, 'GREEN');
+});
+test('creep does not repeat a weight rule that already fired', () => {
+  assert.ok(!codes(triage({ weights: at([96, 170], [72, 171.5], [48, 173], [24, 174.5], [0, 177]) })).includes('weight_creep'));
+});

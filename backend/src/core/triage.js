@@ -38,6 +38,9 @@ export const THRESHOLDS = {
   lossDehydrationLb: 3,
   gain72hLb: 3, // over a skipped day (readings 48-72 h apart) the bar is a little higher
   aboveDryWeightLb: 5, // slow creep that never trips the day-to-day rules
+  creepNetLb: 2.5, // steady creep: net gain over the last readings...
+  creepSlopeLbPerDay: 0.4, // ...at this pace or faster...
+  creepMinReadings: 4, // ...over at least this many readings, most of them up
   weightDropLb: 5, // in 24 h, on its own: over-diuresis, or a bad scale reading to double-check
   spo2Red: 90, // < 90 -> RED
   spo2Yellow: 93, // 90-92 -> YELLOW
@@ -112,6 +115,27 @@ export function weightChangeSkippedDay(weights) {
 
 const round1 = (n) => Math.round(n * 10) / 10;
 
+// Steady fluid build-up that never trips a single-day or 7-day rule (+3.8 lb in 5 days, half a pound a
+// day, a flat day in the middle). Deterministic on purpose: this used to be left to a 7B model, which
+// missed 4 of 6 such cases (audit 2026-10-11 S7). Last 7 readings within 10 days. -> { net, slope, readings } | null
+export function weightCreep(weights) {
+  const latest = weights.at(-1);
+  if (!latest) return null;
+  const t = Date.parse(latest.ts);
+  const pts = weights.slice(-7).filter((w) => t - Date.parse(w.ts) <= 10 * DAY);
+  if (pts.length < THRESHOLDS.creepMinReadings) return null;
+  const xs = pts.map((w) => Date.parse(w.ts) / DAY);
+  const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const my = pts.reduce((a, w) => a + w.lb, 0) / pts.length;
+  const den = xs.reduce((a, x) => a + (x - mx) ** 2, 0);
+  if (!den) return null;
+  const slope = xs.reduce((a, x, i) => a + (x - mx) * (pts[i].lb - my), 0) / den;
+  const net = latest.lb - pts[0].lb;
+  const ups = pts.slice(1).filter((w, i) => w.lb > pts[i].lb).length;
+  if (net < THRESHOLDS.creepNetLb || slope < THRESHOLDS.creepSlopeLbPerDay || ups < Math.ceil((pts.length - 1) * 0.6)) return null;
+  return { net: round1(net), slope: Math.round(slope * 100) / 100, readings: pts.length };
+}
+
 // ---------- main ----------
 
 // dryWeightLb: the patient's target weight (optional). copd: widens the oxygen cut-offs.
@@ -149,6 +173,9 @@ export function triage({ weights = [], answers = {}, missedDiureticDays = 0, dry
   const latestLb = weights.at(-1)?.lb;
   if (isNum(dryWeightLb) && isNum(latestLb) && latestLb - dryWeightLb >= THRESHOLDS.aboveDryWeightLb && !flags.some((f) => f.code.startsWith('weight_')))
     flag('YELLOW', 'above_dry_weight', `Weight ${round1(latestLb - dryWeightLb)} lb above dry weight (${dryWeightLb} lb)`);
+  const creep = weightCreep(weights);
+  if (creep && !flags.some((f) => f.code.startsWith('weight_') || f.code === 'above_dry_weight'))
+    flag('YELLOW', 'weight_creep', `Steady weight gain: up ${creep.net} lb over ${creep.readings} readings (~${creep.slope} lb/day), below the single-day alert`);
   if (orthopnea) flag('YELLOW', 'orthopnea', 'Needs more pillows / sleeps propped up');
   if (pnd) flag('YELLOW', 'pnd', 'Woke up at night short of breath (PND)');
   if (swelling === 'worse') flag('YELLOW', 'edema_worse', 'Leg/ankle swelling getting worse');

@@ -2,7 +2,6 @@
 // Acknowledge -> Mark contacted -> Resolve (with an outcome picker).
 import { memo, useState } from 'react';
 import { Link } from 'react-router';
-import { LineChart, Line, ReferenceLine, YAxis } from 'recharts';
 import { Phone } from 'lucide-react';
 import { api } from '../api.js';
 import { useNow } from '../hooks.js';
@@ -80,11 +79,7 @@ export function VitalsStrip({ patient, tier }) {
         {dry != null && <span className={last - dry >= 5 ? ' font-semibold text-red-700' : ''}> · {signed(last - dry)} vs dry</span>}
       </span>
       {week.length > 1 && (
-        <LineChart width={90} height={28} data={week} margin={{ top: 2, right: 2, bottom: 2, left: 2 }} aria-label="7-day weight">
-          <YAxis hide domain={[Math.min(...values) - 0.5, Math.max(...values) + 0.5]} />
-          {dry != null && <ReferenceLine y={dry} stroke="#10b981" strokeDasharray="3 3" />}
-          <Line isAnimationActive={false} type="monotone" dataKey="lb" stroke={stroke} strokeWidth={2} dot={false} />
-        </LineChart>
+        <Sparkline values={values} points={week.map((w) => w.lb)} dry={dry} stroke={stroke} />
       )}
       {patient.contactPhone && (
         <a href={`tel:${patient.contactPhone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline">
@@ -224,3 +219,21 @@ function AlertCard({ alert, patient, now, update = api.updateAlert, highlight = 
 // Memoised: with stable alert objects (lib/worklist.js stabilize) a socket event re-renders only the
 // cards that actually changed.
 export default memo(AlertCard);
+
+// A 7-day weight line as plain SVG: the worklist is the landing page, and charting it with recharts
+// put the whole charting library in the main bundle (one 815 kB chunk before; audit 2026-10-11).
+function Sparkline({ values, points, dry, stroke }) {
+  const W = 90;
+  const H = 28;
+  const pad = 2;
+  const lo = Math.min(...values) - 0.5;
+  const hi = Math.max(...values) + 0.5;
+  const x = (i) => pad + (i * (W - 2 * pad)) / (points.length - 1);
+  const y = (v) => pad + ((hi - v) * (H - 2 * pad)) / (hi - lo);
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="7-day weight">
+      {dry != null && <line x1={pad} x2={W - pad} y1={y(dry)} y2={y(dry)} stroke="#10b981" strokeDasharray="3 3" />}
+      <polyline fill="none" stroke={stroke} strokeWidth="2" strokeLinejoin="round" points={points.map((v, i) => `${x(i)},${y(v)}`).join(' ')} />
+    </svg>
+  );
+}

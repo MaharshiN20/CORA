@@ -15,6 +15,8 @@
 // everyday-usage knowledge, and checked only against the rows in evals/messages.jsonl, which the
 // same author wrote. No native speaker and no clinician has reviewed them yet. Record a review in
 // REVIEW below (who, role, date, what changed); backend/test/evals.gate.test.js keeps the entry.
+import { detectMoreRedFlags } from './redflags-more.js';
+
 export const REVIEW = {
   vi: {
     reviewedBy: null,
@@ -396,5 +398,8 @@ export function detectIntlRedFlags(text) {
   if (/[㐀-鿿]/.test(s)) Object.assign(found, chinese(s));
   if (/\p{Script=Latin}/u.test(s)) Object.assign(found, vietnamese(s), hindiLatin(s));
   Object.assign(found, collapseWhole(s));
+  // ko / ar / pt / tl / ht (core/redflags-more.js): keep the first otherEmergency code that was found.
+  const more = detectMoreRedFlags(s);
+  Object.assign(found, { ...more, ...(found.otherEmergency && { otherEmergency: found.otherEmergency }) });
   return found;
 }

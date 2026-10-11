@@ -48,7 +48,7 @@ test('dataset: the stated rules tier is what the real triage rules give for that
 });
 
 test('validateCases catches bad cases, including a tier the rules would not give', () => {
-  const good = cases.find((c) => c.id === 'creep-01');
+  const good = cases.find((c) => c.id === 'med-01');
   const problems = risk
     .validateCases([
       { ...good },
@@ -60,7 +60,7 @@ test('validateCases catches bad cases, including a tier the rules would not give
       { ...good, id: 'x5', weights: [200, 200, 203], rules: 'YELLOW' }, // +3 lb in a day: can't be raised further
     ])
     .join('\n');
-  for (const expected of ['duplicate or missing id: creep-01', 'unknown kind vibes', 'expect must be', 'rules must be', 'missing note', 'x2: weights must be', 'x3: bad message', 'x4: says rules YELLOW but the triage rules give GREEN', 'x5: expects an escalation on a day the rules already made YELLOW']) {
+  for (const expected of ['duplicate or missing id: med-01', 'unknown kind vibes', 'expect must be', 'rules must be', 'missing note', 'x2: weights must be', 'x3: bad message', 'x4: says rules YELLOW but the triage rules give GREEN', 'x5: expects an escalation on a day the rules already made YELLOW']) {
     assert.ok(problems.includes(expected), `missing "${expected}" in:\n${problems}`);
   }
 });
@@ -192,12 +192,12 @@ test('score: precision and recall over GREEN days; no review counts as not escal
 test('baseline (signals only, no model): the floor a real model has to beat', async () => {
   const s = risk.score(await risk.runCases(cases, { call: risk.signalsStub }));
   assert.ok(s.recall >= 0.8, `recall ${s.recall}`);
-  assert.ok(s.precision >= 0.85, `precision ${s.precision}`);
+  assert.ok(s.precision >= 0.8, `precision ${s.precision}`); // was 0.85 before steady creep moved into the triage rules (6 easy true positives left this eval)
   assert.deepEqual(s.alreadyEscalated.held, s.alreadyEscalated.cases, 'every YELLOW / RED day is left exactly as it was');
   assert.equal(s.unreviewed, 0);
   for (const kind of ['stable', 'refill', 'injection']) assert.equal(s.byKind[kind].correct, s.byKind[kind].cases, `${kind}: all correct without a model`);
-  // Known gaps, pinned so they can only shrink: paraphrases, a typo, a plateau in a slow creep.
-  assert.deepEqual(ids(s.misses).sort(), ['cong-05', 'cong-07', 'creep-05', 'creep-06', 'med-03']);
+  // Known gaps, pinned so they can only shrink: paraphrases, a typo, a Spanish medication mix-up.
+  assert.deepEqual(ids(s.misses).sort(), ['cong-05', 'cong-07', 'med-03']);
   // Keyword false alarms a model should not repeat: one salty meal, a caregiver away, someone else's symptom.
   assert.deepEqual(ids(s.falseAlarms).sort(), ['diet-02', 'noise-03', 'social-02']);
 });
@@ -210,7 +210,7 @@ test('runCases can drive any reviewer, and the report renders', async () => {
       return null;
     },
   });
-  assert.deepEqual(seen.map((s) => s.tier), ['GREEN', 'GREEN', 'GREEN']);
+  assert.deepEqual(seen.map((s) => s.tier), ['YELLOW', 'YELLOW', 'YELLOW']); // weight creep is a triage rule now: the rules already said YELLOW
   assert.ok(seen.every((s) => s.now === risk.NOW && !s.hasCall), 'no injected call: the real provider chain would be used');
   assert.ok(results.every((r) => r.review === null && r.sawRaw === false));
 
@@ -220,7 +220,7 @@ test('runCases can drive any reviewer, and the report renders', async () => {
   assert.match(md, new RegExp(`${cases.length} labelled trajectories`));
   assert.match(md, /\*\*signals-stub\*\*: none/, 'no invariant violations listed');
   assert.match(md, /\| signals-stub \| \d+% \| \d+% \|/);
-  assert.match(md, /`creep-05` \(weight_creep\)/, 'misses are listed with their notes');
+  assert.match(md, /`cong-05` \(congestion\)/, 'misses are listed with their notes');
   assert.match(md, /Not available this run: ollama/);
   assert.doesNotMatch(md, /got no usable review\*\*/, 'no availability warning when every case was reviewed');
 });

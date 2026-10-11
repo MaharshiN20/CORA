@@ -101,7 +101,7 @@ const PATTERNS = {
   fainting: [
     /\bfaint(?:ed|ing)?\b|\bpassed out\b|\bblacked out\b|\bdesmay\w*|\bperdi el conocimiento\b/,
     // collapse, said another way ("I keep blacking out", "everything went black and I hit the floor")
-    /\bblack(?:ing|ed|s)? out\b|\bkeel(?:ed|s)? over\b|\bcollaps(?:e|ed|es|ing)\b|\bwent limp\b|\beverything (?:went|goes|turned|is going) (?:black|dark)\b|\b(?:i|he|she|they|dad|mom|mum|husband|wife) (?:\w+ )?hit the floor\b|\bme voy a desmayar\b/,
+    /\bblack(?:ing|ed|s)? out\b|\bkeel(?:ed|s)? over\b|\bcollaps(?:e|ed|es|ing)\b|\bwent limp\b|\beverything (?:went|goes|turned|is going) (?:black|dark)\b|\b(?:i|he|she|they|dad|mom|mum|husband|wife) (?:\w+ )?hit the floor\b|\bme voy a desmayar\b|\bse (?:desplomo|desvanecio)\b/,
   ],
   confusion: [
     /\bconfus(?:ed|ion)\b(?!\s+(?:about|by|with|over|on)\b)/,

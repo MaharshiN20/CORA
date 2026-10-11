@@ -1,16 +1,18 @@
 // Nurse command center. Patients talk to the bot on Telegram/SMS; this is where the
 // care team works the worklist, reads the "why" behind every alert, and shows impact.
-import { createContext, useContext, useEffect, useState } from 'react';
+import { Suspense, createContext, lazy, useContext, useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router';
 import { api } from './api.js';
 import { useConnected, useLive } from './hooks.js';
 import { Pill } from './components/ui.jsx';
 import NurseName from './components/NurseName.jsx';
 import Worklist from './pages/Worklist.jsx';
-import Patient from './pages/Patient.jsx';
-import Impact from './pages/Impact.jsx';
-import Demo from './pages/Demo.jsx';
-import Join from './pages/Join.jsx';
+// The worklist is the landing page and stays in the main bundle; the rest load on first visit
+// (one 815 kB chunk before; audit 2026-10-11).
+const Patient = lazy(() => import('./pages/Patient.jsx'));
+const Impact = lazy(() => import('./pages/Impact.jsx'));
+const Demo = lazy(() => import('./pages/Demo.jsx'));
+const Join = lazy(() => import('./pages/Join.jsx'));
 
 // Health (incl. the demo clock offset) is needed across pages for SLA countdowns.
 const HealthContext = createContext(null);
@@ -110,6 +112,7 @@ export default function App() {
           </div>
         )}
         <main className={bare ? '' : 'mx-auto max-w-[1400px] px-5 py-5 projector:max-w-none'}>
+          <Suspense fallback={<p className="text-slate-500">Loading…</p>}>
           <Routes>
             <Route path="/" element={<Worklist />} />
             <Route path="/patients/:id" element={<Patient />} />
@@ -118,6 +121,7 @@ export default function App() {
             <Route path="/join" element={<Join />} />
             <Route path="*" element={<p className="text-slate-500">Page not found.</p>} />
           </Routes>
+          </Suspense>
         </main>
       </div>
     </HealthContext.Provider>
