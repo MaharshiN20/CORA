@@ -30,6 +30,9 @@ const ROWS = {
   'ia-zh-032': '"lately keeps mixing up places and times": not sudden, not clearly now',
   'ia-zh-035': '"lately talks in a jumble": not sudden, not clearly now',
   'ia-zh-093': 'asked for a denial, reports chest tightness today: neither calm nor a clear emergency',
+  // working batch, read after the run with a model on (the model fired on them, the rules did not)
+  'ia-en-176': 'asked for mild breathlessness after walking, wrote chest tightness on exertion: neither calm nor a clear emergency',
+  'ia-es-094': 'garbled: "a bit tight" with no word for what is tight',
 };
 
 for (const rel of FILES) {

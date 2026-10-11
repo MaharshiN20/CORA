@@ -11,7 +11,8 @@ const note = (what, detail) => findings.push(`${what}: ${detail}`);
 const BAD = [null, true, 0, -1, 1e308, '', ' ', 'x'.repeat(5000), [], [1, 2], {}, { a: 1 }, { length: 3 }, '__proto__', ['__proto__'], { __proto__: { x: 1 } }, '<img src=x onerror=alert(1)>', '=cmd|calc', '\u0000', '2026-13-45', 'NaN'];
 
 async function run(env, fn) {
-  const srv = await boot({ port: PORT, env });
+  // FHIR_BASE_URL points at a closed local port, so nothing here can reach a real EHR server.
+  const srv = await boot({ port: PORT, env: { FHIR_BASE_URL: 'http://127.0.0.1:9/fhir', ...env } });
   const raw = async (method, path, body, headers = {}) => {
     const init = { method, headers: { ...(body !== undefined && { 'Content-Type': 'application/json' }), ...headers }, body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body), signal: AbortSignal.timeout(20_000) };
     try {
@@ -57,7 +58,9 @@ await run({}, async ({ srv, raw }) => {
     [`POST /api/patients/${id}/unlink`]: ['role'],
     [`POST /api/patients/${id}/prescriptions/Furosemide/picked-up`]: ['by'],
     [`POST /api/insights/cohort/regenerate`]: ['seed', 'size'],
-    [`POST /api/fhir/import`]: ['fhirPatientId', 'override'],
+    // POST /api/fhir/import, /search and /preview are left out on purpose: they call the EHR server,
+    // which by default is the public HAPI sandbox, and a probe has no business sending it junk ids
+    // (the first run of this script did, about 15 reads of patients that do not exist).
   };
   const baseBody = { [`POST /api/patients`]: { name: 'Probe Two' }, [`POST /api/devices/readings`]: { patientId: id, type: 'weight', value: 171 }, [`PATCH /api/alerts`]: { ids: [alert.id], assignee: 'Kim' }, [`POST /api/patients/${id}/simulate`]: { text: 'hello' }, [`POST /api/patients/${id}/message`]: { text: 'hello' } };
   for (const [route, names] of Object.entries(fields)) {
