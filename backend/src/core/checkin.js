@@ -241,8 +241,13 @@ async function applyText(a, text, step, lang) {
       if (c.diureticTaken != null && a.diureticTaken == null && !a.diureticAsked) a.diureticTaken = c.diureticTaken;
       if (c.spo2 != null && a.spo2 == null) { a.spo2 = c.spo2; a.spo2Asked = true; }
       if (c.chestPain || c.confusion || c.fainting) a.redflagsAsked = true;
+      // "No chest pain, no fainting" in a language the keyword lists don't cover comes back as
+      // false / false: that IS the answer to the red-flag question (the check-in used to sit on it forever).
+      if (step === 'redflags' && ['chestPain', 'confusion', 'fainting', 'dizzy'].some((k) => c[k] === false)) a.redflagsAsked = true;
     }
   }
+  // Model down or silent: a plain "no" in vi / hi / zh / ko / ar... with nothing alarming found is still a no.
+  if (step === 'redflags' && !a.redflagsAsked && !isEmergency(a) && !hasNative(lang) && INTL_NO.test(text)) a.redflagsAsked = true;
   const trace = { text, step, rules, llm: llmTrace, answers: { ...a } };
   return { understood: JSON.stringify(a) !== before, textEn, trace };
 }
@@ -252,6 +257,8 @@ function diff(from, to) {
   return Object.fromEntries(Object.entries(to).filter(([k, v]) => JSON.stringify(from[k]) !== JSON.stringify(v)));
 }
 
+// A leading "no" in the languages with their own red-flag lists (and a few without): không / ko, नहीं, 没有, 아니, لا, não, hindi, non.
+const INTL_NO = /^\s*(?:không|khong|ko|नहीं|नही|नहि|कोई नहीं|没有|没|不|无|沒有|아니(?:요|오)?|없(?:어요|습니다)|لا|ليس|não|nao|hindi|wala|non|nan)(?![\p{L}])/iu;
 const NONE_OF_THESE = /\b(none|nothing|neither|all good|ninguno|ninguna|nada)\b/i;
 
 // Two replies sent as one bubble (an acknowledgement + the next question).

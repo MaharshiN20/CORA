@@ -568,6 +568,18 @@ export function validateExtraction(text, out) {
     const numbersOk = type !== 'number' || (quoted && numberMatches(field, value, evidence));
     if (quoted && numbersOk) { res.fields[field] = value; continue; }
 
+    // A 7B model sometimes forgets the {value, evidence} wrapper (audit 2026-10-11 S5b: "3 pillows,
+    // ankles badly swollen" came back as flat swelling:"worse" and the nurse never saw the swelling).
+    // A flat value is kept when it can be checked against the text (a number that is in the message)
+    // or, for a yes/no/level, kept and flagged unverified so it is visible rather than silently lost.
+    // Never for a message the model flagged as an injection attempt.
+    if (!boxed && !res.injectionAttempt) {
+      if (type === 'number' ? numberMatches(field, value, String(text)) : true) {
+        res.fields[field] = value;
+        if (type !== 'number') res.unverified.push(field);
+        continue;
+      }
+    }
     // A message the model itself flagged as an injection attempt can't talk its way into a RED:
     // an emergency needs a verbatim quote there. Otherwise a bad quote is kept (see below).
     if (isEmergencyValue(field, value) && !res.injectionAttempt) {
