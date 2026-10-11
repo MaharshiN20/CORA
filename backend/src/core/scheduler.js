@@ -107,78 +107,91 @@ export function tick() {
 
 const MAX_JOBS_PER_TICK = 2000; // runaway guard
 
-// Runs due jobs one at a time in dueAt order, re-reading the queue after each job: a job
-// can schedule follow-ups that are already due during a demo-clock catch-up (a 09:00
-// check-in schedules its 11:00 and 15:00 ladder rungs), and those must run before a 20:00
-// reminder, not after it.
+// Runs due jobs one at a time in dueAt order. A job can schedule follow-ups that are already due
+// during a demo-clock catch-up (a 09:00 check-in schedules its 11:00 and 15:00 ladder rungs), and
+// those must run before a 20:00 reminder, not after it, so jobs added while running are merged into
+// the sorted due list. The due list is built once and kept: re-scanning and re-sorting every retained
+// job after every job was O(jobs) each time (15k jobs after a 72 h jump at 500 patients: 9-16 s of
+// blocked event loop, audit 2026-10-11). Overdue recurring jobs collapse to the newest per group.
 async function runDue() {
   const summary = { ran: 0, missed: 0, failed: 0 };
-  // Re-reading "everything pending" after every job scanned all retained jobs (15k after a 72 h demo
-  // jump at 500 patients: ~10 s of blocked event loop, audit 2026-10-11). The pending set is kept
-  // and only rebuilt when a job was added (follow-ups scheduled by a running job) or the array changed.
-  let all = jobs();
-  let seenLen = all.length;
-  let pending = all.filter((j) => j.status === 'pending');
+  const byDue = (a, b) => a.dueAt.localeCompare(b.dueAt);
+  const newest = new Map(); // collapse group -> the newest pending job of that group
+  const markMissed = (j) => {
+    j.status = 'missed';
+    j.ranAt = clock.nowISO();
+    summary.missed++;
+  };
+  // Returns the job to keep in the due list, or null when `j` was collapsed away.
+  const admit = (j) => {
+    if (!handlers.get(j.kind)?.collapse) return j;
+    const g = groupOf(j);
+    const prev = newest.get(g);
+    if (!prev || prev.dueAt < j.dueAt) {
+      if (prev) markMissed(prev);
+      newest.set(g, j);
+      return j;
+    }
+    markMissed(j);
+    return null;
+  };
+
+  const now0 = clock.now();
+  let seenLen = jobs().length;
+  const due = [];
+  for (const j of jobs().filter((x) => x.status === 'pending' && Date.parse(x.dueAt) <= now0).sort(byDue)) if (admit(j)) due.push(j);
+  let head = 0;
+
   for (let n = 0; n < MAX_JOBS_PER_TICK; n++) {
-    const now = clock.now();
-    if (jobs() !== all || jobs().length !== seenLen) {
-      all = jobs();
-      seenLen = all.length;
-      pending = all.filter((j) => j.status === 'pending');
-    } else pending = pending.filter((j) => j.status === 'pending');
-    const due = pending.filter((j) => Date.parse(j.dueAt) <= now).sort((a, b) => a.dueAt.localeCompare(b.dueAt));
-    if (!due.length) break;
-
-    // Collapse overdue recurring jobs: keep only the newest per group
-    // (default group = kind + patient; a kind can refine it, e.g. per med time slot).
-    const newest = new Map();
-    for (const j of due) {
-      if (!handlers.get(j.kind)?.collapse) continue;
-      const g = groupOf(j);
-      if (!newest.has(g) || newest.get(g).dueAt < j.dueAt) newest.set(g, j);
-    }
-    let collapsed = false;
-    for (const j of due) {
-      if (handlers.get(j.kind)?.collapse && newest.get(groupOf(j)) !== j) {
-        j.status = 'missed';
-        j.ranAt = clock.nowISO();
-        summary.missed++;
-        collapsed = true;
-      }
-    }
-    if (collapsed) continue; // re-read: the earliest due job may have changed
-
-    {
-      const j = due[0];
-      const h = handlers.get(j.kind);
-      j.status = 'running';
-      try {
-        if (!h) throw new Error(`no handler for "${j.kind}"`);
-        if (j.patientId && !store.getPatient(j.patientId)) throw new Error(`patient ${j.patientId} not found`);
-        const skip = h.skipIf?.(j);
-        j.result = skip ? { skipped: skip } : ((await h.run(j)) ?? null);
-        j.status = 'done';
-        summary.ran++;
-      } catch (err) {
-        summary.failed++;
-        j.attempts = (j.attempts ?? 0) + 1;
-        store.audit('job_failed', j.patientId, { kind: j.kind, error: err.message, attempt: j.attempts });
-        console.error(`[scheduler] ${j.kind} for ${j.patientId} failed (attempt ${j.attempts}):`, err.message);
-        if (j.attempts <= (h?.retries ?? 0)) {
-          // Try again later: back to pending, due after a growing delay, so one failed send
-          // doesn't lose the day's check-in.
-          j.status = 'pending';
-          j.retryOf = j.dueAt;
-          j.dueAt = new Date(clock.now() + h.retryDelayMs * j.attempts).toISOString();
-          j.lastError = err.message;
-          store.persist('job', { tick: summary });
-          continue;
+    // Jobs scheduled since the last look (by the job that just ran): merge the ones already due.
+    const all = jobs();
+    if (all.length !== seenLen) {
+      const now = clock.now();
+      for (const j of all.slice(seenLen)) {
+        if (j.status !== 'pending' || Date.parse(j.dueAt) > now || !admit(j)) continue;
+        let lo = head;
+        let hi = due.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (byDue(due[mid], j) <= 0) lo = mid + 1;
+          else hi = mid;
         }
-        j.status = 'failed';
-        j.error = err.message;
+        due.splice(lo, 0, j);
       }
-      j.ranAt = clock.nowISO();
+      seenLen = all.length;
     }
+    while (head < due.length && due[head].status !== 'pending') head++; // collapsed after being listed
+    if (head >= due.length) break;
+
+    const j = due[head++];
+    const h = handlers.get(j.kind);
+    j.status = 'running';
+    try {
+      if (!h) throw new Error(`no handler for "${j.kind}"`);
+      if (j.patientId && !store.getPatient(j.patientId)) throw new Error(`patient ${j.patientId} not found`);
+      const skip = h.skipIf?.(j);
+      j.result = skip ? { skipped: skip } : ((await h.run(j)) ?? null);
+      j.status = 'done';
+      summary.ran++;
+    } catch (err) {
+      summary.failed++;
+      j.attempts = (j.attempts ?? 0) + 1;
+      store.audit('job_failed', j.patientId, { kind: j.kind, error: err.message, attempt: j.attempts });
+      console.error(`[scheduler] ${j.kind} for ${j.patientId} failed (attempt ${j.attempts}):`, err.message);
+      if (j.attempts <= (h?.retries ?? 0)) {
+        // Try again later: back to pending, due after a growing delay, so one failed send
+        // doesn't lose the day's check-in.
+        j.status = 'pending';
+        j.retryOf = j.dueAt;
+        j.dueAt = new Date(clock.now() + h.retryDelayMs * j.attempts).toISOString();
+        j.lastError = err.message;
+        store.persist('job', { tick: summary });
+        continue;
+      }
+      j.status = 'failed';
+      j.error = err.message;
+    }
+    j.ranAt = clock.nowISO();
     store.persist('job', { tick: summary });
   }
   return summary;
