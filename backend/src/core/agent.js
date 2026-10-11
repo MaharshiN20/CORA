@@ -26,6 +26,7 @@ import * as meds from './meds.js';
 import * as pharmacy from './pharmacy.js';
 import * as outreach from './outreach.js';
 import * as companion from './companion.js';
+import * as smalltalk from './smalltalk.js';
 import * as lessons from './lessons.js';
 import * as sdoh from './sdoh.js';
 import * as parser from './parser.js';
@@ -227,6 +228,9 @@ async function handleFreeText(patient, input, { injection = false } = {}) {
   if (urgent) return { replies: urgent };
   // "hola" starts a check-in; "hola, mis tobillos están hinchados" must keep the swelling (below).
   if (START_WORDS.test(input.trim()) && !Object.keys(parser.parseFreeText(input)).length) return { replies: checkin.start(patient) };
+  // "thanks", "how are you", "who are you?": a line of their own, with the check-in one tap away.
+  const fixed = smalltalk.canned(patient, input);
+  if (fixed) return { replies: [{ ...fixed, buttons: offerCheckin(patient)[0].buttons }] };
   if (companion.DOSING_CHANGE.test(input)) return { replies: (await companion.answer(patient, input)).replies };
   // "118/72": a blood pressure (e.g. the nurse asked for it before a standing order).
   const bp = parser.parseBloodPressure(input);

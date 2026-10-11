@@ -16,6 +16,7 @@ import { applyDiureticAnswer } from './meds.js';
 import { localDayKey, tzOf } from './planning.js';
 import { queueReview } from './aireview.js';
 import * as companion from './companion.js';
+import * as smalltalk from './smalltalk.js';
 
 // Order matters. Emergencies are screened first, so a patient with chest pain is told to
 // call 911 after one tap instead of after five questions.
@@ -327,10 +328,17 @@ export async function handle(patient, { text, buttonData }) {
   let trace = null;
   const replies = [];
 
+  // Small talk from the patient ("thanks", "how are you", "who are you?") is answered, then the same
+  // question is asked again. A fixed line only matches a whole message, so there is nothing in it to parse.
+  let chat = null;
+  const mayChat = text && !buttonData && (state.reporter ?? 'patient') === 'patient';
+
   if (buttonData?.startsWith('ci:')) {
     const snapshot = { ...a };
     applyButton(a, buttonData);
     trace = { button: buttonData, step: state.state, rules: diff(snapshot, a), llm: null, answers: { ...a } };
+  } else if (mayChat && (chat = smalltalk.canned(patient, text, { lang: langOf(patient) }))) {
+    understood = false;
   } else if (text) {
     ({ understood, textEn, trace } = await applyText(a, text, state.state, langOf(patient)));
     // "Can I skip my water pill?" mid-check-in: the nurse gets it (never answered here),
@@ -343,7 +351,7 @@ export async function handle(patient, { text, buttonData }) {
   // A question in the middle of a check-in ("when should I take it?") used to get "Sorry, I didn't
   // quite catch that" for up to 6 hours (audit 2026-10-11 S5c): answer it from the discharge
   // instructions (or hand it to the nurse), then carry on with the same question.
-  if (text && !understood && !buttonData && companion.looksLikeQuestion(text) && text.trim().split(/\s+/).length >= 3) {
+  if (text && !understood && !chat && !buttonData && companion.looksLikeQuestion(text) && text.trim().split(/\s+/).length >= 3) {
     const res = await companion.answer(patient, text, { lang: langOf(patient), reporter: state.reporter ?? 'patient' });
     if (['answer', 'nurse', 'dosing'].includes(res.kind)) {
       replies.push(...res.replies);
@@ -362,6 +370,7 @@ export async function handle(patient, { text, buttonData }) {
   store.updatePatient(patient.id, { checkin: { ...state, state: next.id, answers: a } });
   const sameStep = next.id === state.state;
   if (next.id === 'weight' && a.weightPending != null) replies.push(weightConfirmPrompt(patient, a));
+  else if (chat) replies.push(combine(chat, prompt(patient, next.id)));
   else if (!understood && next.id === 'weight') replies.push(withSafetyNet(patient, reply(patient, 'bad_weight', {}, [[btn(langOf(patient), 'weight_skip', 'ci:wt:skip')]])));
   // Never re-send the identical question: say we noted what they told us, or that we
   // didn't catch it (and point at the buttons).
