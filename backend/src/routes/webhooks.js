@@ -20,6 +20,7 @@ import { remember, resolve, normalizePhone } from '../channels/options.js';
 import { transcribe } from '../integrations/speech.js';
 import { verifyWithingsSignature, withingsReadings } from '../integrations/devices.js';
 import { ingestReading } from '../core/devicetriage.js';
+import { redLock } from '../core/escalation.js';
 import * as sec from '../security.js';
 import { readBodyCapped } from '../channels/resilience.js';
 
@@ -169,12 +170,30 @@ async function inbound(link, phone, channel, body) {
     }
     if (mediaType.startsWith('audio/')) {
       const transcript = media ? await transcribe(media, mediaType, lang) : null;
-      if (!transcript) return [...said, { text: await localize(lang, t(lang, 'voice_unavailable')) }];
+      if (!transcript) return [...said, ...(await unheard(link, base, lang))];
       const replies = await handleInbound({ ...base, voiceTranscript: transcript });
       return [...said, { text: t(lang, 'heard', { text: transcript }) }, ...replies];
     }
   }
+  // Nothing to read (a video, a contact card, a WhatsApp location): the core is told what arrived
+  // instead of an empty message, so the nurse sees it and the person still gets an answer.
+  if (!text) return handleInbound({ ...base, text: Number(body.NumMedia) > 0 ? '[attachment]' : '[no text]' });
   return typed();
+}
+
+// A voice note nobody could transcribe, as in channels/telegram.js: the person is asked to type and,
+// because nobody heard what they said, told what to do in an emergency; both sides are logged for
+// the nurse. During a RED lock the core answers instead ("call 911" again, noted on the RED alert).
+async function unheard(link, base, lang) {
+  const shown = '[voice note]';
+  if (redLock(link.patient)) return handleInbound({ ...base, text: shown });
+  store.addMessage({ patientId: base.patientId, direction: 'in', from: link.role, to: link.role, text: shown, channel: base.channel });
+  const reply = {
+    text: `${await localize(lang, t(lang, 'voice_unavailable'))}\n\n${await localize(lang, t(lang, 'safety_net_911'))}`,
+    textEn: `${t('en', 'voice_unavailable')}\n\n${t('en', 'safety_net_911')}`,
+  };
+  store.addMessage({ patientId: base.patientId, direction: 'out', to: link.role, text: reply.text, textEn: reply.textEn, channel: base.channel });
+  return [reply];
 }
 
 function twiml(messages = []) {

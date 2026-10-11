@@ -295,10 +295,38 @@ test('a failed image download tells the patient instead of reaching the core', a
   assert.ok(!store.listAudit('p1').some((e) => e.type === 'photo_received'));
 });
 
-test('a voice note with no transcription key asks the patient to type', async () => {
+const AUDIO = { NumMedia: '1', MediaUrl0: 'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM1/Media/a1', MediaContentType0: 'audio/ogg' };
+
+test('a voice note with no transcription key asks the patient to type, says what to do in an emergency, and is logged', async () => {
   await sms('JOIN GARCIA1');
-  const res = await sms('', { NumMedia: '1', MediaUrl0: 'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM1/Media/a1', MediaContentType0: 'audio/ogg' });
-  assert.deepEqual(messagesIn(res.body).map(unescape), [i18n.t('es', 'voice_unavailable')]);
+  const res = await sms('', AUDIO);
+  const [reply] = messagesIn(res.body).map(unescape);
+  assert.ok(reply.startsWith(i18n.t('es', 'voice_unavailable')));
+  assert.ok(reply.includes(i18n.t('es', 'safety_net_911')), 'nobody heard the note');
+  const log = store.listMessages('p1');
+  assert.equal(log.filter((m) => m.direction === 'in').at(-1).text, '[voice note]');
+  assert.equal(log.filter((m) => m.direction === 'out').at(-1).text, reply);
+});
+
+test('during a RED lock a voice note nobody could hear repeats "call 911" and lands on the RED alert', async () => {
+  await sms('JOIN GARCIA1');
+  await sms('me duele mucho el pecho');
+  const res = await sms('', AUDIO);
+  assert.match(messagesIn(res.body).map(unescape).at(-1), /^🚨.*911/s);
+  const reds = store.listAlerts('p1').filter((x) => x.tier === 'RED');
+  assert.equal(reds.length, 1);
+  assert.ok(reds[0].reasons.some((r) => /messaged again/.test(r)));
+});
+
+test('a video, or a message with no words at all, is shown to the nurse as what it was and still gets an answer', async () => {
+  await sms('JOIN GARCIA1');
+  const video = await sms('', { NumMedia: '1', MediaUrl0: 'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM1/Media/v1', MediaContentType0: 'video/mp4' });
+  assert.equal(messagesIn(video.body).length, 1);
+  const inbound = () => store.listMessages('p1').filter((m) => m.direction === 'in').at(-1).text;
+  assert.equal(inbound(), '[attachment]');
+  const empty = await post('whatsapp', { From: `whatsapp:${PHONE}`, Body: '', Latitude: '33.77', Longitude: '-84.39' });
+  assert.equal(messagesIn(empty.body).length, 1);
+  assert.equal(inbound(), '[no text]');
 });
 
 // ---------- signature ----------
