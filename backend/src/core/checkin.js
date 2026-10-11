@@ -348,6 +348,9 @@ export async function handle(patient, { text, buttonData }) {
       understood = true;
     }
   }
+  // Friendly chat the rules and the parser read nothing in ("my grandson scored today"): the model may
+  // write one short line (core/smalltalk.js decides when; never for a question or a word about health).
+  if (mayChat && !understood && !chat) chat = await smalltalk.fromModel(patient, text, { lang: langOf(patient) });
   // A question in the middle of a check-in ("when should I take it?") used to get "Sorry, I didn't
   // quite catch that" for up to 6 hours (audit 2026-10-11 S5c): answer it from the discharge
   // instructions (or hand it to the nurse), then carry on with the same question.

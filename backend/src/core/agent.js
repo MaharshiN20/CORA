@@ -241,6 +241,11 @@ async function handleFreeText(patient, input, { injection = false } = {}) {
   if (Object.keys(parser.parseFreeText(input)).length) return checkin.startWith(patient, input);
   // A re-programming attempt with no symptom or medicine question: a safe canned reply, no LLM.
   if (injection) return { replies: [{ text: t(patient.language, 'companion_other'), textEn: t('en', 'companion_other') }] };
+  // Friendly chat with nothing about health in it ("my daughter is visiting this weekend"): the model may
+  // write one short line (core/smalltalk.js decides when). Before the companion, which answered that one
+  // with the follow-up-visit instructions.
+  const chat = await smalltalk.fromModel(patient, input);
+  if (chat) return { replies: [{ ...chat, buttons: offerCheckin(patient)[0].buttons }] };
   if (companion.looksLikeQuestion(input) || llm.enabled()) {
     const res = await companion.answer(patient, input);
     if (res.kind === 'symptom') return checkin.startWith(patient, input);
