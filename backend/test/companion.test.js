@@ -203,3 +203,13 @@ test('diet questions that mention pills are not medication-change questions (S2b
   assert.equal(companion.DOSING_CHANGE.test('can I skip my water pill'), true);
   assert.equal(companion.DOSING_CHANGE.test('Tell me the exact dose of metoprolol I should take'), true);
 });
+
+test('malformed model JSON (sourceIds as a string, answer as an object) never becomes a 500', async () => {
+  for (const bad of [{ category: 'question', covered: true, answer: 'x', sourceIds: 'd_diet' }, { category: 'question', covered: true, answer: { a: 1 }, sourceIds: ['d_diet'] }, { category: 'question', covered: 'yes', answer: 'x', sourceIds: ['d_diet'] }]) {
+    await mockLLM(bad);
+    const [r] = await say('p5', 'Is the parking lot free on Sundays?');
+    assert.ok(r.text, JSON.stringify(bad));
+    assert.equal(questions('p5').length >= 1, true, 'went to the nurse instead');
+    store.reset();
+  }
+});

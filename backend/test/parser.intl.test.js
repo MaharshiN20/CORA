@@ -306,8 +306,8 @@ test('a question the patient has to be asked again still carries the line', asyn
   assert.ok(again.at(-1).textEn.endsWith(LINE_EN()));
 });
 
-test('Hindi and Chinese get the line in their own language; a language with no template gets English', async () => {
-  for (const [lang, pattern] of [['hi', /911 पर कॉल करें/], ['zh', /请立即拨打 911/], ['ko', /call 911 right away/]]) {
+test('Hindi and Chinese get the line in their own language; Korean and Arabic get the hand-written line (core/urgent-fallback.js)', async () => {
+  for (const [lang, pattern] of [['hi', /911 पर कॉल करें/], ['zh', /请立即拨打 911/], ['ko', /911에 전화하세요/], ['ar', /911 فورًا/]]) {
     store.reset();
     store.updatePatient('p3', { language: lang });
     const question = (await agent.startCheckin('p3')).at(-1);

@@ -40,7 +40,7 @@ export async function sendNurseMessage(patientId, { text, template, time, from }
   let msg;
 
   if (template) {
-    const key = TEMPLATES[template];
+    const key = Object.hasOwn(TEMPLATES, template) ? TEMPLATES[template] : undefined;
     if (!key) throw Object.assign(new Error(`unknown template "${template}"`), { status: 400 });
     if (template === 'call_scheduled' && !time) throw Object.assign(new Error('time is required'), { status: 400 });
     msg = await templated(p, key, { nurse, time });

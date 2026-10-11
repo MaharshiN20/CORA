@@ -154,8 +154,9 @@ export async function answer(patient, question, { lang = patient.language, repor
       }
       if (out.category === 'symptom') return { kind: 'symptom', replies: [] };
       modelSaidOther = out.category === 'other';
-      const ids = (out.sourceIds ?? []).filter((id) => sections.some((s) => s.id === id));
-      if (out.covered && out.answer?.trim() && ids.length) {
+      // A 7B model returns sourceIds as a string, answer as an object...: anything off-shape counts as "not covered".
+      const ids = (Array.isArray(out.sourceIds) ? out.sourceIds : []).filter((id) => sections.some((s) => s.id === id));
+      if (out.covered === true && typeof out.answer === 'string' && out.answer.trim() && ids.length) {
         const sec = sections.find((s) => s.id === ids[0]);
         store.audit('companion', patient.id, { kind: 'answer', via: 'llm', sectionIds: ids });
         // The LLM already wrote in the patient's language: send as-is, cite in their language when native.
@@ -169,7 +170,9 @@ export async function answer(patient, question, { lang = patient.language, repor
   // The model failed, refused or called an in-scope question "other": the keywords get the last word.
   const hit = keywordAnswer(patient, question, L);
   if (hit) return hit;
-  if (modelSaidOther) return { kind: 'other', replies: [both(L, 'companion_other')] };
+  // In a language the keywords don't cover, "other" from a 7B model is not trustworthy (it called
+  // "can I eat canned soup?" in Vietnamese off-topic): a nurse sees it rather than a wrong refusal.
+  if (modelSaidOther && hasNative(lang)) return { kind: 'other', replies: [both(L, 'companion_other')] };
 
   await nurseTask(patient, question, { lang, reporter });
   store.audit('companion', patient.id, { kind: 'nurse', reporter });

@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as llm from './llm.js';
+import { URGENT_FALLBACK } from './urgent-fallback.js';
 
 const STRINGS = {
   en: {
@@ -439,6 +440,10 @@ export function plausibleTranslation(lang, source, out) {
   const own = SCRIPT_OF[lang];
   if (FOREIGN_SCRIPTS.some((n) => n !== own && scriptRe(n).test(text))) return false;
   if (own && !scriptRe(own).test(text)) return false; // "translated" into the wrong language
+  // No decoration the nurse didn't write (a 7B model adds "😷💪📌" to a weight message).
+  const emoji = (s) => new Set(String(s).match(/\p{Extended_Pictographic}/gu) ?? []);
+  const srcEmoji = emoji(src);
+  for (const e of emoji(text)) if (!srcEmoji.has(e)) return false;
   if (/^(sure|here is|here's|certainly|translation:)/i.test(text)) return false; // chat noise around the answer
   // A name after "Nurse", "Dr.", "Hi", "Good morning"... must come through as written (a model once
   // turned the patient "Fresh" into "鲜鲜"). Only names introduced this way are checked, so legitimate
@@ -457,6 +462,14 @@ const TRANSLATE_OPTS = { temperature: 0, deadlineMs: 6000, timeoutMs: 6000 };
 // is native or nothing can translate it (or the translation can't be trusted).
 export async function localize(lang, text) {
   if (hasNative(lang) || !text) return text;
+  // The "call 911 if..." line under a question comes from the hand-written table when there is one.
+  const safetyEn = t('en', 'safety_net_911');
+  if (URGENT_FALLBACK[lang] && text.endsWith(safetyEn)) {
+    const head = text.slice(0, -safetyEn.length).trimEnd();
+    return `${head ? `${await localize(lang, head)}
+
+` : ''}${URGENT_FALLBACK[lang].safety_net_911}`;
+  }
   const gen = fromGenerated(lang, text);
   if (gen?.complete) return gen.text;
   if (!llm.enabled()) return gen?.text ?? text; // offline: best effort (translated lines + English rest)
@@ -483,6 +496,10 @@ export async function localizeUrgent(lang, text, { deadlineMs = 2500 } = {}) {
   if (hasNative(lang) || !text) return text;
   const gen = fromGenerated(lang, text);
   if (gen?.complete) return gen.text;
+  // Hand-written 911 sentences for the languages with no generated templates: instant, no model.
+  const known = filledIndex.get(text);
+  const fixed = known && URGENT_FALLBACK[lang]?.[known.key];
+  if (fixed) return fill(fixed, known.vars);
   const ok = (s) => plausibleTranslation(lang, text, s); // keeps "911" and every number, in the right script
   const key = `urgent:${lang}:${text}`;
   if (cache.has(key)) return cache.get(key);

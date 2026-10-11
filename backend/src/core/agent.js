@@ -72,15 +72,30 @@ const DEDUP_TTL_MS = 10 * 60_000;
 const seen = new Map();
 export const resetInboundDedup = () => seen.clear();
 
+// Whatever goes wrong inside a handler (a model answering in a shape nobody expected, a bug), the patient
+// still gets a reply that says what to do in an emergency, instead of silence or a 500 (audit 2026-10-11).
+function guarded(msg) {
+  return processInbound(msg).catch((err) => {
+    console.error(`[agent] handler failed for ${msg.patientId}: ${err?.stack ?? err}`);
+    store.audit('handler_error', msg.patientId, { error: String(err?.message ?? err).slice(0, 200) });
+    const lang = hasNative(store.getPatient(msg.patientId)?.language) ? store.getPatient(msg.patientId).language : 'en';
+    return [{ text: `${t(lang, 'didnt_catch')}
+
+${t(lang, 'safety_net_911')}`, textEn: `${t('en', 'didnt_catch')}
+
+${t('en', 'safety_net_911')}` }];
+  });
+}
+
 export function handleInbound(msg) {
   const { patientId, channel, messageId } = msg;
-  if (messageId == null) return withPatientLock(patientId, () => processInbound(msg));
+  if (messageId == null) return withPatientLock(patientId, () => guarded(msg));
   const key = `${channel}:${patientId}:${messageId}`;
   const t = performance.now(); // monotonic: pacing, not domain time
   const hit = seen.get(key);
   if (hit && t - hit.at < DEDUP_TTL_MS) return hit.promise;
   if (seen.size > 2000) for (const [k, v] of seen) if (t - v.at >= DEDUP_TTL_MS) seen.delete(k);
-  const promise = withPatientLock(patientId, () => processInbound(msg));
+  const promise = withPatientLock(patientId, () => guarded(msg));
   seen.set(key, { at: t, promise });
   return promise;
 }

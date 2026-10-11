@@ -114,3 +114,13 @@ test('a name after "Hi" / "Nurse" must survive translation unchanged', () => {
   assert.equal(ok('zh', 'Nurse Kim will call you.', '护士金会给您打电话。'), false);
   assert.equal(ok('zh', 'Ask about Medicare Extra Help.', '请询问医疗保险额外帮助。'), true, 'other capitalised words may be translated');
 });
+
+test('emoji the source did not contain are rejected; the nurse\'s own emoji may stay', () => {
+  const ok = i18n.plausibleTranslation;
+  assert.equal(ok('tl', 'Your weight went up 3 lb.', 'Tumaas ang timbang mo ng 3 lb. 😷💪'), false);
+  assert.equal(ok('tl', 'Your weight went up 3 lb. 💙', 'Tumaas ang timbang mo ng 3 lb. 💙'), true);
+});
+
+test('an unknown nurse template name such as __proto__ is a 400', async () => {
+  await assert.rejects(nurse.sendNurseMessage('p1', { template: '__proto__', time: '2 PM' }), (e) => e.status === 400);
+});
