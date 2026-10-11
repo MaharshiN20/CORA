@@ -143,29 +143,38 @@ async function inbound(link, phone, channel, body) {
   const base = { patientId: link.patient.id, role: link.role, channel, messageId: body.MessageSid };
   const lang = langOf(link);
   const mediaType = body.MediaContentType0 ?? '';
+  const text = String(body.Body ?? '').trim();
+  // Typed words: a bare number answers the last numbered menu, anything else is free text.
+  const typed = (messageId = base.messageId) => {
+    const option = resolve(phone, text);
+    return handleInbound(option ? { ...base, messageId, buttonData: option.data } : { ...base, messageId, text });
+  };
   if (Number(body.NumMedia) > 0 && body.MediaUrl0 && /^(image|audio)\//.test(mediaType)) {
+    // The words sent with a picture are the person speaking, so they are read first, as a message of
+    // their own (they used to be dropped: "me duele el pecho" with a photo got "thanks for the
+    // photo"). If they are an emergency, the 911 reply stands alone. Its own id, so the core's
+    // duplicate check does not take the picture for a repeat of the text.
+    const said = text ? await typed(base.messageId && `${base.messageId}:text`) : [];
+    if (said.some((r) => r.urgent)) return said;
     let media;
     try {
       media = await downloadMedia(body.MediaUrl0);
     } catch (err) {
       console.error('[webhooks] media download failed:', err.message);
     }
-    if (media === 'too_large') return [{ text: await localize(lang, t(lang, 'file_too_large')) }];
+    if (media === 'too_large') return [...said, { text: await localize(lang, t(lang, 'file_too_large')) }];
     if (mediaType.startsWith('image/')) {
-      if (!media) return [{ text: await localize(lang, t(lang, 'photo_failed')) }];
-      return handleInbound({ ...base, photo: { base64: media.toString('base64'), mime: mediaType } });
+      if (!media) return [...said, { text: await localize(lang, t(lang, 'photo_failed')) }];
+      return [...said, ...(await handleInbound({ ...base, photo: { base64: media.toString('base64'), mime: mediaType } }))];
     }
     if (mediaType.startsWith('audio/')) {
       const transcript = media ? await transcribe(media, mediaType, lang) : null;
-      if (!transcript) return [{ text: await localize(lang, t(lang, 'voice_unavailable')) }];
+      if (!transcript) return [...said, { text: await localize(lang, t(lang, 'voice_unavailable')) }];
       const replies = await handleInbound({ ...base, voiceTranscript: transcript });
-      return [{ text: t(lang, 'heard', { text: transcript }) }, ...replies];
+      return [...said, { text: t(lang, 'heard', { text: transcript }) }, ...replies];
     }
   }
-  const text = String(body.Body ?? '').trim();
-  const option = resolve(phone, text);
-  if (option) return handleInbound({ ...base, buttonData: option.data });
-  return handleInbound({ ...base, text });
+  return typed();
 }
 
 function twiml(messages = []) {

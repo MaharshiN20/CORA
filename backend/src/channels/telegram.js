@@ -420,6 +420,17 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
   const onImage = (pick) =>
     linked(async (ctx, link) => {
       const lang = langOf(link);
+      const to = { patientId: link.patient.id, role: link.role, channel: 'telegram' };
+      // The words under a photo are the person speaking, so they are read first, as a message of
+      // their own ("me duele el pecho" under a picture used to get "thanks for the photo"). If
+      // they are an emergency, the 911 reply stands alone.
+      const caption = ctx.message.caption?.trim();
+      if (caption) {
+        typing(ctx);
+        const said = await handleInbound({ ...to, text: caption });
+        await replyAll(ctx, link, said);
+        if (said.some((r) => r.urgent)) return;
+      }
       const { size, mime } = pick(ctx.message);
       let buffer;
       try {
@@ -431,7 +442,7 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
       }
       const photo = { base64: buffer.toString('base64'), mime };
       typing(ctx);
-      const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', photo });
+      const replies = await handleInbound({ ...to, photo });
       await replyAll(ctx, link, replies);
     });
 

@@ -203,6 +203,38 @@ test('an MMS / WhatsApp image is downloaded with Twilio auth and handed to the c
   assert.equal(audit.data.mime, 'image/jpeg');
 });
 
+// The text sent with a picture is the patient speaking; it used to be dropped whenever media was attached.
+test('an emergency written next to an MMS picture gets the 911 reply and a RED alert', async () => {
+  await sms('JOIN GARCIA1');
+  const res = await sms('me duele mucho el pecho', { NumMedia: '1', MediaUrl0: 'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM1/Media/img1', MediaContentType0: 'image/jpeg' });
+  assert.equal(store.listAlerts('p1').filter((a) => a.tier === 'RED').length, 1);
+  const replies = messagesIn(res.body).map(unescape);
+  assert.match(replies.at(-1), /^🚨/);
+  assert.ok(!replies.includes(i18n.t('es', 'photo_received')), 'no "thanks for the photo" next to a 911 instruction');
+});
+
+test('calm text next to an MMS picture is read as a message and the photo is still saved', async () => {
+  await sms('JOIN GARCIA1');
+  await sms('mi cena de hoy', { NumMedia: '1', MediaUrl0: 'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM1/Media/img1', MediaContentType0: 'image/jpeg' });
+  const inbound = store.listMessages('p1').filter((m) => m.direction === 'in').map((m) => m.text);
+  assert.deepEqual(inbound, ['mi cena de hoy', '[photo]']);
+  assert.ok(store.listAudit('p1').some((e) => e.type === 'photo_received'));
+});
+
+test('text next to a picture that could not be downloaded is still read', async () => {
+  await sms('JOIN GARCIA1');
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (url, init) => (String(url).startsWith('https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM1/Media/') ? new Response('gone', { status: 404 }) : inner(url, init));
+  const err = console.error;
+  console.error = () => {};
+  try {
+    await sms('me duele mucho el pecho', { NumMedia: '1', MediaUrl0: 'https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM1/Media/img2', MediaContentType0: 'image/jpeg' });
+  } finally {
+    console.error = err;
+  }
+  assert.equal(store.listAlerts('p1').filter((a) => a.tier === 'RED').length, 1);
+});
+
 test('a failed image download tells the patient instead of reaching the core', async () => {
   await sms('JOIN GARCIA1');
   const inner = globalThis.fetch;

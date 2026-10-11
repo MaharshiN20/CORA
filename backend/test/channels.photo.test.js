@@ -40,7 +40,7 @@ afterEach(() => {
 const CHAT = 4242;
 let n = 0;
 
-function photoUpdate(chatId, { largest = 50_000 } = {}) {
+function photoUpdate(chatId, { largest = 50_000, caption } = {}) {
   return {
     update_id: ++n,
     message: {
@@ -48,6 +48,7 @@ function photoUpdate(chatId, { largest = 50_000 } = {}) {
       date: 0,
       chat: { id: chatId, type: 'private' },
       from: { id: chatId, is_bot: false, first_name: 'Maria' },
+      ...(caption && { caption }),
       photo: [
         { file_id: 'small', file_unique_id: 's', width: 90, height: 90, file_size: 1_000 },
         { file_id: 'medium', file_unique_id: 'm', width: 320, height: 320, file_size: 10_000 },
@@ -146,6 +147,37 @@ test('a failed download tells the patient and does not reach the core', async ()
   }
   assert.equal(h.lastSent(calls).text, i18n.t('es', 'photo_failed'));
   assert.equal(photoAudits().length, 0);
+});
+
+// ---------- captions ----------
+// The words under a photo are the patient speaking. They used to be dropped: a photo captioned
+// "me duele mucho el pecho" got "thanks for the photo".
+test('an emergency written as a photo caption gets the 911 reply and a RED alert', async () => {
+  const { bot, calls } = await linkedMaria();
+  await bot.handleUpdate(photoUpdate(CHAT, { caption: 'me duele mucho el pecho' }));
+  assert.equal(store.listAlerts('p1').filter((a) => a.tier === 'RED').length, 1);
+  assert.match(h.lastSent(calls).text, /^<b>🚨/, '911 is the last thing the patient sees');
+  assert.ok(!h.sent(calls).some((p) => p.text === i18n.t('es', 'photo_received')), 'no "thanks for the photo" next to a 911 instruction');
+  const inbound = store.listMessages('p1').filter((m) => m.direction === 'in').map((m) => m.text);
+  assert.ok(inbound.includes('me duele mucho el pecho'), 'the nurse sees the caption');
+});
+
+test('a calm caption is read as a message and the photo is still saved', async () => {
+  const { bot, calls } = await linkedMaria();
+  await bot.handleUpdate(photoUpdate(CHAT, { caption: 'mi cena de hoy' }));
+  const inbound = store.listMessages('p1').filter((m) => m.direction === 'in').map((m) => m.text);
+  assert.deepEqual(inbound, ['mi cena de hoy', '[photo]']);
+  assert.equal(photoAudits().length, 1);
+  assert.equal(h.lastSent(calls).text, i18n.t('es', 'photo_received'));
+  assert.equal(store.listAlerts('p1').length, 0);
+});
+
+test('a caption on an image sent as a file is read too', async () => {
+  const { bot } = await linkedMaria();
+  const update = documentUpdate(CHAT, { mime: 'image/png' });
+  update.message.caption = 'me duele mucho el pecho';
+  await bot.handleUpdate(update);
+  assert.equal(store.listAlerts('p1').filter((a) => a.tier === 'RED').length, 1);
 });
 
 test('a photo from an unlinked chat asks for a code', async () => {
