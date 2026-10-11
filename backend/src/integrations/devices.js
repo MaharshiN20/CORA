@@ -192,7 +192,9 @@ export function withingsReadings(payload) {
       reject('the device could not tell who was measured');
       continue;
     }
-    if (!Number.isFinite(g.date) || g.date <= 0) {
+    // Seconds since 1970. Past what a Date can hold (8.64e12 s) toISOString() throws, which used to
+    // turn one bad group into a 400 for the whole delivery.
+    if (!Number.isFinite(g.date) || g.date <= 0 || g.date > 8.64e12) {
       reject('no measurement date');
       continue;
     }

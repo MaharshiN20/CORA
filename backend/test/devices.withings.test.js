@@ -251,6 +251,19 @@ test('a reading dated in the future or more than 30 days ago is rejected', async
   assert.equal(readings().length, 0);
 });
 
+// A date no calendar can hold (milliseconds where seconds belong, or garbage) used to throw while the
+// payload was being read, so the whole delivery was answered 400 and its good measures were lost.
+test('one group with an impossible date is rejected; the rest of the delivery still counts', async () => {
+  const res = await deliver({
+    userid: USER,
+    measuregrps: [group(70020, [{ value: 71, type: 11, unit: 0 }], { date: 1e15 }), group(70021, [{ value: 72, type: 11, unit: 0 }], { date: 1e308 }), group(70022, [{ value: 73, type: 11, unit: 0 }])],
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.accepted.map((a) => a.value), [73]);
+  assert.deepEqual(res.body.rejected.map((r) => [r.grpid, r.reason]), [['70020', 'no measurement date'], ['70021', 'no measurement date']]);
+  assert.deepEqual(readings().map((r) => r.value), [73]);
+});
+
 test('a measure the scale could not attribute is not counted as the patient\'s', async () => {
   const res = await deliver({ userid: USER, measuregrps: [group(70009, [kg(95)], { attrib: 1 })] });
   assert.equal(res.body.accepted.length, 0);
