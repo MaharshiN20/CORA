@@ -150,10 +150,26 @@ function viHit(c, entry, { veto } = {}) {
   return false;
 }
 
+// "không đau ngực hay ngất xỉu": the "không" scopes over the whole "or" list, so every "hay /
+// hoặc" after a negator gets its own (audit 2026-10-11 S3).
+const VI_OR = new Set(['hay', 'hoặc', 'hoac']);
+function viDistribute(toks) {
+  const out = [];
+  let negSeen = false;
+  toks.forEach((w, i) => {
+    out.push(w);
+    const isNeg = VI_NEG.has(w) || (w === stripVi(w) && VI_NEG_PLAIN.has(w));
+    if (isNeg && !VI_NOT_NEGATING_NEXT.has(stripVi(toks[i + 1] ?? ''))) negSeen = true;
+    else if (negSeen && VI_OR.has(w)) out.push('không');
+  });
+  return out;
+}
+
 function vietnamese(text) {
   const found = {};
   const tokens = tokenize(String(text).normalize('NFC').toLowerCase());
-  for (const toks of splitClauses(tokens, viBreak)) {
+  for (const clauseToks of splitClauses(tokens, viBreak)) {
+    const toks = viDistribute(clauseToks);
     const plain = toks.map(stripVi);
     const c = { toks, plain, T: toks.join(' '), P: plain.join(' ') };
     if (viHit(c, VI.chestPain)) found.chestPain = true;
@@ -217,10 +233,16 @@ function zhHit(clause, list, { intrinsic = false, veto } = {}) {
   return false;
 }
 
+// "没有胸痛或晕倒": a negator scopes over the "or / and" list that follows, so each connector after
+// one is followed by its own 没有 (audit 2026-10-11 S3).
+const ZH_LIST = /或者|或是|或|还是|還是|以及|及|和|跟|与|與/gu;
+const ZH_ANY_NEG = /[没沒]有?|不是?|未曾?|[无無]|[别別]/u;
+const zhDistribute = (c) => c.replace(ZH_LIST, (conn, off) => (ZH_ANY_NEG.test(zhClean(c.slice(0, off))) ? `${conn}没有` : conn));
+
 function chinese(text) {
   const found = {};
   for (const raw of String(text).normalize('NFKC').toLowerCase().split(ZH_CLAUSE)) {
-    const c = (raw ?? '').replace(/\s+/g, '');
+    const c = zhDistribute((raw ?? '').replace(/\s+/g, ''));
     if (!c) continue;
     if (zhHit(c, ZH.chestPain)) found.chestPain = true;
     if (zhHit(c, ZH.confusion, { intrinsic: true })) found.confusion = true;
@@ -254,7 +276,8 @@ const hiBreak = (t, i) => (HI_CONJ.has(t[i]) ? 1 : 0);
 // Hindi negates after the symptom: "दर्द नहीं है". Words that may sit in between:
 const HI_AUX = 'में|मे|है|हैं|हूं|हो|होता|होती|होते|हुआ|हुई|हुए|रहा|रही|रहे|था|थी|थे|बिल्कुल|बिलकुल|तो|भी|कोई|अब|अभी|जरा|ज्यादा|कुछ|कभी|बहुत|इतना';
 // ...but "दर्द नहीं जा रहा / रुक रहा / कम हो रहा" means it is NOT stopping: still an emergency.
-const HI_NEG_AFTER = new RegExp(hiNorm(`^(?: (?:${HI_AUX}))* (?:नहीं|नही|नहि|ना|न|मत)(?![^ ])(?! (?:जा|गया|गई|गए|जाता|जाती|रुक|रुका|हट|हटा|कम|ठीक|थम|छूट|मिट))`), 'u');
+// "दर्द या बेहोशी नहीं है": the नहीं after an "or / and" item also covers the symptom before it.
+const HI_NEG_AFTER = new RegExp(hiNorm(`^(?: (?:या|और|तथा|व|अथवा)(?: \\S+){1,2})?(?: (?:${HI_AUX}))* (?:नहीं|नही|नहि|ना|न|मत)(?![^ ])(?! (?:जा|गया|गई|गए|जाता|जाती|रुक|रुका|हट|हटा|कम|ठीक|थम|छूट|मिट))`), 'u');
 const HI_NEG_BEFORE = new Set(['न', 'ना', 'बिना'].map(hiNorm));
 const HI_NEG_INSIDE = new RegExp(hiNorm('(?<![^ ])(?:नहीं|नही|नहि)(?![^ ])'), 'u');
 

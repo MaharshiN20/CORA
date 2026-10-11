@@ -79,6 +79,32 @@ const OTHER_EMERGENCY = {
   ],
 };
 
+// A symptom named without being reported as happening now. These are why a *question* about chest
+// pain used to lock a patient out for an hour (audit 2026-10-11 S3):
+//   "what should I do if I have chest pain?" / "the pharmacist said it might cause chest pain"
+//   "is chest pain normal after discharge?"   (a question, no "right now")
+//   "I had chest pain two years ago"          (history)
+// Anything that also says it is happening ("right now", "so bad", "won't stop") stays an emergency.
+const NOT_HAPPENING_BEFORE =
+  /\b(?:if|in case|whether|(?:might|may|could|can|would) (?:also )?cause|causes?|caused|causing|signs? of|side effects? (?:of|like|such as)|que hago si|que debo hacer si|puede causar|podria causar)\b/;
+const SIDE_EFFECT_AFTER = /^\W*(?:\w+\s+){0,3}(?:as a |is a |are a )?side effects?\b|^\W*(?:\w+\s+){0,3}efectos? secundarios?\b/;
+const NORMAL_QUESTION =
+  /^\s*(?:is|are|isn'?t|can|does|do|will|would|could|should|es|son|puede|esta|esta bien)\b.{0,60}\b(?:normal|ok|okay|common|expected|safe|dangerous|serious|a sign|something to worry|normales?|comun|peligros\w+|grave)/;
+// ("...after walking" / "when I climb stairs" describe a lived symptom: exertional pain is never trivia.)
+const HAPPENING_NOW =
+  /\b(?:after (?:walking|exercis\w*|climbing|stairs|eating|activity|a walk)|when i (?:walk|climb|lie|exert|exercise)|right now|currently|at the moment|tonight|this morning|just now|just started|started|won'?t stop|wont stop|keeps?|getting worse|so bad|really bad|very bad|worse|ahora|ahorita|ahora mismo|esta noche|no (?:para|se quita))\b/;
+const WAS_HAVING = /\b(?:had|used to (?:have|get)|have had|has had|tuve|tenia|he tenido)\b/;
+const LONG_AGO =
+  /\b(?:years? ago|months? ago|weeks? ago|decades? ago|last (?:year|month|decade)|in (?:19|20)\d\d|long time ago|as a (?:kid|child)|back in|hace\s+(?:\w+\s+){0,2}(?:ano|mes|semana)s?|ano pasado)\b/;
+function notHappeningNow(clause, m) {
+  const before = clause.slice(0, m.index);
+  const after = clause.slice(m.index + m[0].length);
+  if (HAPPENING_NOW.test(clause)) return false;
+  if (NOT_HAPPENING_BEFORE.test(before) || SIDE_EFFECT_AFTER.test(after)) return true;
+  if (NORMAL_QUESTION.test(clause)) return true;
+  return WAS_HAVING.test(before) && LONG_AGO.test(clause);
+}
+
 // "Chest and arm hurt" is one complaint, but the clause splitter would cut it at "and".
 const CHEST_AND_LIMB =
   /\b(chest|pecho)\s+(?:and|y|&)\s+(?:(?:my|mi|the|el|la)\s+)?(?:(?:left|right|izquierdo|derecho)\s+)?(?:arms?|jaw|back|shoulders?|neck|brazos?|mandibula|espalda|hombros?|cuello)\b/g;
@@ -92,7 +118,49 @@ const HEART_ATTACK_HISTORY =
 const LYING_DOWN =
   /\b(?:lie|lay|lying|laying) (?:down|flat)\b|\blying down\b|\bflat on my back\b|\bin bed\b|\bat night\b|\b(?:woke|wake|waking) up\b|\bacostad[oa]\b|\bal acostarme\b|\ben la cama\b|\bde noche\b|\bboca arriba\b|\bme desperte\b/;
 const NEGATION =
-  /\b(?:no|not|never|without|denies|deny|dont|don't|didnt|didn't|havent|haven't|hasnt|hasn't|isnt|isn't|aren't|wasnt|wasn't|sin|nunca|ni|tampoco)\b/;
+  /\b(?:no|not|never|without|denies|deny|dont|don't|didnt|didn't|havent|haven't|hasnt|hasn't|isnt|isn't|aren't|wasnt|wasn't|neither|nor|sin|nunca|ni|tampoco)\b/;
+
+// Negation scopes over a whole coordinated list: "no chest pain, dizziness or fainting" is three
+// denials, but the clause splitter cuts at the comma and "or" has no negator in front of it, so the
+// calm answer to the first check-in question used to raise a 911 (audit 2026-10-11 S3). Each
+// bare item after a negated item gets its own "no": "no chest pain, no dizziness, no fainting".
+// An item is 1-4 plain words; a pronoun / verb / "but" ends the list ("no chest pain, I feel dizzy").
+const NEG_LEAD = /\b(?:no|not|never|without|denies|deny|neither|sin|ni|ningun[oa]?)\s+/giu;
+const WORD = String.raw`(?!(?:or|nor|ni|o|u|and|y|but|pero)\b)[\p{L}'’-]+`;
+const ITEM = new RegExp(String.raw`${WORD}(?:\s+${WORD}){0,3}`, 'uy');
+const ITEM_SEP = /\s*(?:,\s*(?:(?:and|or|nor|y|o|ni|u)\b\s*)?|(?:or|nor|ni|o|u)\b\s*)/uy;
+const LIST_STOP =
+  /(?:^|\s)(?:i|im|i'm|ive|i've|my|me|mi|yo|tengo|feel|feeling|have|having|had|got|am|is|are|was|were|but|though|however|still|now|today|because|since|pero|siento|estoy|hoy|no|not|never|sin|ni)(?=\s|$)/u;
+const SYMPTOM_TERM = /chest|pain|ache|hurt|dizz|faint|breath|confus|swell|nausea|vomit|pecho|dolor|mare|desmay|aire|hincha/;
+export function distributeNegation(text) {
+  const s = String(text);
+  const inserts = [];
+  let m;
+  NEG_LEAD.lastIndex = 0;
+  while ((m = NEG_LEAD.exec(s))) {
+    let at = m.index + m[0].length;
+    ITEM.lastIndex = at;
+    const first = ITEM.exec(s);
+    // Only a negated *symptom* starts a list: "no appetite, chest pain" is not a denial of the chest pain.
+    if (!first || LIST_STOP.test(first[0].toLowerCase()) || !SYMPTOM_TERM.test(first[0].toLowerCase())) continue;
+    at += first[0].length;
+    for (;;) {
+      ITEM_SEP.lastIndex = at;
+      const sep = ITEM_SEP.exec(s);
+      if (!sep) break;
+      ITEM.lastIndex = at + sep[0].length;
+      const item = ITEM.exec(s);
+      if (!item || LIST_STOP.test(item[0].toLowerCase())) break;
+      inserts.push(item.index);
+      at = item.index + item[0].length;
+    }
+    NEG_LEAD.lastIndex = Math.max(NEG_LEAD.lastIndex, at);
+  }
+  let out = s;
+  for (const pos of inserts.reverse()) out = `${out.slice(0, pos)}no ${out.slice(pos)}`;
+  return out;
+}
+
 // Figurative "heart attack": "gave me a heart attack", "almost had a heart attack".
 const IDIOM_BEFORE_HEART_ATTACK = /(?:gave|give|giving|gives|going to give)(?: me)?(?: a)?\s*$|(?:almost|nearly) (?:had|have|gave)(?: me)?(?: a)?\s*$/;
 const CLAUSE_SPLIT = /[.;!?\n,]+|\b(?:but|pero|and|y|although|aunque|though|however|sino)\b/;
@@ -115,7 +183,7 @@ function negated(clause, index) {
 // The same check for a keyword found anywhere in a whole message: only the clause the match
 // sits in counts (text before it, back to the last punctuation / "but").
 function mentioned(text, re) {
-  const s = norm(text);
+  const s = distributeNegation(norm(text));
   const m = re.exec(s);
   if (!m) return false;
   const lastClause = s.slice(0, m.index).split(CLAUSE_SPLIT).pop() ?? '';
@@ -138,6 +206,7 @@ function clauseFlags(clause) {
       const m = re.exec(clause);
       if (!m) continue;
       if (negated(clause, m.index) || (hinglishNegated(clause, m) && !HINGLISH_NOT_LESS.test(clause.slice(m.index + m[0].length)))) continue;
+      if (notHappeningNow(clause, m)) continue;
       if (flag === 'chestPain' && /heart attack|infarto|ataque al corazon/.test(m[0])) {
         if (IDIOM_BEFORE_HEART_ATTACK.test(clause.slice(0, m.index))) continue;
         if (HEART_ATTACK_HISTORY.test(clause.slice(m.index + m[0].length))) continue; // "...5 years ago"
@@ -149,7 +218,7 @@ function clauseFlags(clause) {
   for (const [code, regexes] of Object.entries(OTHER_EMERGENCY)) {
     for (const re of regexes) {
       const m = re.exec(clause);
-      if (!m || negated(clause, m.index) || hinglishNegated(clause, m)) continue;
+      if (!m || negated(clause, m.index) || hinglishNegated(clause, m) || notHappeningNow(clause, m)) continue;
       found.otherEmergency = code;
       break;
     }
@@ -277,7 +346,7 @@ export function parseSpo2(text) {
 // (orthopnea here = "can't breathe when I lie down": reported so it isn't mistaken for RED.)
 export function detectRedFlags(text) {
   const found = {};
-  const normalized = norm(text).replace(CHEST_AND_LIMB, '$1');
+  const normalized = distributeNegation(norm(text)).replace(CHEST_AND_LIMB, '$1');
   for (const clause of normalized.split(CLAUSE_SPLIT)) {
     if (clause?.trim()) Object.assign(found, clauseFlags(clause));
   }
@@ -320,7 +389,7 @@ const MANY_PILLOWS = /\b(?:[3-9]|three|four|five|six|tres|cuatro|cinco|seis)\s+(
 // "extra pillows" / "the recliner" / "3 pillows", unless negated in its clause
 // ("no extra pillows") or described as usual ("my usual 3 pillows").
 function hasOrthopnea(text) {
-  return norm(text)
+  return distributeNegation(norm(text))
     .split(CLAUSE_SPLIT)
     .some((clause) => {
       if (!clause) return false;
