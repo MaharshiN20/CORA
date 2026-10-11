@@ -128,3 +128,47 @@ test('the fixed lines exist in English and Spanish', () => {
     assert.notEqual(es(key), en(key), `${key} (es)`);
   }
 });
+
+test('a bare greeting or goodbye is answered, with or without "nurse" on the end', async () => {
+  await agent.startCheckin('p5');
+  const hello = await say('p5', 'Good morning nurse!');
+  assert.ok(hello[0].text.startsWith(en('smalltalk_hello')), hello[0].text);
+  assert.ok(hello[0].text.includes(en('ask_redflags')));
+  const bye = await say('p5', 'ok good night');
+  assert.ok(bye[0].text.startsWith(en('smalltalk_bye')), bye[0].text);
+  assert.equal(store.getPatient('p5').checkin.state, 'redflags');
+
+  store.reset();
+  const out = await say('p5', 'goodbye');
+  assert.equal(out[0].text, en('smalltalk_bye'));
+  assert.ok(out[0].buttons?.flat().some((b) => b.data === 'cmd:checkin'));
+  assert.equal((await say('p1', 'Buenas noches'))[0].text, es('smalltalk_bye'));
+  assert.equal((await say('p1', 'buenos días doctora'))[0].text, es('smalltalk_hello'));
+});
+
+test('"thanks nurse" and "thank you doctor, god bless you" are thanks', async () => {
+  for (const text of ['thanks nurse', 'Thank you doctor, God bless you', 'ok thank you so much dear', 'gracias doctora, que Dios la bendiga']) {
+    assert.equal(smalltalk.cannedKey(text), 'smalltalk_thanks', text);
+  }
+});
+
+test('"hi" outside a check-in still starts the check-in', async () => {
+  const r = await say('p5', 'hi');
+  assert.equal(store.getPatient('p5').checkin.state, 'redflags');
+  assert.ok(r.some((x) => x.text.includes(en('ask_redflags'))));
+});
+
+test('a greeting or goodbye with anything else in it is not swallowed', async () => {
+  const r = await say('p5', 'good night, my chest hurts');
+  assert.ok(r.some((x) => x.urgent));
+  for (const text of ['good night my arm tingles', 'bye I think I am going to pass out', 'good morning nurse I fell last night', 'hello I need help', 'see you at the hospital']) {
+    assert.equal(smalltalk.cannedKey(text), null, text);
+  }
+});
+
+test('the greeting and goodbye lines exist in English and Spanish', () => {
+  for (const key of ['smalltalk_hello', 'smalltalk_bye']) {
+    assert.notEqual(en(key), key, `${key} (en)`);
+    assert.notEqual(es(key), en(key), `${key} (es)`);
+  }
+});

@@ -147,6 +147,8 @@ const STRINGS = {
     // Small talk (core/smalltalk.js). The "about" line must stay honest: automated, not a person.
     smalltalk_thanks: "You're welcome! 💙",
     smalltalk_how_are_you: "I'm doing well, thank you for asking! 💙",
+    smalltalk_hello: 'Hello! 💙',
+    smalltalk_bye: 'Goodbye for now! 💙',
     smalltalk_about:
       "I'm HeartBridge, an automated helper from your hospital care team, not a person. Every day I ask a few quick questions and pass your answers to your nurse. I also remind you about your medicines and answer questions from your discharge instructions. In an emergency, call 911.",
     // --- teach-back lessons (core/lessons.js) ---
@@ -303,6 +305,8 @@ const STRINGS = {
     companion_symptom_intro: 'Gracias por decírmelo. Hagamos un chequeo rápido para que su enfermera tenga los detalles.',
     smalltalk_thanks: '¡De nada! 💙',
     smalltalk_how_are_you: '¡Muy bien, gracias por preguntar! 💙',
+    smalltalk_hello: '¡Hola! 💙',
+    smalltalk_bye: '¡Hasta luego! 💙',
     smalltalk_about:
       'Soy HeartBridge, un asistente automático del equipo médico de su hospital, no una persona. Cada día le hago unas preguntas rápidas y paso sus respuestas a su enfermera. También le recuerdo sus medicinas y respondo preguntas con sus instrucciones de alta. En una emergencia, llame al 911.',
     lesson_intro: '📚 Consejo del corazón de hoy (1 minuto)',

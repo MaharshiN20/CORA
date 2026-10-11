@@ -5,8 +5,8 @@
 //
 // Two ways to answer, in this order:
 //
-// 1. Rules. The three commonest ones get a fixed line from core/i18n.js: no model needed, the same
-//    answer with every provider. A pattern has to match the WHOLE message, so "thanks, but my chest
+// 1. Rules. The commonest ones (thanks, how are you, who are you, a bare hello or goodbye) get a
+//    fixed line from core/i18n.js: no model needed, the same answer with every provider. A pattern has to match the WHOLE message, so "thanks, but my chest
 //    hurts" or "who are you? my husband passed out" is never swallowed here.
 //
 // 2. The model may write one short line ("my daughter is visiting this weekend" -> "How lovely,
@@ -35,10 +35,18 @@ import { norm, mentionsHealth } from './healthwords.js';
 // ---------- 1. fixed lines ----------
 
 const HELLO = String.raw`(?:(?:hi|hello|hey|hola|good (?:morning|afternoon|evening)|buenos dias|buenas tardes|buenas noches) )?`;
+// People write to "the nurse": "good morning nurse", "thanks doctor".
+const TO_WHOM = String.raw`(?: (?:nurse|doctor|doc|dear|friend|my friend|heartbridge|there|everyone|senorita|enfermera|enfermero|doctora|amiga|amigo))?`;
+const OK = String.raw`(?:(?:ok|okay|oh|ah|great|perfect|good|alright|muy bien|bueno|vale) )?`;
 const THANKS = new RegExp(
-  String.raw`^(?:(?:ok|okay|oh|ah|great|perfect|good|alright|muy bien|bueno|vale) )?` +
-    String.raw`(?:thank you|thanks|thank u|thx|muchas gracias|mil gracias|gracias)` +
-    String.raw`(?: (?:so much|very much|a lot|again|heartbridge|for (?:asking|checking in on me|checking on me|checking in|everything|your help|the help|that|the reminder)|por (?:todo|preguntar|su ayuda|la ayuda|eso|el recordatorio)))*$`,
+  String.raw`^${OK}(?:thank you|thanks|thank u|thx|muchas gracias|mil gracias|gracias)` +
+    String.raw`(?: (?:so much|very much|a lot|again|for (?:asking|checking in on me|checking on me|checking in|everything|your help|the help|that|the reminder)|por (?:todo|preguntar|su ayuda|la ayuda|eso|el recordatorio)` +
+    String.raw`|nurse|doctor|doc|dear|friend|my friend|heartbridge|senorita|enfermera|enfermero|doctora|amiga|amigo|god bless you|god bless|que dios (?:lo|la|le|te) bendiga|dios (?:lo|la|le|te) bendiga))*$`,
+);
+const HELLO_ONLY = new RegExp(String.raw`^(?:hi|hello|hey|hola|good (?:morning|afternoon|evening)|buenos dias|buenas tardes)${TO_WHOM}$`);
+const BYE = new RegExp(
+  String.raw`^${OK}(?:bye bye|bye|goodbye|good bye|good night|goodnight|see you(?: later| tomorrow| soon)?|talk to you (?:later|tomorrow|soon)|have a (?:nice|good|great|lovely) (?:day|night|evening|weekend)` +
+    String.raw`|buenas noches|adios|hasta (?:luego|manana|pronto)|nos vemos|que tenga (?:un )?buen dia|que tenga (?:una )?buena (?:noche|tarde))${TO_WHOM}$`,
 );
 const HOW_ARE_YOU = new RegExp(
   String.raw`^${HELLO}(?:and )?(?:how are you(?: doing)?(?: today| this morning)?|how's it going|how is it going|how are things|how do you do|como estas?(?: usted)?(?: hoy)?|que tal(?: estas?)?|como le va|como te va)$`,
@@ -57,6 +65,8 @@ export function cannedKey(text) {
   if (THANKS.test(s)) return 'smalltalk_thanks';
   if (HOW_ARE_YOU.test(s)) return 'smalltalk_how_are_you';
   if (ABOUT.test(s)) return 'smalltalk_about';
+  if (HELLO_ONLY.test(s)) return 'smalltalk_hello';
+  if (BYE.test(s)) return 'smalltalk_bye';
   return null;
 }
 
