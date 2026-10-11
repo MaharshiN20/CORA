@@ -163,6 +163,7 @@ Tests changed on purpose (each pinned the old behaviour): three voice tests and 
 - The model run used one small local model. A larger model would likely catch more; its parse still has no field for stroke signs or coughed blood.
 - Not tested: real Telegram, Twilio, WhatsApp, Groq or Withings; the dashboard with a slow API, on a phone-width screen, or with a screen reader; several nurses on different machines; multi-day soaks in real time; the spring-forward change.
 - The fuzzer talks to `POST /simulate`, so it does not exercise the Telegram or Twilio adapters; those were tested with the offline harnesses.
+- A message the patient **deletes** in Telegram: Telegram does not tell a bot about deletions, so the bot keeps acting on what it already read. Nothing to fix, worth knowing. Oversized photos and Telegram webhook mode were already covered by tests and showed nothing new beyond bug 1 above.
 
 ## 8. Reproducing
 
