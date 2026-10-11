@@ -217,7 +217,7 @@ test('launch in webhook mode registers the URL with the secret and never polls',
   const set = calls.find((c) => c.method === 'setWebhook').payload;
   assert.equal(set.url, `${URL_}/webhooks/telegram`);
   assert.equal(set.secret_token, SECRET);
-  assert.deepEqual(set.allowed_updates, ['message', 'callback_query', 'my_chat_member']);
+  assert.deepEqual(set.allowed_updates, ['message', 'edited_message', 'callback_query', 'my_chat_member']);
   assert.equal(set.drop_pending_updates, undefined, 'messages sent while we were down are kept');
 });
 

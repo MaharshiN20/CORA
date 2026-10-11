@@ -383,14 +383,16 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
   );
 
   // --- Free text (patient or caregiver) ---
-  dm.on(
-    'message:text',
-    linked(async (ctx, link) => {
-      typing(ctx);
-      const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', text: ctx.message.text });
-      await replyAll(ctx, link, replies);
-    }),
-  );
+  const onText = linked(async (ctx, link) => {
+    typing(ctx);
+    const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', text: ctx.msg.text });
+    await replyAll(ctx, link, replies);
+  });
+  dm.on('message:text', onText);
+  // An edit is the person speaking again: "estoy bien" corrected to "me duele el pecho" used to be
+  // ignored, because Telegram delivers it as edited_message and nothing listened for that. The new
+  // text is read like a fresh message. Commands are the exception (an edited /voice must not toggle twice).
+  dm.on('edited_message:text', async (ctx, next) => (ctx.msg.text.startsWith('/') ? undefined : next()), onText);
 
   // --- Voice notes: transcribe, show what we heard, then treat it like typed text ---
   dm.on(
@@ -468,9 +470,10 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
 // request must carry the secret we registered (header X-Telegram-Bot-Api-Secret-Token).
 export const WEBHOOK_PATH = '/webhooks/telegram';
 const SECRET_FORMAT = /^[A-Za-z0-9_-]{1,256}$/; // Telegram's rule for secret_token
-// The only update types the handlers use (my_chat_member: the bot was added to a group, which
-// is when its id gets logged for NURSE_CHAT_ID). Set explicitly so an older setting can't linger.
-const WEBHOOK_UPDATES = ['message', 'callback_query', 'my_chat_member'];
+// The only update types the handlers use (edited_message: a corrected message is read again;
+// my_chat_member: the bot was added to a group, which is when its id gets logged for NURSE_CHAT_ID).
+// Set explicitly, for polling too, so an older setting can't linger: Telegram remembers the last list.
+const WEBHOOK_UPDATES = ['message', 'edited_message', 'callback_query', 'my_chat_member'];
 
 // -> { mode: 'polling' } | { mode: 'webhook', url, secret } | { mode: 'refused', reason }
 // Read per call (not cached), so tests and ops can flip it live.
@@ -537,7 +540,7 @@ export async function launch(b, hook = webhookConfig()) {
   }
   receiving = 'polling';
   // grammY removes any registered webhook before it polls, so switching back needs no cleanup.
-  b.start({ onStart: (me) => console.log(`[telegram] @${me.username} polling`) }).catch((err) => {
+  b.start({ allowed_updates: WEBHOOK_UPDATES, onStart: (me) => console.log(`[telegram] @${me.username} polling`) }).catch((err) => {
     receiving = 'failed'; // 409 (a second poller) or 401: nothing is coming in any more
     console.error(describePollingError(err));
   });
