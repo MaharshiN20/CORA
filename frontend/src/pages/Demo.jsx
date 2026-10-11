@@ -14,11 +14,12 @@ const STEPS = [
   ['+3 days', 72],
 ];
 
+// Neutral cards; the tier shows as a coloured top edge so four pastel outlines don't compete.
 const SCENARIO_TONE = {
-  GREEN: 'border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50',
-  YELLOW: 'border-amber-200 hover:border-amber-400 hover:bg-amber-50',
-  RED: 'border-red-200 hover:border-red-400 hover:bg-red-50',
-  SILENT: 'border-slate-200 hover:border-slate-400 hover:bg-slate-50',
+  GREEN: 'before:bg-emerald-400 hover:ring-emerald-300',
+  YELLOW: 'before:bg-amber-400 hover:ring-amber-300',
+  RED: 'before:bg-red-500 hover:ring-red-300',
+  SILENT: 'before:bg-slate-300 hover:ring-slate-400',
 };
 
 export default function Demo() {
@@ -65,18 +66,21 @@ export default function Demo() {
             ) : (
               <div className="grid gap-2 sm:grid-cols-2">
                 {scenarios.map((s) => (
-                  <button key={s.name} disabled={busy} onClick={() => play(s)} className={`rounded-lg border p-3 text-left transition disabled:opacity-50 ${SCENARIO_TONE[s.tier] ?? SCENARIO_TONE.SILENT}`}>
-                    <div className="font-semibold">{s.title ?? s.name}</div>
-                    {s.description && <div className="mt-0.5 text-sm text-slate-600">{s.description}</div>}
+                  <button key={s.name} disabled={busy} onClick={() => play(s)} className={`relative overflow-hidden rounded-xl bg-white p-3.5 pt-4 text-left shadow-sm ring-1 ring-slate-200 transition before:absolute before:inset-x-0 before:top-0 before:h-1 hover:-translate-y-px hover:shadow-md active:translate-y-0 disabled:opacity-50 ${SCENARIO_TONE[s.tier] ?? SCENARIO_TONE.SILENT}`}>
+                    <div className="font-semibold leading-snug tracking-tight text-slate-900">{s.title ?? s.name}</div>
+                    {s.description && <div className="mt-1 text-[13px] leading-snug text-slate-600">{s.description}</div>}
                   </button>
                 ))}
               </div>
             )}
-            {lastRun?.scenario && (
-              <p className="mt-2 text-sm text-slate-600">
-                ▶ Playing <b>{lastRun.scenario.title}</b> in the phone simulator ({lastRun.steps} steps)…
-              </p>
-            )}
+            {/* Space is reserved even when empty: the line appearing used to shove the clock card down mid-demo. */}
+            <p className="mt-2 min-h-5 text-sm text-slate-600" role="status">
+              {lastRun?.scenario && (
+                <>
+                  ▶ Playing <b>{lastRun.scenario.title}</b> in the phone simulator ({lastRun.steps} steps)…
+                </>
+              )}
+            </p>
           </Card>
 
           <Card title="Demo clock">
@@ -91,7 +95,8 @@ export default function Demo() {
                     {label}
                   </Button>
                 ))}
-                <Button variant="danger" disabled={busy} onClick={() => act(() => api.demoReset())}>
+                {/* Quiet + confirmed: one misclick in front of judges would wipe the whole story. */}
+                <Button variant="quiet" disabled={busy} onClick={() => window.confirm('Reset the demo? This clears every alert, message and check-in.') && act(() => api.demoReset())}>
                   Reset demo
                 </Button>
               </div>
@@ -120,7 +125,7 @@ export default function Demo() {
           </Card>
         </div>
 
-        <Card title="Phone simulator">
+        <Card title="Phone simulator" className="lg:sticky lg:top-20 lg:self-start">
           {patients?.length ? <SimulatorPicker patients={patients} id={simPatientId} onPick={setSimId} /> : <Empty>No patients.</Empty>}
         </Card>
       </div>

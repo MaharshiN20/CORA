@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 // No real socket / network in tests.
 const api = { simulate: vi.fn() };
@@ -79,5 +79,44 @@ describe('messageOutcome', () => {
     expect(vi_.tone).toBe('warn');
     expect(vi_.text).toMatch(/sent in English/);
     expect(vi_.text).toMatch(/not on Telegram/);
+  });
+});
+
+describe('a burst of bot messages is revealed one at a time', () => {
+  const reply = (id, text) => ({ id, direction: 'out', to: 'patient', text });
+  it('history shows at once; new messages appear behind the typing dots, in order', async () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(<PhoneSimulator patient={patient} messages={[question]} />);
+      expect(screen.getByText('How is your breathing today?')).toBeInTheDocument();
+      expect(screen.queryByRole('status', { name: 'HeartBridge is typing' })).not.toBeInTheDocument();
+
+      rerender(<PhoneSimulator patient={patient} messages={[question, reply('m2', 'Thanks!'), reply('m3', 'Any swelling?')]} />);
+      expect(screen.getByRole('status', { name: 'HeartBridge is typing' })).toBeInTheDocument();
+      expect(screen.queryByText('Thanks!')).not.toBeInTheDocument();
+
+      await act(() => vi.advanceTimersByTimeAsync(1000));
+      expect(screen.getByText('Thanks!')).toBeInTheDocument();
+      expect(screen.queryByText('Any swelling?')).not.toBeInTheDocument();
+
+      await act(() => vi.advanceTimersByTimeAsync(1000));
+      expect(screen.getByText('Any swelling?')).toBeInTheDocument();
+      expect(screen.queryByRole('status', { name: 'HeartBridge is typing' })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('switching patient shows that history immediately (no replay)', () => {
+    const { rerender } = render(<PhoneSimulator patient={patient} messages={[question]} />);
+    rerender(<PhoneSimulator patient={{ ...patient, id: 'p9' }} messages={[reply('x1', 'Hola'), reply('x2', 'Adiós')]} />);
+    expect(screen.getByText('Hola')).toBeInTheDocument();
+    expect(screen.getByText('Adiós')).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'HeartBridge is typing' })).not.toBeInTheDocument();
+  });
+
+  it('the 911 message gets its own emergency label', () => {
+    render(<PhoneSimulator patient={patient} messages={[reply('e1', '🚨 Please CALL 911 NOW.')]} />);
+    expect(screen.getByText('Emergency instruction')).toBeInTheDocument();
   });
 });

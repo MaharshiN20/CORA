@@ -25,13 +25,32 @@ export function llmLabel(llm) {
   return `AI: ${LLM_NAMES[llm.provider] ?? llm.provider}${model}`;
 }
 
+// One quiet pill in the header ("Live" or "1 issue"); the per-service chips (and the model name,
+// which judges don't need to read) open on click.
 export function HealthStrip({ health }) {
+  const checks = [
+    { ok: health?.ok, label: 'API' },
+    { ok: health?.telegram, label: 'Telegram' },
+    { ok: health?.llm && health.llm.provider !== 'none', label: llmLabel(health?.llm) },
+  ];
+  const down = checks.filter((c) => !c.ok).length;
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <Pill ok={health?.ok} label="API" />
-      <Pill ok={health?.telegram} label="Telegram" />
-      <Pill ok={health?.llm && health.llm.provider !== 'none'} label={llmLabel(health?.llm)} />
+    <div className="flex items-center gap-1.5">
       {health?.demoOffsetMs > 0 && <Pill ok label={`Demo clock +${Math.round(health.demoOffsetMs / 3600000)}h`} />}
+      <details className="group relative">
+        <summary className={`flex cursor-pointer list-none items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition [&::-webkit-details-marker]:hidden ${down ? 'bg-amber-50 text-amber-800 ring-amber-200' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'}`}>
+          <span className="relative flex size-2">
+            {!down && <span className="absolute inline-flex size-full rounded-full bg-emerald-400 opacity-60 motion-safe:animate-ping" />}
+            <span className={`relative inline-flex size-2 rounded-full ${down ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+          </span>
+          {down ? `${down} ${down === 1 ? 'issue' : 'issues'}` : 'Live'}
+        </summary>
+        <div className="absolute right-0 top-full z-20 mt-2 flex w-max flex-col items-start gap-1.5 rounded-xl bg-white p-3 shadow-xl shadow-slate-900/10 ring-1 ring-slate-200">
+          {checks.map((c) => (
+            <Pill key={c.label} ok={c.ok} label={c.label} />
+          ))}
+        </div>
+      </details>
     </div>
   );
 }
@@ -74,14 +93,14 @@ export default function App() {
     <HealthContext.Provider value={health}>
       <div className="min-h-screen bg-slate-50 text-slate-900">
         {!bare && (
-          <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
+          <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/85 shadow-[0_1px_0_rgb(15_23_42/0.02)] backdrop-blur-md">
             <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 projector:max-w-none projector:flex-nowrap projector:py-2">
-              <h1 className="text-lg font-bold">
+              <h1 className="text-lg font-bold tracking-tight">
                 💙 HeartBridge <span className="ml-1 text-sm font-normal text-slate-500">care team</span>
               </h1>
               <nav className="flex gap-1">
                 {NAV.map(([to, label]) => (
-                  <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                  <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `rounded-lg px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
                     {label}
                   </NavLink>
                 ))}

@@ -9,7 +9,7 @@ import { formatDuration } from '../lib/worklist.js';
 import { languageName, shortDate, timeOf, pct } from '../lib/format.js';
 import { Card, Empty, ErrorNotice, TierBadge, RiskBadge, Button, AsyncButton, KindBadge, TREND_ICON } from '../components/ui.jsx';
 import PhoneSimulator from '../components/PhoneSimulator.jsx';
-import { AiBrief } from '../components/AlertCard.jsx';
+import { AiBrief, VitalsStrip } from '../components/AlertCard.jsx';
 import TimelineCard, { RiskTrend } from '../components/TimelineCard.jsx';
 import { downloadText } from '../lib/download.js';
 import DebugDrawer from '../components/DebugDrawer.jsx';
@@ -46,7 +46,7 @@ export default function Patient() {
             <Lessons p={p} />
           </div>
         </div>
-        <div className="space-y-4">
+        <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
           <Card title="Conversation" action={<AsyncButton variant="ghost" onClick={() => api.startCheckin(p.id)}>▶ Start check-in</AsyncButton>}>
             <PhoneSimulator patient={p} messages={p.messages ?? []} role={role} onRoleChange={setRole} />
           </Card>
@@ -82,9 +82,9 @@ function Header({ p }) {
   const s = p.signals ?? {};
   const [exporting, setExporting] = useState(false);
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80">
       <div>
-        <h2 className="text-2xl font-bold">
+        <h2 className="text-2xl font-bold tracking-tight">
           {p.name}
           {p.source === 'fhir' && <span className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 align-middle text-xs font-medium text-blue-700">from EHR</span>}
         </h2>
@@ -121,6 +121,10 @@ function Header({ p }) {
         ) : (
           <div className="text-slate-400">none</div>
         )}
+      </div>
+      {/* The numbers a nurse checks first, big and in one place instead of buried in the subtitle. */}
+      <div className="w-full">
+        <VitalsStrip patient={p} tier={p.lastTier} size="lg" />
       </div>
       <SilentAlarm p={p} />
     </div>

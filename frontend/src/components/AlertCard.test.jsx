@@ -160,3 +160,33 @@ describe('RED is unmistakable, and the card carries the vitals', () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe('premium card details', () => {
+  it('the SLA ring drains with the window (opened -> dueBy)', () => {
+    const { container, rerender } = render(<SlaCountdown alert={base} now={T0} />);
+    const ring = () => Number(container.querySelectorAll('circle')[1].getAttribute('stroke-dashoffset'));
+    expect(ring()).toBeCloseTo(0, 5); // full window left
+    rerender(<SlaCountdown alert={base} now={T0 + 7.5 * 60000} />);
+    const C = 2 * Math.PI * 5;
+    expect(ring()).toBeCloseTo(C / 2, 3); // half left
+    rerender(<SlaCountdown alert={base} now={T0 + 30 * 60000} />);
+    expect(ring()).toBeCloseTo(C, 3); // overdue: empty, never negative
+  });
+
+  it('risk is a neutral chip, never a tier colour', async () => {
+    const { RiskBadge } = await import('./ui.jsx');
+    render(<RiskBadge tier="High" trend="up" />);
+    const chip = screen.getByText(/High risk/).closest('span.rounded-full');
+    expect(chip.className).not.toMatch(/red|amber|emerald/);
+  });
+
+  it('shows SpO₂ only when a check-in reported one', () => {
+    const { VitalsStrip } = AlertCardModule;
+    const p = { id: 'p1', name: 'X', dryWeightLb: 172, weights: [{ ts: new Date(T0).toISOString(), lb: 174 }] };
+    const { rerender } = render(<VitalsStrip patient={p} tier="YELLOW" />);
+    expect(screen.queryByText('SpO₂')).not.toBeInTheDocument();
+    rerender(<VitalsStrip patient={{ ...p, checkins: [{ ts: new Date(T0).toISOString(), answers: { spo2: 91 } }] }} tier="YELLOW" />);
+    expect(screen.getByText('SpO₂')).toBeInTheDocument();
+    expect(screen.getByText('91').className).toMatch(/amber/);
+  });
+});

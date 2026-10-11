@@ -12,19 +12,34 @@ import { timeOf, languageName } from '../lib/format.js';
 import { TierBadge, KindBadge, Button } from './ui.jsx';
 import ProtocolCard from './ProtocolCard.jsx';
 
-// A RED card must be unmistakable from across the room (projector): tinted, ringed, thick edge.
+// A RED card must be unmistakable from across the room (projector), and nothing else may look
+// like one: only RED gets a tinted surface and a glow. Every tier gets a thin coloured spine
+// (the <span> at the card's left edge) instead of a heavy border + ring + full tint.
 const CARD = {
-  RED: 'border-red-300 border-l-red-600 bg-red-50/70 ring-2 ring-red-500/40',
-  YELLOW: 'border-slate-200 border-l-amber-400 bg-white',
-  INFO: 'border-slate-200 border-l-slate-300 bg-white',
+  RED: 'bg-linear-to-br from-red-50 via-white to-white ring-red-200 shadow-lg shadow-red-900/10',
+  YELLOW: 'bg-white ring-slate-200 shadow-sm',
+  INFO: 'bg-white ring-slate-200 shadow-sm',
+};
+const SPINE = {
+  RED: 'bg-linear-to-b from-red-500 to-red-700',
+  YELLOW: 'bg-linear-to-b from-amber-300 to-amber-500',
+  INFO: 'bg-linear-to-b from-slate-200 to-slate-400',
 };
 
 // The SLA pill speaks the alert's tier: a RED is red however much time is left.
 function slaTone(tier, s) {
-  if (tier === 'RED') return s.overdue ? 'animate-pulse bg-red-600 text-white ring-2 ring-red-300' : 'bg-red-600 text-white';
-  if (s.overdue) return 'animate-pulse bg-red-600 text-white';
-  if (tier === 'YELLOW') return s.remainingMs < 60 * 60000 ? 'bg-amber-400 text-amber-950' : 'bg-amber-100 text-amber-900';
-  return 'bg-slate-100 text-slate-600';
+  if (tier === 'RED') return s.overdue ? 'motion-safe:animate-pulse bg-red-600 text-white ring-red-300' : 'bg-red-600 text-white ring-red-700/40 shadow-sm shadow-red-600/30';
+  if (s.overdue) return 'motion-safe:animate-pulse bg-red-600 text-white ring-red-700/40';
+  if (tier === 'YELLOW') return s.remainingMs < 60 * 60000 ? 'bg-amber-400 text-amber-950 ring-amber-500/50' : 'bg-amber-50 text-amber-900 ring-amber-300';
+  return 'bg-white text-slate-600 ring-slate-300';
+}
+
+// How much of the SLA window is left (1 = just opened, 0 = due). The window is opened -> dueBy,
+// so it follows whatever SLA the backend set per tier instead of hardcoding 15 min / 4 h / 24 h.
+function slaFraction(alert, s) {
+  const total = Date.parse(alert.dueBy) - Date.parse(alert.ts);
+  if (!Number.isFinite(total) || total <= 0) return s.overdue ? 0 : 1;
+  return Math.max(0, Math.min(1, s.remainingMs / total));
 }
 
 // Ticks by itself (on the demo clock), so the page doesn't re-render every card each second.
@@ -33,9 +48,16 @@ export function SlaCountdown({ alert, now }) {
   const own = useNow(now == null ? 1000 : 3_600_000, useHealth()?.demoOffsetMs ?? 0);
   const s = sla(alert, now ?? own);
   if (!s) return null;
+  const R = 5;
+  const C = 2 * Math.PI * R;
   return (
-    <span data-testid="sla" className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${slaTone(alert.tier, s)}`}>
-      ⏱ {s.label}
+    <span data-testid="sla" className={`inline-flex items-center gap-1.5 rounded-full py-0.5 pl-1 pr-2.5 text-xs font-semibold tabular-nums ring-1 ring-inset ${slaTone(alert.tier, s)}`}>
+      {/* Draining ring: how much of the window is left, readable at a glance without the number. */}
+      <svg viewBox="0 0 14 14" className="size-3.5 -rotate-90" aria-hidden>
+        <circle cx="7" cy="7" r={R} fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
+        <circle cx="7" cy="7" r={R} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - slaFraction(alert, s))} />
+      </svg>
+      {s.label}
     </span>
   );
 }
@@ -61,32 +83,91 @@ export function AiBrief({ alert }) {
 
 const signed = (n) => (n == null ? '—' : `${n > 0 ? '▲' : n < 0 ? '▼' : ''}${Math.abs(Math.round(n * 10) / 10)}`);
 
-// What the nurse needs to act without clicking through: today's weight and its trend, the
-// last week as a sparkline against dry weight, and how to reach the patient.
-export function VitalsStrip({ patient, tier }) {
+// Same thresholds the rules use to flag fluid (2 lb/24h, 5 lb over dry), so colour = "a rule cares".
+const toneDry = (d) => (d == null ? 'none' : d >= 5 ? 'red' : d >= 2 ? 'amber' : 'ok');
+const tone24 = (d) => (d == null ? 'none' : d >= 2 ? 'red' : d >= 1 ? 'amber' : 'ok');
+const toneSpo2 = (v) => (v == null ? 'none' : v < 90 ? 'red' : v < 93 ? 'amber' : 'ok');
+const TEXT = { ok: 'text-emerald-700', amber: 'text-amber-700', red: 'text-red-600', none: 'text-slate-400' };
+const FILL = { ok: 'bg-emerald-500', amber: 'bg-amber-500', red: 'bg-red-500', none: 'bg-slate-300' };
+const DRY_GAUGE_MAX = 7; // lb over dry weight at which the gauge is full
+
+function Cell({ label, children, foot, size }) {
+  return (
+    <div className={`min-w-0 ${size === 'lg' ? 'px-4 py-3' : 'px-3 py-2'}`}>
+      <dt className="truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">{label}</dt>
+      <dd className="mt-0.5 flex items-baseline gap-1 tabular-nums">{children}</dd>
+      {foot && <div className="mt-1 text-[11px] leading-tight text-slate-500">{foot}</div>}
+    </div>
+  );
+}
+
+// Latest pulse-ox from a check-in (device or typed), if the patient ever gave one.
+const latestSpo2 = (patient) => (patient?.checkins ?? []).findLast((c) => c.answers?.spo2 != null);
+
+// What the nurse needs to act without clicking through: today's weight and its 24h change,
+// how far over dry weight (gauge with the 2 / 5 lb lines), SpO₂ when we have one, and how to
+// reach the patient. size="lg" is the patient-page header version.
+export function VitalsStrip({ patient, tier, size = 'sm' }) {
   const weights = patient?.weights ?? [];
   if (!weights.length) return null;
   const last = weights.at(-1).lb;
   const dry = patient.dryWeightLb;
-  const week = weights.slice(-7).map((w) => ({ lb: w.lb }));
-  const values = week.map((w) => w.lb).concat(dry ? [dry] : []);
+  const overDry = dry != null ? last - dry : null;
+  const week = weights.slice(-7).map((w) => w.lb);
+  const values = week.concat(dry ? [dry] : []);
   const stroke = tier === 'RED' ? '#dc2626' : tier === 'YELLOW' ? '#d97706' : '#2563eb';
   const d24 = patient.signals?.weightDelta24h;
+  const ox = latestSpo2(patient);
+  const big = size === 'lg' ? 'text-2xl' : 'text-lg';
+  const cols = ox ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3';
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-700 tabular-nums" data-testid="vitals">
-      <span>
-        <b className="text-sm text-slate-900">{last} lb</b> <span className={d24 >= 2 ? 'font-semibold text-red-700' : ''}>{signed(d24)} /24h</span>
-        {dry != null && <span className={last - dry >= 5 ? ' font-semibold text-red-700' : ''}> · {signed(last - dry)} vs dry</span>}
-      </span>
-      {week.length > 1 && (
-        <Sparkline values={values} points={week.map((w) => w.lb)} dry={dry} stroke={stroke} />
-      )}
-      {patient.contactPhone && (
-        <a href={`tel:${patient.contactPhone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline">
-          <Phone size={12} aria-hidden /> {patient.contactPhone}
-        </a>
-      )}
-      {patient.language && <span className="text-slate-500">{languageName(patient.language)}</span>}
+    <div data-testid="vitals" className={`${size === 'lg' ? '' : 'mt-3'} overflow-hidden rounded-xl bg-linear-to-b from-slate-50 to-slate-100/60 ring-1 ring-inset ring-slate-200/90`}>
+      <dl className={`grid ${cols} divide-x divide-slate-200/80`}>
+        <Cell
+          label="Weight"
+          size={size}
+          foot={
+            <span className="flex items-center justify-between gap-2">
+              <span className={`whitespace-nowrap font-semibold ${TEXT[tone24(d24)]}`}>{signed(d24)} /24h</span>
+              {week.length > 1 && <Sparkline values={values} points={week} dry={dry} stroke={stroke} />}
+            </span>
+          }
+        >
+          <span className={`${big} whitespace-nowrap font-semibold tracking-tight text-slate-900`}>{last} lb</span>
+        </Cell>
+        <Cell
+          label={dry != null ? `Dry weight ${dry} lb` : 'Dry weight'}
+          size={size}
+          foot={
+            overDry != null && (
+              <div className="relative mt-1.5 h-1.5 rounded-full bg-slate-200" aria-hidden>
+                <div className={`h-full rounded-full ${FILL[toneDry(overDry)]}`} style={{ width: `${Math.max(0, Math.min(1, overDry / DRY_GAUGE_MAX)) * 100}%` }} />
+                {[2, 5].map((t) => (
+                  <span key={t} className="absolute top-1/2 h-2.5 w-px -translate-y-1/2 bg-slate-400/80" style={{ left: `${(t / DRY_GAUGE_MAX) * 100}%` }} />
+                ))}
+              </div>
+            )
+          }
+        >
+          <span className={`${big} font-semibold tracking-tight ${TEXT[toneDry(overDry)]}`}>{signed(overDry)}</span>
+          <span className="whitespace-nowrap text-xs text-slate-500"> vs dry</span>
+        </Cell>
+        {ox && (
+          <Cell label="SpO₂" size={size} foot={`at ${timeOf(ox.ts)}`}>
+            <span className={`${big} font-semibold tracking-tight ${TEXT[toneSpo2(ox.answers.spo2)]}`}>{ox.answers.spo2}</span>
+            <span className="text-xs text-slate-500">%</span>
+          </Cell>
+        )}
+        <Cell label="Reach" size={size} foot={patient.language && languageName(patient.language)}>
+          {patient.contactPhone ? (
+            <a href={`tel:${patient.contactPhone.replace(/[^\d+]/g, '')}`} className="inline-flex min-w-0 items-center gap-1 truncate text-sm font-semibold text-blue-700 hover:underline">
+              <Phone size={13} aria-hidden /> {patient.contactPhone}
+            </a>
+          ) : (
+            <span className="text-sm text-slate-400">no phone</span>
+          )}
+        </Cell>
+      </dl>
     </div>
   );
 }
@@ -129,7 +210,8 @@ function AlertCard({ alert, patient, now, update = api.updateAlert, highlight = 
   };
 
   return (
-    <article id={`alert-${alert.id}`} className={`rounded-xl border border-l-[6px] p-4 shadow-sm transition-shadow ${CARD[alert.tier] ?? CARD.INFO} ${highlight ? 'ring-4 ring-blue-400' : ''}`} aria-label={`${alert.tier} alert for ${patient?.name ?? alert.patientId}`}>
+    <article id={`alert-${alert.id}`} className={`relative overflow-hidden rounded-2xl py-4 pl-6 pr-4 ring-1 transition-shadow hover:shadow-md ${CARD[alert.tier] ?? CARD.INFO} ${highlight ? '!ring-4 !ring-blue-400' : ''}`} aria-label={`${alert.tier} alert for ${patient?.name ?? alert.patientId}`}>
+      <span aria-hidden className={`absolute inset-y-0 left-0 w-1.5 ${SPINE[alert.tier] ?? SPINE.INFO}`} />
       <p id={`alert-${alert.id}-about`} className="sr-only">
         {patient?.name ?? alert.patientId}: {alert.title ?? alert.kind}
       </p>
@@ -146,7 +228,7 @@ function AlertCard({ alert, patient, now, update = api.updateAlert, highlight = 
         <TierBadge tier={alert.tier} />
         <KindBadge alert={alert} />
         {patient ? (
-          <Link to={`/patients/${patient.id}`} className="font-semibold text-slate-900 hover:underline">
+          <Link to={`/patients/${patient.id}`} className="text-[15px] font-semibold tracking-tight text-slate-900 underline-offset-2 hover:underline projector:text-lg">
             {patient.name}
           </Link>
         ) : (
@@ -155,14 +237,17 @@ function AlertCard({ alert, patient, now, update = api.updateAlert, highlight = 
         {alert.source === 'ai_review' && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-xs font-medium text-violet-800">AI review</span>}
         <span className="ml-auto flex items-center gap-2">
           <SlaCountdown alert={alert} now={now} />
-          <span className="text-xs capitalize text-slate-500">{alert.status}</span>
+          {alert.status !== 'open' && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium capitalize text-emerald-700 ring-1 ring-inset ring-emerald-200">{alert.status}</span>}
         </span>
       </div>
-      {alert.title && <p className={`mt-2 font-semibold projector:text-lg ${alert.tier === 'RED' ? 'text-red-900' : 'text-slate-800'}`}>{alert.title}</p>}
+      {alert.title && <p className={`mt-2 text-[15px] font-semibold leading-snug tracking-tight projector:text-xl ${alert.tier === 'INFO' ? 'text-slate-700' : 'text-slate-900'}`}>{alert.title}</p>}
       {alert.reasons?.length > 0 && (
-        <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm text-slate-700">
+        <ul className="mt-2 space-y-1 text-[13px] leading-snug text-slate-600 projector:text-base">
           {alert.reasons.map((r, i) => (
-            <li key={i}>{r}</li>
+            <li key={i} className="flex gap-2">
+              <span aria-hidden className="mt-[7px] size-1 shrink-0 rounded-full bg-slate-400" />
+              {r}
+            </li>
           ))}
         </ul>
       )}
@@ -223,8 +308,8 @@ export default memo(AlertCard);
 // A 7-day weight line as plain SVG: the worklist is the landing page, and charting it with recharts
 // put the whole charting library in the main bundle (one 815 kB chunk before; audit 2026-10-11).
 function Sparkline({ values, points, dry, stroke }) {
-  const W = 90;
-  const H = 28;
+  const W = 64;
+  const H = 18;
   const pad = 2;
   const lo = Math.min(...values) - 0.5;
   const hi = Math.max(...values) + 0.5;
