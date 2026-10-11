@@ -144,6 +144,13 @@ const STRINGS = {
     companion_dosing: "Only your care team can change how you take your medicines, so I've sent your question to your nurse. Until they reply, please keep taking them as prescribed. 💊",
     companion_other: 'I can help with questions about your heart, medicines, food and daily care. For anything else, please ask your family or care team. 💙',
     companion_symptom_intro: "Thanks for telling me. Let's do a quick check-in so your nurse has the details.",
+    // Small talk (core/smalltalk.js). The "about" line must stay honest: automated, not a person.
+    smalltalk_thanks: "You're welcome! 💙",
+    smalltalk_how_are_you: "I'm doing well, thank you for asking! 💙",
+    smalltalk_hello: 'Hello! 💙',
+    smalltalk_bye: 'Goodbye for now! 💙',
+    smalltalk_about:
+      "I'm HeartBridge, an automated helper from your hospital care team, not a person. Every day I ask a few quick questions and pass your answers to your nurse. I also remind you about your medicines and answer questions from your discharge instructions. In an emergency, call 911.",
     // --- teach-back lessons (core/lessons.js) ---
     lesson_intro: "📚 Today's 1-minute heart tip",
     lesson_right: "✅ That's right!",
@@ -296,6 +303,12 @@ const STRINGS = {
     companion_dosing: 'Solo su equipo médico puede cambiar cómo toma sus medicinas, así que envié su pregunta a su enfermera. Mientras le responden, siga tomándolas como se las recetaron. 💊',
     companion_other: 'Puedo ayudarle con preguntas sobre su corazón, medicinas, comida y cuidado diario. Para otras cosas, pregunte a su familia o a su equipo médico. 💙',
     companion_symptom_intro: 'Gracias por decírmelo. Hagamos un chequeo rápido para que su enfermera tenga los detalles.',
+    smalltalk_thanks: '¡De nada! 💙',
+    smalltalk_how_are_you: '¡Muy bien, gracias por preguntar! 💙',
+    smalltalk_hello: '¡Hola! 💙',
+    smalltalk_bye: '¡Hasta luego! 💙',
+    smalltalk_about:
+      'Soy HeartBridge, un asistente automático del equipo médico de su hospital, no una persona. Cada día le hago unas preguntas rápidas y paso sus respuestas a su enfermera. También le recuerdo sus medicinas y respondo preguntas con sus instrucciones de alta. En una emergencia, llame al 911.',
     lesson_intro: '📚 Consejo del corazón de hoy (1 minuto)',
     lesson_right: '✅ ¡Correcto!',
     lesson_wrong: 'No exactamente, y está bien. 💙',

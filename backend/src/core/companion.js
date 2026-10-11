@@ -15,6 +15,7 @@ import * as store from '../store.js';
 import * as llm from './llm/index.js';
 import { t, hasNative, toEnglish } from './i18n.js';
 import { allSections } from '../conditions/chf/content.js';
+import { mentionsHealth } from './healthwords.js';
 
 const LANG_NAMES = { en: 'English', es: 'Spanish', vi: 'Vietnamese', zh: 'Simplified Chinese', hi: 'Hindi', ko: 'Korean', ht: 'Haitian Creole', ar: 'Arabic', pt: 'Portuguese', tl: 'Tagalog' };
 
@@ -182,7 +183,10 @@ export async function answer(patient, question, { lang = patient.language, repor
   if (hit) return hit;
   // In a language the keywords don't cover, "other" from a 7B model is not trustworthy (it called
   // "can I eat canned soup?" in Vietnamese off-topic): a nurse sees it rather than a wrong refusal.
-  if (modelSaidOther && hasNative(lang)) return { kind: 'other', replies: [both(L, 'companion_other')] };
+  // Nor is it when the question has a word about health in it: "what is heart failure" got "I can help
+  // with questions about your heart... for anything else, please ask your family".
+  const healthQuestion = looksLikeQuestion(question) && mentionsHealth(question);
+  if (modelSaidOther && hasNative(lang) && !healthQuestion) return { kind: 'other', replies: [both(L, 'companion_other')] };
 
   await nurseTask(patient, question, { lang, reporter });
   store.audit('companion', patient.id, { kind: 'nurse', reporter });
