@@ -36,7 +36,7 @@ const WORDS = new Set(
 
 // Word starts.
 const STEMS = words(`
-  chest heart breath lung cough wheez chok gasp throat head face mouth tongue jaw neck shoulder finger
+  chest heart cardi breath lung cough wheez chok gasp throat head face mouth tongue jaw neck shoulder finger
   ankle knee stomach belly tummy abdom skin blood bleed bled body bone muscle vision
   feel felt pain hurt ache aching sore pressure tight squeez heavy heavi dizz lighthead woozy faint
   collaps weak tired exhaust fatigue sleep slept asleep drows letharg nause vomit puk sick unwell fever
