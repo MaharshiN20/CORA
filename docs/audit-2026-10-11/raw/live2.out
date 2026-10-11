@@ -1,0 +1,108 @@
+=== S3 clean: idle patient, ONE emergency message each. columns: MODEL-ON | RULES-ONLY
+[es] se me va a salir el corazón del pecho, me duele muchísimo   (severe chest pain)
+      MODEL-ON : RED ✔ calm   2890ms  "Gracias por decírmelo. Hagamos un chequeo rápido para q"
+      RULES-ONLY: NO ALERT ✘ calm     23ms  "¡Hola Fresh! Soy su asistente HeartBridge. ¿Quiere hace"
+[es] mi esposo se cayó y no responde   (husband collapsed, unresponsive)
+      MODEL-ON : NO ALERT ✘ calm   1196ms  "¡Hola Fresh! Soy su asistente HeartBridge. ¿Quiere hace"
+      RULES-ONLY: NO ALERT ✘ calm      6ms  "¡Hola Fresh! Soy su asistente HeartBridge. ¿Quiere hace"
+[es] siento que me muero   (I feel like I am dying)
+      MODEL-ON : NO ALERT ✘ calm   1734ms  "Gracias por decírmelo. Hagamos un chequeo rápido para q"
+      RULES-ONLY: NO ALERT ✘ calm      3ms  "¡Hola Fresh! Soy su asistente HeartBridge. ¿Quiere hace"
+[es] me falta el aire y tengo los labios morados   (short of breath, purple lips)
+      MODEL-ON : RED ✔ urgent    6ms  "🚨 Eso suena grave. Si tiene dolor de pecho o dificulta"
+      RULES-ONLY: RED ✔ urgent    6ms  "🚨 Eso suena grave. Si tiene dolor de pecho o dificulta"
+[es] tengo un dolor horrible en el pecho que me llega hasta el brazo izquierdo   (chest pain to left arm)
+      MODEL-ON : RED ✔ urgent    4ms  "🚨 Eso suena grave. Si tiene dolor de pecho o dificulta"
+      RULES-ONLY: RED ✔ urgent    4ms  "🚨 Eso suena grave. Si tiene dolor de pecho o dificulta"
+[es] mi mamá no despierta   (mom will not wake up)
+      MODEL-ON : NO ALERT ✘ calm   1281ms  "¡Hola Fresh! Soy su asistente HeartBridge. ¿Quiere hace"
+      RULES-ONLY: NO ALERT ✘ calm      3ms  "¡Hola Fresh! Soy su asistente HeartBridge. ¿Quiere hace"
+[en] I think I am having a heart attack
+      MODEL-ON : RED ✔ urgent    4ms  "🚨 That sounds serious. If you have chest pain or troub"
+      RULES-ONLY: RED ✔ urgent    4ms  "🚨 That sounds serious. If you have chest pain or troub"
+[en] there is a crushing pain in the middle of my chest
+      MODEL-ON : RED ✔ calm   2296ms  "Thanks for telling me. Let's do a quick check-in so you"
+      RULES-ONLY: NO ALERT ✘ calm      5ms  "Hi Fresh! I'm your HeartBridge helper. Want to do your "
+[en] my husband collapsed and is not responding
+      MODEL-ON : NO ALERT ✘ calm    716ms  "Hi Fresh! I'm your HeartBridge helper. Want to do your "
+      RULES-ONLY: NO ALERT ✘ calm      2ms  "Hi Fresh! I'm your HeartBridge helper. Want to do your "
+[en] I feel like I am dying
+      MODEL-ON : RED ✔ calm   2169ms  "Thanks for telling me. Let's do a quick check-in so you"
+      RULES-ONLY: NO ALERT ✘ calm      2ms  "Hi Fresh! I'm your HeartBridge helper. Want to do your "
+[en] I cannot finish a sentence without gasping
+      MODEL-ON : NO ALERT ✘ calm   2357ms  "Thanks for telling me. Let's do a quick check-in so you"
+      RULES-ONLY: NO ALERT ✘ calm      2ms  "Hi Fresh! I'm your HeartBridge helper. Want to do your "
+[en] Dad passed out in the kitchen
+      MODEL-ON : RED ✔ urgent    2ms  "🚨 That sounds serious. If you have chest pain or troub"
+      RULES-ONLY: RED ✔ urgent    2ms  "🚨 That sounds serious. If you have chest pain or troub"
+[vi] Mẹ tôi có vẻ lú lẫn, không biết mình đang ở đâu   (confusion)
+      MODEL-ON : RED ✔ urgent    6ms  "🚨 Nghe có vẻ nghiêm trọng đấy. Nếu bạn bị đau ngực hoặ"
+      RULES-ONLY: RED ✔ urgent    6ms  "🚨 Nghe có vẻ nghiêm trọng đấy. Nếu bạn bị đau ngực hoặ"
+[vi] Tôi bị tức ngực dữ dội từ sáng, khó thở   (chest tightness + breathless)
+      MODEL-ON : RED ✔ urgent    3ms  "🚨 Nghe có vẻ nghiêm trọng đấy. Nếu bạn bị đau ngực hoặ"
+      RULES-ONLY: RED ✔ urgent    2ms  "🚨 Nghe có vẻ nghiêm trọng đấy. Nếu bạn bị đau ngực hoặ"
+[vi] Ba tôi ngã xuống và không trả lời   (dad collapsed, no answer)
+      MODEL-ON : NO ALERT ✘ calm   2213ms  "Xin chào Fresh! Tôi là trợ lý của HeartBridge. Bạn có m"
+      RULES-ONLY: NO ALERT ✘ calm      4ms  "Xin chào Fresh! Tôi là trợ lý của HeartBridge. Bạn có m"
+[vi] Tôi cảm thấy sắp chết   (I feel I am dying)
+      MODEL-ON : RED ✔ calm   2883ms  "Cảm ơn bạn đã chia sẻ nhé! Chúng ta hãy cùng làm một cu"
+      RULES-ONLY: NO ALERT ✘ calm      2ms  "Xin chào Fresh! Tôi là trợ lý của HeartBridge. Bạn có m"
+[hi] पापा बेहोश हो गए हैं   (dad fainted)
+      MODEL-ON : RED ✔ urgent    7ms  "🚨 यह गंभीर लगता है। अगर आपको छाती में दर्द या सांस लेन"
+      RULES-ONLY: RED ✔ urgent    7ms  "🚨 यह गंभीर लगता है। अगर आपको छाती में दर्द या सांस लेन"
+[hi] सीने में तेज़ दर्द हो रहा है   (sharp chest pain)
+      MODEL-ON : RED ✔ urgent    3ms  "🚨 यह गंभीर लगता है। अगर आपको छाती में दर्द या सांस लेन"
+      RULES-ONLY: RED ✔ urgent    3ms  "🚨 यह गंभीर लगता है। अगर आपको छाती में दर्द या सांस लेन"
+[hi] मेरी पत्नी गिर गई और जवाब नहीं दे रही   (wife collapsed no response)
+      MODEL-ON : NO ALERT ✘ calm   4140ms  "नमस्ते Fresh! मैं आपका HeartBridge सहायक हूँ। क्या आप अ"
+      RULES-ONLY: NO ALERT ✘ calm      2ms  "नमस्ते Fresh! मैं आपका HeartBridge सहायक हूँ। क्या आप अ"
+[hi] मुझे लगता है मैं मरने वाला हूँ   (I feel I am dying)
+      MODEL-ON : NO ALERT ✘ calm   4906ms  "धन्यवाद! कृपया एक छोटा सा चेक-इन करें ताकि आपकी नर्स आप"
+      RULES-ONLY: NO ALERT ✘ calm      3ms  "नमस्ते Fresh! मैं आपका HeartBridge सहायक हूँ। क्या आप अ"
+[zh] 我妈妈糊涂了，不认识人了   (confusion)
+      MODEL-ON : RED ✔ urgent  713ms  "🚨 这听起来很严重。如果你有胸痛或呼吸困难，请立即拨打911。我已经通知了你的护理团队。🙏"
+      RULES-ONLY: RED ✔ urgent    5ms  "🚨 That sounds serious. If you have chest pain or troub"
+[zh] 我胸口很痛，喘不过气   (chest pain + cannot breathe)
+      MODEL-ON : RED ✔ urgent    4ms  "🚨 这听起来很严重。如果你有胸痛或呼吸困难，请立即拨打911。我已经通知了你的护理团队。🙏"
+      RULES-ONLY: RED ✔ urgent    2ms  "🚨 That sounds serious. If you have chest pain or troub"
+[zh] 我爸爸倒在地上叫不醒   (dad collapsed, cannot be woken)
+      MODEL-ON : NO ALERT ✘ calm   3156ms  "您好！我是您的HeartBridge助手鲜鲜。现在想不想做一下健康检查？🙏儿茶酚胺水平：911"
+      RULES-ONLY: NO ALERT ✘ calm      3ms  "Hi Fresh! I'm your HeartBridge helper. Want to do your "
+[zh] 我觉得我要死了   (I feel I am dying)
+      MODEL-ON : NO ALERT ✘ calm   3978ms  "谢谢告知。我们来做个快速检查，这样您的护士就能掌握详情了。🙏儿/女士inka911"
+      RULES-ONLY: NO ALERT ✘ calm      3ms  "Hi Fresh! I'm your HeartBridge helper. Want to do your "
+MISSED emergencies (no RED alert): model-on 10/24; rules-only 14/24
+latency model-on {"n":24,"p50":1281,"p95":4140,"max":4906,"min":2}  rules-only {"n":24,"p50":3,"p95":7,"max":23,"min":2}
+
+=== S2 clean: free-text check-in, fresh patient per language (MODEL-ON) ===
+-- es
+       2ms llmCalls=1 step=weight answers={"redflagsAsked":true}  <- no tengo dolor de pecho ni nada raro
+       4ms llmCalls=1 step=breath answers={"redflagsAsked":true,"weightLb":168}  <- me pesé y salió 168 libras
+     700ms llmCalls=2 step=swelling answers={"redflagsAsked":true,"weightLb":168,"breath":"normal"}  <- respiro bien, solo me canso un poquito al caminar
+       3ms llmCalls=1 step=diuretic answers={"redflagsAsked":true,"weightLb":168,"breath":"normal","orthopnea":true,"swelling":"worse"}  <- dormí en el sillón anoche, y los pies como globos
+    1337ms llmCalls=1 step=idle answers={}  <- sí me tomé la pastilla del agua
+   => finished check-ins: 1, lastTier=YELLOW, state=idle, alerts=YELLOW:Nurse call today: 3 warning signs
+-- vi
+     809ms llmCalls=1 step=idle answers={}  <- Không, tôi không bị đau ngực hay ngất xỉu
+       3ms llmCalls=1 step=idle answers={}  <- Sáng nay cân được 75 kg
+       3ms llmCalls=1 step=idle answers={}  <- Tôi thở bình thường
+       3ms llmCalls=1 step=idle answers={}  <- Đêm qua tôi phải ngồi ngủ, chân sưng to hơn
+       3ms llmCalls=1 step=idle answers={}  <- Tôi đã uống thuốc lợi tiểu rồi
+   => finished check-ins: 1, lastTier=RED, state=idle, alerts=RED:Possible emergency: told to call 911 (Fainted / pa
+-- hi
+    1968ms llmCalls=1 step=idle answers={}  <- नहीं, सीने में दर्द या बेहोशी नहीं है
+       2ms llmCalls=1 step=idle answers={}  <- आज वज़न 160 पाउंड है
+       3ms llmCalls=1 step=idle answers={}  <- सांस सामान्य है
+       2ms llmCalls=1 step=idle answers={}  <- रात को सांस फूल रही थी, पैर सूजे हुए हैं
+       2ms llmCalls=1 step=idle answers={}  <- हाँ, पानी की गोली ले ली
+   => finished check-ins: 1, lastTier=RED, state=idle, alerts=RED:Possible emergency: told to call 911 (Chest pain o
+-- zh
+    1897ms llmCalls=2 step=redflags answers={"chestPain":false,"fainting":false}  <- 没有胸痛，也没有晕倒
+    1201ms llmCalls=1 step=redflags answers={"chestPain":false,"fainting":false,"weightLb":170}  <- 今天体重170磅
+    1253ms llmCalls=1 step=redflags answers={"chestPain":false,"fainting":false,"weightLb":170,"breath":"exertion"}  <- 呼吸还好，爬楼梯有点喘
+    2365ms llmCalls=1 step=redflags answers={"chestPain":false,"fainting":false,"weightLb":170,"breath":"exertion"}  <- 昨晚要垫三个枕头才能睡，脚踝肿得厉害
+     672ms llmCalls=1 step=redflags answers={"chestPain":false,"fainting":false,"weightLb":170,"breath":"exertion"}  <- 利尿药已经吃了
+   => finished check-ins: 0, lastTier=null, state=redflags, alerts=
+
+proxy chat calls total: 77
+SERVER LOG error/warn lines: 0

@@ -340,6 +340,16 @@ export async function handle(patient, { text, buttonData }) {
       understood = true;
     }
   }
+  // A question in the middle of a check-in ("when should I take it?") used to get "Sorry, I didn't
+  // quite catch that" for up to 6 hours (audit 2026-10-11 S5c): answer it from the discharge
+  // instructions (or hand it to the nurse), then carry on with the same question.
+  if (text && !understood && !buttonData && companion.looksLikeQuestion(text) && text.trim().split(/\s+/).length >= 3) {
+    const res = await companion.answer(patient, text, { lang: langOf(patient), reporter: state.reporter ?? 'patient' });
+    if (['answer', 'nurse', 'dosing'].includes(res.kind)) {
+      replies.push(...res.replies);
+      understood = true;
+    }
+  }
   holdImplausibleWeight(patient, a);
   const traced = trace && store.audit('parse_trace', patient.id, { ...trace, reporter: state.reporter ?? 'patient' });
 

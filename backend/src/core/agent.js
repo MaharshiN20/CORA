@@ -34,6 +34,7 @@ import * as clock from './clock.js';
 import { redLock, appendToRedAlert } from './escalation.js';
 import { t, localize, localizeUrgent, toEnglish, hasNative } from './i18n.js';
 
+const PURE_QUESTION = /^\s*(?:what|how|when|why|should|can|could|is|are|do|does|qu[eé]|c[oó]mo|cu[aá]ndo|puedo|debo)\b[^.]*\?\s*$/i;
 const START_WORDS = /^\/?(check[- ]?in|start|chequeo|empezar|hola|hi|hello)\b/i;
 // Caregivers must ask explicitly (or tap the button): a "hi" shouldn't start a proxy check-in.
 const PROXY_WORDS = /^\/?(check[- ]?in|chequeo)\b/i;
@@ -180,6 +181,9 @@ async function handleFreeText(patient, input, { injection = false } = {}) {
   // "118/72": a blood pressure (e.g. the nurse asked for it before a standing order).
   const bp = parser.parseBloodPressure(input);
   if (bp) return { replies: await checkin.handleBloodPressure(patient, bp) };
+  // "What should I do when I feel short of breath walking?" asks about a symptom, it doesn't report one:
+  // a message that opens with a question word and matches the patient's own instructions is answered.
+  if (PURE_QUESTION.test(input) && companion.matchSection(patient, input)) return { replies: (await companion.answer(patient, input)).replies };
   if (Object.keys(parser.parseFreeText(input)).length) return checkin.startWith(patient, input);
   // A re-programming attempt with no symptom or medicine question: a safe canned reply, no LLM.
   if (injection) return { replies: [{ text: t(patient.language, 'companion_other'), textEn: t('en', 'companion_other') }] };

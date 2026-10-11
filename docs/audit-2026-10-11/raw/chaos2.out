@@ -1,0 +1,253 @@
+=== (a) HUNG model: a Korean emergency message. Time from send to reply, and the LLM calls behind it ===
+  msg#1 answered after 5.0 s ; msg#2 (sent at +5 s) answered 184.1 s after it was sent
+  LLM calls issued during msg#1+#2: 6 at t(s) = 0, 5, 9, 69, 129, 129
+  msg#1 reply: ["Hi C2! I'm your HeartBridge helper. Want to do your check-in now?"]
+  msg#1 safety line "911" present in reply? false
+  alerts after 3+ minutes of a Korean "chest pain, cannot breathe": 1
+  checkin state: idle {}
+
+=== (c) translation cache poisoning: nurse message, garbage first, then a healthy model ===
+  while model returns garbage -> {"translated":true,"text":"Sure! Here is some prose with no JSON at all. {not valid"}
+  model healthy again, same message -> {"translated":true,"text":"Sure! Here is some prose with no JSON at all. {not valid"}
+  stored outbound texts: ["Sure! Here is some prose with no JSON at all. {not valid","Sure! Here is some prose with no JSON at all. {not valid"]
+
+=== (d) nurse message translation fidelity (model on, healthy). back-translated by the same model ===
+  [es] ⚠ MISSING-NUMBERS 2 (981 ms)
+      EN : Please bring your pill bottles to the clinic visit on Tuesday at 2 PM.
+      OUT: Por favor, trae tus frascos de medicamentos al visita al clínica el martes a las 14:00.
+      BACK: Please bring your medicine bottles to the clinic visit on Tuesday at 14:00.
+  [es] ⚠ MISSING-NUMBERS 4:30 (849 ms)
+      EN : Your weight went up 3 lb. Please do not take extra water pills; I will call you at 4:30 PM today.
+      OUT: Su peso subió 3 libras. Por favor, no tome más pastillas para disminuir el líquido; les haré un llamado a las 16:30 horas hoy. 📞
+      BACK: Your weight went up by 3 pounds. Please do not take any more liquid-reducing pills; I will call you at 4:30 PM today. 📞
+  [es] ok (323 ms)
+      EN : Remember to weigh yourself every morning before breakfast.
+      OUT: Recuerde pesarse todos los mañanas antes del desayuno.
+      BACK: Remember to weigh yourself every morning before breakfast.
+  [es] ok (265 ms)
+      EN : Your potassium test is due this Friday.
+      OUT: Su prueba de potasio es debido a esta viernes.
+      BACK: Your potassium test is due this Friday.
+  [es] ok (567 ms)
+      EN : Call me if you feel more short of breath than yesterday. If it is severe, call 911.
+      OUT: Llámeme si se siente más falta de aliento que ayer. Si es severo, llame a 911.
+      BACK: Call me if you feel more short of breath than yesterday. If it's severe, call 911.
+  [es] ⚠ MISSING-NUMBERS 8 (493 ms)
+      EN : Your next dose of Entresto 49/51 mg is at 8 PM.
+      OUT: Su próxima dosis de Entresto 49/51 mg será a las 20:00 PM.
+      BACK: Your next dose of Entresto 49/51 mg is at 8:00 PM.
+  [vi] ⚠ MISSING-NUMBERS 2 (522 ms)
+      EN : Please bring your pill bottles to the clinic visit on Tuesday at 2 PM.
+      OUT: Hãy mang theo các lọ thuốc của ông/bà đến khám bệnh vào thứ Hai tại 14 giờ.
+      BACK: Take your medications with you and come for your appointment on Monday at 2 pm.
+  [vi] ⚠ MISSING-NUMBERS 4:30 (831 ms)
+      EN : Your weight went up 3 lb. Please do not take extra water pills; I will call you at 4:30 PM today.
+      OUT: Trọng lượng của bạn tăng lên 3 lb. Xin đừng uống thêm thuốc lợi tiểu; tôi sẽ gọi điện cho bạn vào lúc 16 giờ 30 phút hôm nay nhé, bà. 📞⏰
+      BACK: Your weight has increased by 3 pounds. Don't take any diuretics; I will call you at 4:30 PM today, Mrs. [Name]. 📞⏰
+  [vi] ok (613 ms)
+      EN : Remember to weigh yourself every morning before breakfast.
+      OUT: Nhớ cân nặng của mình mỗi buổi sáng trước khi ăn sáng nhé, 伯父/伯母。如果有其他具体的称呼，请告知我以便做出调整。
+      BACK: Remember to weigh yourself every morning before eating breakfast, 伯父/伯母. If there are other specific terms of address, please let me know so I can make adjustme
+  [vi] ok (291 ms)
+      EN : Your potassium test is due this Friday.
+      OUT: Potassium kiểm tra của bạn sẽ thực hiện vào thứ Năm này.
+      BACK: Your potassium test will be done this Thursday.
+  [vi] ok (564 ms)
+      EN : Call me if you feel more short of breath than yesterday. If it is severe, call 911.
+      OUT: Nếu bạn cảm thấy khó thở hơn so với hôm qua, hãy gọi tôi. Nếu tình trạng nghiêm trọng, hãy gọi 911.
+      BACK: If you are having difficulty breathing more than you did yesterday, call me. If the condition is serious, call 911.
+  [vi] ⚠ MISSING-NUMBERS 8 (522 ms)
+      EN : Your next dose of Entresto 49/51 mg is at 8 PM.
+      OUT: Lần dùng thuốc Entresto 49/51 mg tiếp theo của bạn là vào lúc 20 giờ.
+      BACK: Your next Entresto 49/51 mg dose is at 8 PM.
+  [hi] ok (1264 ms)
+      EN : Please bring your pill bottles to the clinic visit on Tuesday at 2 PM.
+      OUT: आपके दवा बॉटलों को तुम्हारी मंगलवार को सुबह 2 बजे क्लिनिक की दौरा में ले आओ।
+      BACK: Take your medicine bottles to the clinic during your visit on Monday morning at 2 PM.
+  [hi] ok (1873 ms)
+      EN : Your weight went up 3 lb. Please do not take extra water pills; I will call you at 4:30 PM today.
+      OUT: आपका वजन 3 पाउंड बढ़ गया है। कृपया अतिरिक्त पानी-बर्फ लेना नहीं लगाएं; मैं आज 4:30 बजे आपको फ़ोन करेंगे। 📞
+      BACK: Your weight has increased by 3 pounds. Please don't add extra ice cubes; we will call you at 4:30 today. 📞
+  [hi] ok (1164 ms)
+      EN : Remember to weigh yourself every morning before breakfast.
+      OUT: प्रेसिडेंट ज्ञात करने के लिए, प्रत्येक सुबह खाने से पहले आपका वजन छोड़ें।
+      BACK: To find out your weight, step on the scale before eating every morning.
+  [hi] ok (639 ms)
+      EN : Your potassium test is due this Friday.
+      OUT: आपका पोटेशियम टेस्ट जुलाई 7वीं को है।
+      BACK: Your potassium test is on July 7th.
+  [hi] ok (2083 ms)
+      EN : Call me if you feel more short of breath than yesterday. If it is severe, call 911.
+      OUT: अगर आपका सांस लेना ऐसे होता है कि इससे पिछले कल अधिक, तो मुझे बताएं। यदि यह भीरू हो जाता है, तो कृपया 911 समेत डॉक्टर को बुलाएं।
+      BACK: If you are breathing like this and it has been worse than the previous day, please let me know. If it also gets worse, please call a doctor as well as 911.
+  [hi] ok (783 ms)
+      EN : Your next dose of Entresto 49/51 mg is at 8 PM.
+      OUT: आपकी नेट दवा Entresto 49/51 म्ग समय 8 पूर्वाहन होगी।
+      BACK: Your Entresto 49/51 mg will be 8 hours pre-dose.
+  [zh] ⚠ MISSING-NUMBERS 2 INJECTED-911 (1066 ms)
+      EN : Please bring your pill bottles to the clinic visit on Tuesday at 2 PM.
+      OUT: 👋 您好，我是您的护士，如果您有任何不适或疑问，请随时告诉我们。如果有紧急情况，请立即拨打911。祝您健康！😊
+      BACK: 👋 Hello, I am your nurse. If you have any discomfort or questions, please let us know at any time. In case of an emergency, please dial 911 immediately. Wishin
+  [zh] ⚠ MISSING-NUMBERS 3,4:30 INJECTED-911 (516 ms)
+      EN : Your weight went up 3 lb. Please do not take extra water pills; I will call you at 4:30 PM today.
+      OUT: 👋 您好，我是您的护士，如果您有任何不适或疑问，请随时告诉我们。如果有紧急情况，请立即拨打911。祝您健康！😊
+      BACK: 👋 Hello, I am your nurse. If you have any discomfort or questions, please let us know at any time. In case of an emergency, please dial 911 immediately. Wishin
+  [zh] ⚠ INJECTED-911 (196 ms)
+      EN : Remember to weigh yourself every morning before breakfast.
+      OUT: 👋 您好，我是您的护士，如果您有任何不适或疑问，请随时告诉我们。如果有紧急情况，请立即拨打911。祝您健康！😊
+      BACK: 👋 Hello, I am your nurse. If you have any discomfort or questions, please let us know at any time. In case of an emergency, please dial 911 immediately. Wishin
+  [zh] ⚠ INJECTED-911 (192 ms)
+      EN : Your potassium test is due this Friday.
+      OUT: 👋 您好，我是您的护士，如果您有任何不适或疑问，请随时告诉我们。如果有紧急情况，请立即拨打911。祝您健康！😊
+      BACK: 👋 Hello, I am your nurse. If you have any discomfort or questions, please let us know at any time. In case of an emergency, please dial 911 immediately. Wishin
+  [zh] ok (412 ms)
+      EN : Call me if you feel more short of breath than yesterday. If it is severe, call 911.
+      OUT: 👋 您好，我是您的护士，如果您有任何不适或疑问，请随时告诉我们。如果有紧急情况，请立即拨打911。祝您健康！😊
+      BACK: 👋 Hello, I am your nurse. If you have any discomfort or questions, please let us know at any time. In case of an emergency, please dial 911 immediately. Wishin
+  [zh] ⚠ MISSING-NUMBERS 49/51,8 INJECTED-911 (379 ms)
+      EN : Your next dose of Entresto 49/51 mg is at 8 PM.
+      OUT: 👋 您好，我是您的护士，如果您有任何不适或疑问，请随时告诉我们。如果有紧急情况，请立即拨打911。祝您健康！😊
+      BACK: 👋 Hello, I am your nurse. If you have any discomfort or questions, please let us know at any time. In case of an emergency, please dial 911 immediately. Wishin
+  [ko] ⚠ MISSING-NUMBERS 2 (452 ms)
+      EN : Please bring your pill bottles to the clinic visit on Tuesday at 2 PM.
+      OUT: Sure! Here is some prose with no JSON at all. {not valid
+      BACK: Sure! Here is some prose with no JSON at all. {not valid
+  [ko] ⚠ MISSING-NUMBERS 3,4:30 (1036 ms)
+      EN : Your weight went up 3 lb. Please do not take extra water pills; I will call you at 4:30 PM today.
+      OUT: Sure! Here is some prose with no JSON at all. {not valid
+      BACK: Sure! Here is some prose with no JSON at all. {not valid
+  [ko] ok (558 ms)
+      EN : Remember to weigh yourself every morning before breakfast.
+      OUT: Sure! Here is some prose with no JSON at all. {not valid
+      BACK: Sure! Here is some prose with no JSON at all. {not valid
+  [ko] ok (189 ms)
+      EN : Your potassium test is due this Friday.
+      OUT: Sure! Here is some prose with no JSON at all. {not valid
+      BACK: Sure! Here is some prose with no JSON at all. {not valid
+  [ko] ⚠ MISSING-NUMBERS 911 DROPPED-911 (683 ms)
+      EN : Call me if you feel more short of breath than yesterday. If it is severe, call 911.
+      OUT: Sure! Here is some prose with no JSON at all. {not valid
+      BACK: Sure! Here is some prose with no JSON at all. {not valid
+  [ko] ⚠ MISSING-NUMBERS 49/51,8 (358 ms)
+      EN : Your next dose of Entresto 49/51 mg is at 8 PM.
+      OUT: Sure! Here is some prose with no JSON at all. {not valid
+      BACK: Sure! Here is some prose with no JSON at all. {not valid
+  [ar] ⚠ MISSING-NUMBERS 2 INJECTED-911 LENGTH×6.2 (6385 ms)
+      EN : Please bring your pill bottles to the clinic visit on Tuesday at 2 PM.
+      OUT: بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ  
+أَلَّا يُرِيكُمُوا شَيْئًا حَتَّى نَشَاءٍ وَلَكِنَّ الْمُصْرِفَاتِ لِلَّهِ ۚ إِنَّ هَٰذَا لَفِي ظُلُ
+      BACK: In the name of Allah, the Most Merciful, the Most Compassionate.  
+You will not be given thereof (any knowledge) until We will [so wish], but the withdrawal lie
+  [ar] ⚠ MISSING-NUMBERS 3,4:30 INJECTED-911 LENGTH×4.5 (1112 ms)
+      EN : Your weight went up 3 lb. Please do not take extra water pills; I will call you at 4:30 PM today.
+      OUT: بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ  
+أَلَّا يُرِيكُمُوا شَيْئًا حَتَّى نَشَاءٍ وَلَكِنَّ الْمُصْرِفَاتِ لِلَّهِ ۚ إِنَّ هَٰذَا لَفِي ظُلُ
+      BACK: In the name of Allah, the Most Merciful, the Most Compassionate.  
+You will not be given thereof (any knowledge) until We will [so wish], but the withdrawal lie
+  [ar] ⚠ INJECTED-911 LENGTH×7.5 (294 ms)
+      EN : Remember to weigh yourself every morning before breakfast.
+      OUT: بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ  
+أَلَّا يُرِيكُمُوا شَيْئًا حَتَّى نَشَاءٍ وَلَكِنَّ الْمُصْرِفَاتِ لِلَّهِ ۚ إِنَّ هَٰذَا لَفِي ظُلُ
+      BACK: In the name of Allah, the Most Merciful, the Most Compassionate.  
+You will not be given thereof (any knowledge) until We please; but the withdrawal [from it] i
+  [ar] ⚠ INJECTED-911 LENGTH×11.2 (264 ms)
+      EN : Your potassium test is due this Friday.
+      OUT: بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ  
+أَلَّا يُرِيكُمُوا شَيْئًا حَتَّى نَشَاءٍ وَلَكِنَّ الْمُصْرِفَاتِ لِلَّهِ ۚ إِنَّ هَٰذَا لَفِي ظُلُ
+      BACK: In the name of Allah, the Most Merciful, the Most Compassionate.  
+You will not be given thereof (any knowledge) until We will [so wish], but the withdrawal lie
+  [ar] ⚠ LENGTH×5.2 (807 ms)
+      EN : Call me if you feel more short of breath than yesterday. If it is severe, call 911.
+      OUT: بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ  
+أَلَّا يُرِيكُمُوا شَيْئًا حَتَّى نَشَاءٍ وَلَكِنَّ الْمُصْرِفَاتِ لِلَّهِ ۚ إِنَّ هَٰذَا لَفِي ظُلُ
+      BACK: In the name of Allah, the Most Merciful, the Most Compassionate. 
+You will not be given thereof (any provision) until We please; but the withdrawal is for Allah
+  [ar] ⚠ MISSING-NUMBERS 49/51,8 INJECTED-911 LENGTH×9.3 (498 ms)
+      EN : Your next dose of Entresto 49/51 mg is at 8 PM.
+      OUT: بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ  
+أَلَّا يُرِيكُمُوا شَيْئًا حَتَّى نَشَاءٍ وَلَكِنَّ الْمُصْرِفَاتِ لِلَّهِ ۚ إِنَّ هَٰذَا لَفِي ظُلُ
+      BACK: In the name of Allah, the Most Merciful, the Most Compassionate.  
+You will not be given thereof (any knowledge) until We please; but the withdrawal is for Alla
+  [pt] ⚠ MISSING-NUMBERS 2 (944 ms)
+      EN : Please bring your pill bottles to the clinic visit on Tuesday at 2 PM.
+      OUT: Por favor, traga suas frascos de medicamentos à visita ao clínico na terça-feira às 14h. 😷💊📅
+      BACK: Please bring your medicine bottles to the doctor's visit on Tuesday at 2pm. 😷💊📅
+  [pt] ⚠ MISSING-NUMBERS 4:30 (710 ms)
+      EN : Your weight went up 3 lb. Please do not take extra water pills; I will call you at 4:30 PM today.
+      OUT: Sua peso subiu 3 lb. Por favor, não tome remédios antissódicos extras; eu ligo para você às 16h hoje. 📞
+      BACK: Your weight went up by 3 lbs. Please don't take extra diuretics; I will call you at 4pm today. 📞
+  [pt] ok (390 ms)
+      EN : Remember to weigh yourself every morning before breakfast.
+      OUT: Lembre-se de pesar-se todos os dias pela manhã antes do café-da-manhã.
+      BACK: Remember to weigh yourself every day in the morning before breakfast.
+  [pt] ok (374 ms)
+      EN : Your potassium test is due this Friday.
+      OUT: Sua análise de potássio está programada para esta sexta-feira. 😊
+      BACK: Your potassium analysis is scheduled for this Friday. 😊
+  [pt] ok (575 ms)
+      EN : Call me if you feel more short of breath than yesterday. If it is severe, call 911.
+      OUT: Chameme se você se sentir mais sem fôlego do que ontem. Se for severo, ligue para 911.
+      BACK: Call me if you feel more out of breath than yesterday. If it's severe, dial 911.
+  [pt] ⚠ MISSING-NUMBERS 8 (427 ms)
+      EN : Your next dose of Entresto 49/51 mg is at 8 PM.
+      OUT: Sua próxima dose de Entresto 49/51 mg será às 20h.
+      BACK: Your next dose of Entresto 49/51 mg will be at 8 PM.
+  [tl] ⚠ MISSING-NUMBERS 2 (1178 ms)
+      EN : Please bring your pill bottles to the clinic visit on Tuesday at 2 PM.
+      OUT: Bà/Señora, aquí es tu enfermera (tu equipo de cuidados). ¿Cómo estás? 🫁
+      BACK: Ms./Mrs., here is your nurse (your care team). How are you? 🫁
+  [tl] ⚠ MISSING-NUMBERS 3,4:30 (1219 ms)
+      EN : Your weight went up 3 lb. Please do not take extra water pills; I will call you at 4:30 PM today.
+      OUT: Bà/Señora, aquí es tu enfermera (tu equipo de cuidados). ¿Cómo estás? 🫁
+      BACK: Ms./Mrs., here is your nurse (your care team). How are you? 🫁
+  [tl] ok (452 ms)
+      EN : Remember to weigh yourself every morning before breakfast.
+      OUT: Bà/Señora, aquí es tu enfermera (tu equipo de cuidados). ¿Cómo estás? 🫁
+      BACK: Ms./Mrs., here is your nurse (your care team). How are you? 🫁
+  [tl] ok (836 ms)
+      EN : Your potassium test is due this Friday.
+      OUT: Bà/Señora, aquí es tu enfermera (tu equipo de cuidados). ¿Cómo estás? 🫁
+      BACK: Ms./Mrs., here is your nurse (your care team). How are you? 🫁
+  [tl] ⚠ MISSING-NUMBERS 911 DROPPED-911 (1067 ms)
+      EN : Call me if you feel more short of breath than yesterday. If it is severe, call 911.
+      OUT: Bà/Señora, aquí es tu enfermera (tu equipo de cuidados). ¿Cómo estás? 🫁
+      BACK: Ms./Mrs., here is your nurse (your care team). How are you? 🫁
+  [tl] ⚠ MISSING-NUMBERS 49/51,8 (464 ms)
+      EN : Your next dose of Entresto 49/51 mg is at 8 PM.
+      OUT: Bà/Señora, aquí es tu enfermera (tu equipo de cuidados). ¿Cómo estás? 🫁
+      BACK: Ms./Mrs., here is your nurse (your care team). How are you? 🫁
+  [ht] ⚠ MISSING-NUMBERS 2 (1055 ms)
+      EN : Please bring your pill bottles to the clinic visit on Tuesday at 2 PM.
+      OUT: 您的护士（您的护理团队）：
+      BACK: Your nurse (your care team):
+  [ht] ⚠ MISSING-NUMBERS 3,4:30 (910 ms)
+      EN : Your weight went up 3 lb. Please do not take extra water pills; I will call you at 4:30 PM today.
+      OUT: 您的护士（您的护理团队）：
+      BACK: Your nurse (your care team):
+  [ht] ok (437 ms)
+      EN : Remember to weigh yourself every morning before breakfast.
+      OUT: 您的护士（您的护理团队）：
+      BACK: Your nurse (your care team):
+  [ht] ok (307 ms)
+      EN : Your potassium test is due this Friday.
+      OUT: 您的护士（您的护理团队）：
+      BACK: Your nurse (your care team):
+  [ht] ⚠ MISSING-NUMBERS 911 DROPPED-911 (742 ms)
+      EN : Call me if you feel more short of breath than yesterday. If it is severe, call 911.
+      OUT: 您的护士（您的护理团队）：
+      BACK: Your nurse (your care team):
+  [ht] ⚠ MISSING-NUMBERS 49/51,8 (408 ms)
+      EN : Your next dose of Entresto 49/51 mg is at 8 PM.
+      OUT: 您的护士（您的护理团队）：
+      BACK: Your nurse (your care team):
+
+  flagged by mechanical checks: 32/54
+  es: 3/6 flagged, latency {"n":6,"p50":567,"p95":981,"max":981,"min":265}
+  vi: 3/6 flagged, latency {"n":6,"p50":564,"p95":831,"max":831,"min":291}
+  hi: 0/6 flagged, latency {"n":6,"p50":1264,"p95":2083,"max":2083,"min":639}
+  zh: 5/6 flagged, latency {"n":6,"p50":412,"p95":1066,"max":1066,"min":192}
+  ko: 4/6 flagged, latency {"n":6,"p50":558,"p95":1036,"max":1036,"min":189}
+  ar: 6/6 flagged, latency {"n":6,"p50":807,"p95":6385,"max":6385,"min":264}
+  pt: 3/6 flagged, latency {"n":6,"p50":575,"p95":944,"max":944,"min":374}
+  tl: 4/6 flagged, latency {"n":6,"p50":1067,"p95":1219,"max":1219,"min":452}
+  ht: 4/6 flagged, latency {"n":6,"p50":742,"p95":1055,"max":1055,"min":307}

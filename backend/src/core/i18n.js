@@ -459,7 +459,7 @@ export async function localize(lang, text) {
   const out = await llm.complete(
     `Translate the user's message into ${LANG_NAMES[lang] ?? lang} for an elderly heart-failure patient. ` +
       'Keep it simple and warm, and use the respectful/formal form of address (e.g. "usted" in Spanish, "Bác/ông/bà" in Vietnamese, "आप" in Hindi). ' +
-      'Keep emojis, numbers and "911" unchanged. Output only the translation.',
+      'Keep emojis, numbers, "911" and all names unchanged (never translate or transliterate a name). Output only the translation.',
     text,
     400,
     TRANSLATE_OPTS,
@@ -506,7 +506,7 @@ export async function translateFromEnglish(lang, text) {
   const out = await llm.complete(
     `Translate the message from a nurse into ${LANG_NAMES[lang] ?? (lang === 'es' ? 'Spanish' : lang)} for an elderly heart-failure patient. ` +
       'Use the respectful/formal form of address (e.g. "usted" in Spanish, "Bác/ông/bà" in Vietnamese, "आप" in Hindi). ' +
-      'Keep names, times, numbers, emojis and "911" unchanged. Output only the translation.',
+      'Keep names (never translate or transliterate them), times, numbers, emojis and "911" unchanged. Output only the translation.',
     text,
     600,
     TRANSLATE_OPTS,

@@ -22,10 +22,13 @@ const LANG_NAMES = { en: 'English', es: 'Spanish', vi: 'Vietnamese', zh: 'Simpli
 // furosemide?"): only a clinician answers that, never the bot or the LLM.
 const MED_EN = '(?:pill|pills|dose|doses|medicine|medicines|medication|meds|furosemide|lasix|torsemide|bumetanide|carvedilol|coreg|metoprolol|lisinopril|entresto|spironolactone|water pill)';
 const MED_ES = '(?:pastilla|pastillas|dosis|medicina|medicinas|medicamento|furosemida|lasix|carvedilol|metoprolol|lisinopril|espironolactona)';
+// Between the verb and the medicine there must be no food or drink: "less salt with my pills" is a diet
+// question, not a request to change a dose (audit 2026-10-11).
+const NOT_FOOD = String.raw`(?:(?!\b(?:salt|sodium|food|foods|meal|meals|fluid|fluids|sugar|coffee|alcohol|wine|beer|sal|comida|liquidos?)\b).)`;
 export const DOSING_CHANGE = new RegExp(
   [
-    `\\b(?:skip|stop|quit|double|extra|more|less|half|cut|change|increase|decrease|lower|raise|another)\\b.{0,30}\\b${MED_EN}`,
-    `\\b(?:how (?:much|many)|what dose|dosage|dose of|mg of|milligrams? of)\\b.{0,40}\\b${MED_EN}`,
+    `\\b(?:skip|stop|quit|double|extra|more|less|half|cut|change|increase|decrease|lower|raise|another)\\b${NOT_FOOD}{0,30}\\b${MED_EN}`,
+    `\\b(?:how (?:much|many)|what dose|dosage|dose of|mg of|milligrams? of)\\b${NOT_FOOD}{0,40}\\b${MED_EN}`,
     `\\b${MED_EN}\\b.{0,30}\\b(?:how (?:much|many)|how many mg|what dose|dosage)\\b`,
     `\\b(?:dejar|dejo|saltar|salto|suspender|doble|duplicar|más|menos|mitad|cambiar|aumentar|bajar|otra)\\b.{0,30}\\b${MED_ES}`,
     `\\bcu[aá]nt[oa]s? (?:mg|miligramos|pastillas)\\b|\\bqu[eé] dosis\\b`,

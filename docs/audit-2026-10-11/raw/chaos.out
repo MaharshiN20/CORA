@@ -1,0 +1,99 @@
+
+############ healthy model ############
+  zh confusion (rules cover): {"ms":760,"red":true,"urgent":true}
+  ko chest pain (no rules for ko): {"ms":2576,"red":true,"urgent":true,"reply":"🚨 심장이 아프거나 숨이 턱 막히게 khó하면 지금 911에 연락하세요. 당신의 의료팀을"}
+  es check-in free text: {"ms":[14,9],"answers":{"redflagsAsked":true,"weightLb":168,"swelling":"worse"}}
+  companion: {"ms":1281,"text":"I can help with questions about your heart, medicines, food "}
+  nurse->ko message: {"ms":1478,"translated":true,"text":"부모님, 저희 간호사입니다. 😊 911을 부르세요 nếu 필요하시다면. 건강이 좋지 않으시다니 걱정됩니다. 어떻게 도와드릴까"}
+  start check-in (ko): {"ms":1940,"status":200}
+
+############ slow model (+3 s per call) ############
+  zh confusion (rules cover): {"ms":3,"red":true,"urgent":true}
+  ko chest pain (no rules for ko): {"ms":16012,"red":false,"urgent":false,"reply":"고마워요. 빠른 체크인을 해서 간호사분께 상세 정보를 알려드릴게요. 🙏 911"}
+  es check-in free text: {"ms":[6,5],"answers":{"redflagsAsked":true,"weightLb":168,"swelling":"worse"}}
+  companion: {"ms":4412,"text":"I can help with questions about your heart, medicines, food "}
+  nurse->ko message: {"ms":2,"translated":true,"text":"부모님, 저희 간호사입니다. 😊 911을 부르세요 nếu 필요하시다면. 건강이 좋지 않으시다니 걱정됩니다. 어떻게 도와드릴까"}
+  start check-in (ko): {"ms":2,"status":200}
+
+############ very slow model (+7 s per call) ############
+  zh confusion (rules cover): {"ms":3,"red":true,"urgent":true}
+  ko chest pain (no rules for ko): {"ms":16089,"red":false,"urgent":false,"reply":"고마워요. 빠른 체크인을 해서 간호사분께 상세 정보를 알려드릴게요. 🙏 911"}
+  es check-in free text: {"ms":[4,7],"answers":{"redflagsAsked":true,"weightLb":168,"swelling":"worse"}}
+  companion: {"ms":8420,"text":"I can help with questions about your heart, medicines, food "}
+  nurse->ko message: {"ms":2,"translated":true,"text":"부모님, 저희 간호사입니다. 😊 911을 부르세요 nếu 필요하시다면. 건강이 좋지 않으시다니 걱정됩니다. 어떻게 도와드릴까"}
+  start check-in (ko): {"ms":2,"status":200}
+
+############ HUNG model (never answers) ############
+  zh confusion (rules cover): {"ms":2,"red":true,"urgent":true}
+  ko chest pain (no rules for ko): {"ms":184025,"red":false,"urgent":false,"reply":"Good question! I don't have that in your instructi"}
+  es check-in free text: {"ms":[6,7],"answers":{"redflagsAsked":true,"weightLb":168,"swelling":"worse"}}
+  companion: {"ms":60016,"text":"Good question! I don't have that in your instructions, so I'"}
+  nurse->ko message: {"ms":3,"translated":true,"text":"부모님, 저희 간호사입니다. 😊 911을 부르세요 nếu 필요하시다면. 건강이 좋지 않으시다니 걱정됩니다. 어떻게 도와드릴까"}
+  start check-in (ko): {"ms":2,"status":200}
+
+############ garbage output (prose + broken JSON) ############
+  zh confusion (rules cover): {"ms":3,"red":true,"urgent":true}
+  ko chest pain (no rules for ko): {"ms":8,"red":false,"urgent":false,"reply":"Sure! Here is some prose with no JSON at all. {not"}
+  es check-in free text: {"ms":[2,4],"answers":{"redflagsAsked":true,"weightLb":168,"swelling":"worse"}}
+  companion: {"ms":4,"text":"Good question! I don't have that in your instructions, so I'"}
+  nurse->ko message: {"ms":2,"translated":true,"text":"부모님, 저희 간호사입니다. 😊 911을 부르세요 nếu 필요하시다면. 건강이 좋지 않으시다니 걱정됩니다. 어떻게 도와드릴까"}
+  start check-in (ko): {"ms":2,"status":200}
+
+############ refusal prose "I cannot help with that." ############
+  zh confusion (rules cover): {"ms":2,"red":true,"urgent":true}
+  ko chest pain (no rules for ko): {"ms":6,"red":false,"urgent":false,"reply":"Sure! Here is some prose with no JSON at all. {not"}
+  es check-in free text: {"ms":[3,4],"answers":{"redflagsAsked":true,"weightLb":168,"swelling":"worse"}}
+  companion: {"ms":4,"text":"Good question! I don't have that in your instructions, so I'"}
+  nurse->ko message: {"ms":1,"translated":true,"text":"부모님, 저희 간호사입니다. 😊 911을 부르세요 nếu 필요하시다면. 건강이 좋지 않으시다니 걱정됩니다. 어떻게 도와드릴까"}
+  start check-in (ko): {"ms":2,"status":200}
+
+############ empty content ############
+  zh confusion (rules cover): {"ms":2,"red":true,"urgent":true}
+  ko chest pain (no rules for ko): {"ms":6,"red":false,"urgent":false,"reply":"Sure! Here is some prose with no JSON at all. {not"}
+  es check-in free text: {"ms":[2,5],"answers":{"redflagsAsked":true,"weightLb":168,"swelling":"worse"}}
+  companion: {"ms":4,"text":"Good question! I don't have that in your instructions, so I'"}
+  nurse->ko message: {"ms":1,"translated":true,"text":"부모님, 저희 간호사입니다. 😊 911을 부르세요 nếu 필요하시다면. 건강이 좋지 않으시다니 걱정됩니다. 어떻게 도와드릴까"}
+  start check-in (ko): {"ms":2,"status":200}
+
+############ HTTP 500 from model ############
+  zh confusion (rules cover): {"ms":2,"red":true,"urgent":true}
+  ko chest pain (no rules for ko): {"ms":8,"red":false,"urgent":false,"reply":"Sure! Here is some prose with no JSON at all. {not"}
+  es check-in free text: {"ms":[2,3],"answers":{"redflagsAsked":true,"weightLb":168,"swelling":"worse"}}
+  companion: {"ms":3,"text":"Good question! I don't have that in your instructions, so I'"}
+  nurse->ko message: {"ms":1,"translated":true,"text":"부모님, 저희 간호사입니다. 😊 911을 부르세요 nếu 필요하시다면. 건강이 좋지 않으시다니 걱정됩니다. 어떻게 도와드릴까"}
+  start check-in (ko): {"ms":2,"status":200}
+
+############ half-truncated output ############
+  zh confusion (rules cover): {"ms":3,"red":true,"urgent":true}
+  ko chest pain (no rules for ko): {"ms":2989,"red":false,"urgent":false,"reply":"Sure! Here is some prose with no JSON at all. {not"}
+  es check-in free text: {"ms":[3,6],"answers":{"redflagsAsked":true,"weightLb":168,"swelling":"worse"}}
+  companion: {"ms":1334,"text":"Good question! I don't have that in your instructions, so I'"}
+  nurse->ko message: {"ms":1,"translated":true,"text":"부모님, 저희 간호사입니다. 😊 911을 부르세요 nếu 필요하시다면. 건강이 좋지 않으시다니 걱정됩니다. 어떻게 도와드릴까"}
+  start check-in (ko): {"ms":2,"status":200}
+
+=== chaos summary: patient-visible latency (ms) per scenario ===
+mode                                             zh-911   ko-911     es-chk   compan  nurseMsg  ko-start
+healthy model                                       760    2576✔          9     1281      1478      1940
+slow model (+3 s per call)                            3   16012✘          5     4412         2         2
+very slow model (+7 s per call)                       3   16089✘          7     8420         2         2
+HUNG model (never answers)                            2  184025✘          7    60016         3         2
+garbage output (prose + broken JSON)                  3       8✘          4        4         2         2
+refusal prose "I cannot help with that."              2       6✘          4        4         1         2
+empty content                                         2       6✘          5        4         1         2
+HTTP 500 from model                                   2       8✘          3        3         1         2
+half-truncated output                                 3    2989✘          6     1334         1         2
+
+zh/ko emergencies detected (RED) per mode:
+   healthy model                                  zh: RED  ko: RED  ko reply: "🚨 심장이 아프거나 숨이 턱 막히게 khó하면 지금 911에 연락하세요. 당신의 의료팀을"
+   slow model (+3 s per call)                     zh: RED  ko: MISSED  ko reply: "고마워요. 빠른 체크인을 해서 간호사분께 상세 정보를 알려드릴게요. 🙏 911"
+   very slow model (+7 s per call)                zh: RED  ko: MISSED  ko reply: "고마워요. 빠른 체크인을 해서 간호사분께 상세 정보를 알려드릴게요. 🙏 911"
+   HUNG model (never answers)                     zh: RED  ko: MISSED  ko reply: "Good question! I don't have that in your instructi"
+   garbage output (prose + broken JSON)           zh: RED  ko: MISSED  ko reply: "Sure! Here is some prose with no JSON at all. {not"
+   refusal prose "I cannot help with that."       zh: RED  ko: MISSED  ko reply: "Sure! Here is some prose with no JSON at all. {not"
+   empty content                                  zh: RED  ko: MISSED  ko reply: "Sure! Here is some prose with no JSON at all. {not"
+   HTTP 500 from model                            zh: RED  ko: MISSED  ko reply: "Sure! Here is some prose with no JSON at all. {not"
+   half-truncated output                          zh: RED  ko: MISSED  ko reply: "Sure! Here is some prose with no JSON at all. {not"
+
+server log lines mentioning error/failed/timeout/cooldown: 21
+   [llm] lmstudio failed, trying next: The operation was aborted due to timeout
+   [llm] lmstudio failed, trying next: lmstudio N: boom

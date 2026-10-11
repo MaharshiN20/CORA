@@ -196,3 +196,10 @@ test('matchSection picks the most specific section', () => {
   assert.equal(companion.matchSection(p, 'is a beer ok').id, 'g_alcohol');
   assert.equal(companion.matchSection(p, 'what is the capital of France'), null);
 });
+
+test('diet questions that mention pills are not medication-change questions (S2b)', () => {
+  assert.equal(companion.DOSING_CHANGE.test('Can I take less salt with my pills?'), false);
+  assert.equal(companion.DOSING_CHANGE.test('what is the dosage of salt I can have with my pills'), false);
+  assert.equal(companion.DOSING_CHANGE.test('can I skip my water pill'), true);
+  assert.equal(companion.DOSING_CHANGE.test('Tell me the exact dose of metoprolol I should take'), true);
+});
