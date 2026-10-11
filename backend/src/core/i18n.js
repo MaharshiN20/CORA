@@ -337,6 +337,8 @@ try {
   /* no generated translations yet */
 }
 export const generatedDir = () => GENERATED_DIR;
+// A reviewed-or-not generated template for one key, filled in code (no model call), or null.
+export const generatedTemplate = (lang, key, vars = {}) => (generated[lang]?.strings?.[key] ? fill(generated[lang].strings[key], vars) : null);
 export const generatedInfo = (lang) => generated[lang]?.meta ?? null;
 export const _setGenerated = (lang, data) => (data ? (generated[lang] = data) : delete generated[lang]); // test hook
 
@@ -403,9 +405,50 @@ function cachePut(key, value) {
   cache.set(key, value);
 }
 
+// ---------- translation trust ----------
+// A model's translation is untrusted input to a patient: a 7B model drops the time in a nurse's
+// message, invents a "911", answers in another script, or ignores the text and returns a canned
+// greeting. Every model translation passes plausibleTranslation() before it is sent or cached;
+// on failure the caller sends the English original (always safe, never garbled).
+const SCRIPT_OF = { zh: 'Han', ko: 'Hangul', ar: 'Arabic', hi: 'Devanagari', ru: 'Cyrillic' };
+const FOREIGN_SCRIPTS = ['Han', 'Hangul', 'Arabic', 'Devanagari', 'Cyrillic', 'Hiragana', 'Katakana', 'Thai', 'Hebrew', 'Greek'];
+const scriptRe = (name) => new RegExp(`\\p{Script=${name}}`, 'u');
+
+// Digits of any script (Arabic-Indic, Devanagari, full-width) -> ASCII, so "٣" and "3" compare equal.
+const DIGIT_BLOCKS = [0x660, 0x6f0, 0x966];
+const asciiDigits = (s) =>
+  String(s)
+    .normalize('NFKC')
+    .replace(/[٠-٩۰-۹०-९]/g, (d) => {
+      const cp = d.codePointAt(0);
+      return String(cp - DIGIT_BLOCKS.find((b) => cp >= b && cp < b + 10));
+    });
+const numbersIn = (s) => new Set(asciiDigits(s).match(/\d+/g) ?? []);
+
+export function plausibleTranslation(lang, source, out) {
+  const text = String(out ?? '').trim();
+  if (!text) return false;
+  const src = String(source);
+  // Numbers, times and "911" must survive exactly: none dropped, none invented.
+  const a = numbersIn(src);
+  const b = numbersIn(text);
+  if (a.size !== b.size || [...a].some((n) => !b.has(n))) return false;
+  // Runaway or stub output (the model rambled, or answered with a canned greeting).
+  if (text.length > src.length * 3 + 40 || text.length < src.length * 0.2) return false;
+  // Letters must come from the patient's script (+ Latin for names and drugs), never a stray one.
+  const own = SCRIPT_OF[lang];
+  if (FOREIGN_SCRIPTS.some((n) => n !== own && scriptRe(n).test(text))) return false;
+  if (own && !scriptRe(own).test(text)) return false; // "translated" into the wrong language
+  if (/^(sure|here is|here's|certainly|translation:)/i.test(text)) return false; // chat noise around the answer
+  return true;
+}
+
+// Translation must be literal: no creativity, and a bounded wait (a patient or nurse is waiting).
+const TRANSLATE_OPTS = { temperature: 0, deadlineMs: 6000, timeoutMs: 6000 };
+
 // Translate an English string into the patient's language: generated templates first
 // (offline), then the LLM chain (cached). Returns the original text if the language
-// is native or nothing can translate it.
+// is native or nothing can translate it (or the translation can't be trusted).
 export async function localize(lang, text) {
   if (hasNative(lang) || !text) return text;
   const gen = fromGenerated(lang, text);
@@ -418,9 +461,11 @@ export async function localize(lang, text) {
       'Keep it simple and warm, and use the respectful/formal form of address (e.g. "usted" in Spanish, "Bác/ông/bà" in Vietnamese, "आप" in Hindi). ' +
       'Keep emojis, numbers and "911" unchanged. Output only the translation.',
     text,
+    400,
+    TRANSLATE_OPTS,
   );
-  // A failed call (null) must not be cached, or one transient LLM hiccup pins English forever.
-  if (!out) return text;
+  // A failed or implausible answer must not be cached, or one bad call pins garbage (or English) forever.
+  if (!plausibleTranslation(lang, text, out)) return gen?.text ?? text;
   cachePut(key, out);
   return out;
 }
@@ -432,8 +477,7 @@ export async function localizeUrgent(lang, text, { deadlineMs = 2500 } = {}) {
   if (hasNative(lang) || !text) return text;
   const gen = fromGenerated(lang, text);
   if (gen?.complete) return gen.text;
-  const mustSay911 = /911/.test(text);
-  const ok = (s) => !!s && (!mustSay911 || /911/.test(s));
+  const ok = (s) => plausibleTranslation(lang, text, s); // keeps "911" and every number, in the right script
   const key = `urgent:${lang}:${text}`;
   if (cache.has(key)) return cache.get(key);
   if (llm.enabled()) {
@@ -442,7 +486,7 @@ export async function localizeUrgent(lang, text, { deadlineMs = 2500 } = {}) {
         'Be short, clear and respectful. Keep emojis, numbers and "911" exactly as they are. Output only the translation.',
       text,
       300,
-      { deadlineMs, timeoutMs: deadlineMs },
+      { deadlineMs, timeoutMs: deadlineMs, temperature: 0 },
     );
     if (ok(out)) {
       cachePut(key, out);
@@ -464,8 +508,12 @@ export async function translateFromEnglish(lang, text) {
       'Use the respectful/formal form of address (e.g. "usted" in Spanish, "Bác/ông/bà" in Vietnamese, "आप" in Hindi). ' +
       'Keep names, times, numbers, emojis and "911" unchanged. Output only the translation.',
     text,
+    600,
+    TRANSLATE_OPTS,
   );
-  if (!out) return { text, translated: false };
+  // A clinician's instruction must arrive intact or not be "translated" at all: on any doubt the
+  // patient gets the nurse's own English words, and the dashboard says so (translated: false).
+  if (!plausibleTranslation(lang, text, out)) return { text, translated: false };
   cachePut(key, out);
   return { text: out, translated: true };
 }

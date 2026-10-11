@@ -51,7 +51,7 @@ export const VISION_MODEL = /\bvl\b|-vl|vision|llava|gemma-?3|pixtral|minicpm-v|
 export function makeProvider(name, chatUrl, model, { headers = {}, models = [model], accepts, vision = VISION_MODEL.test(model) } = {}) {
   const canUse = accepts ?? ((m) => models.includes(m));
 
-  async function call({ system, user, maxTokens, json, schema, model: wanted, timeoutMs, image, signal }) {
+  async function call({ system, user, maxTokens, json, schema, model: wanted, timeoutMs, image, signal, temperature }) {
     const useModel = wanted && canUse(wanted) ? wanted : model;
     const timeout = AbortSignal.timeout(timeoutMs ?? CALL_TIMEOUT_MS);
     const res = await fetch(chatUrl, {
@@ -62,7 +62,7 @@ export function makeProvider(name, chatUrl, model, { headers = {}, models = [mod
       body: JSON.stringify({
         model: useModel,
         max_tokens: maxTokens,
-        temperature: 0.2,
+        temperature: temperature ?? 0.2,
         // Turn off "thinking" on reasoning models (qwen3.5 ignores /no_think; LM Studio and
         // Gemini honour this and answer in ~1-5s instead of burning the budget). Ignored elsewhere.
         reasoning_effort: 'none',

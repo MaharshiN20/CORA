@@ -7,7 +7,7 @@
 import * as store from '../store.js';
 import * as clock from './clock.js';
 import * as channels from '../channels/index.js';
-import { t, hasNative, localize, translateFromEnglish } from './i18n.js';
+import { t, hasNative, localize, translateFromEnglish, generatedTemplate } from './i18n.js';
 
 const TEMPLATES = { call_scheduled: 'nurse_call_scheduled', ask_bp: 'nurse_ask_bp' };
 // Alerts where the patient is waiting on a human; refill/SDOH tasks already told them.
@@ -18,6 +18,16 @@ async function templated(p, key, vars) {
   const textEn = t('en', key, vars);
   const text = hasNative(p.language) ? t(p.language, key, vars) : await localize(p.language, textEn);
   return { text, textEn };
+}
+
+// "<nurse> (your care team): <text>" assembled in code. The wrapper is never sent through a model
+// together with the body (a sentinel the model drops loses the whole message); it comes from a
+// native or generated template, else a plain "<nurse>:" prefix. An untranslated body keeps the
+// English wrapper so the patient sees one consistent English message (en/es have a native one).
+function wrapNurseSays(lang, nurse, text, translated) {
+  if (hasNative(lang)) return t(lang, 'nurse_says', { nurse, text });
+  if (!translated) return t('en', 'nurse_says', { nurse, text });
+  return generatedTemplate(lang, 'nurse_says', { nurse, text }) ?? `👩‍⚕️ ${nurse}: ${text}`;
 }
 
 export async function sendNurseMessage(patientId, { text, template, time, from } = {}) {
@@ -35,9 +45,8 @@ export async function sendNurseMessage(patientId, { text, template, time, from }
     if (!text?.trim()) throw Object.assign(new Error('text or template is required'), { status: 400 });
     const body = text.trim().slice(0, 1000);
     const { text: translated, translated: didTranslate } = await translateFromEnglish(p.language, body);
-    const wrapper = await templated(p, 'nurse_says', { nurse, text: '\u0000' });
     msg = {
-      text: wrapper.text.replace('\u0000', translated),
+      text: wrapNurseSays(p.language, nurse, translated, didTranslate),
       textEn: t('en', 'nurse_says', { nurse, text: body }),
       translated: didTranslate,
     };
