@@ -110,6 +110,9 @@ test('Telegram service messages (a pin, a new chat title) are still ignored', as
   const before = calls.length;
   await bot.handleUpdate(update(CHAT, { pinned_message: { message_id: 1, date: 0, chat: { id: CHAT, type: 'private' }, text: 'x' } }));
   assert.equal(calls.length, before);
+  // ...and from a chat that is not linked they do not trigger the "send your code" reply either.
+  await bot.handleUpdate(update(999, { message_auto_delete_timer_changed: { message_auto_delete_time: 86400 } }));
+  assert.equal(calls.length, before);
 });
 
 test('an unlinked chat that sends a sticker is asked for its code', async () => {

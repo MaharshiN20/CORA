@@ -481,11 +481,13 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
   // none of them can be read, and they used to get silence. The core is told that something
   // arrived, so the person gets an answer (the current question again, or "call 911" during a RED
   // lock) and the nurse sees it in the conversation. Words under a video are read as words.
+  const unreadableKind = (ctx) => UNREADABLE.find(([field]) => ctx.message[field] !== undefined);
   dm.on(
     'message',
+    // A service message (a pin, an auto-delete timer): nobody said anything, linked or not.
+    async (ctx, next) => (unreadableKind(ctx) ? next() : undefined),
     linked(async (ctx, link) => {
-      const kind = UNREADABLE.find(([field]) => ctx.message[field] !== undefined);
-      if (!kind) return; // a service message (a pin, a title change): nobody said anything
+      const kind = unreadableKind(ctx);
       typing(ctx);
       const text = ctx.message.caption?.trim() || kind[1];
       const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', text });
