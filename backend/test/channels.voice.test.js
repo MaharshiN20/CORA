@@ -81,14 +81,19 @@ test('a voice note is transcribed, echoed back, and answers the check-in', async
   assert.equal(inbound.at(-1).text, '176');
 });
 
-test('no GROQ key: the patient is asked to type, in her language, and nothing reaches the core', async () => {
+// Nobody heard the note, so the reply also says what to do in an emergency (channels.unreadable.test.js).
+const unheard = () => `${i18n.t('es', 'voice_unavailable')}\n\n${i18n.t('es', 'safety_net_911')}`;
+
+test('no GROQ key: the patient is asked to type, in her language, and the check-in does not move', async () => {
   delete process.env.GROQ_API_KEY;
   const { bot, calls } = await mariaMidCheckin();
-  const inbound = () => store.listMessages('p1').filter((m) => m.direction === 'in').length;
-  const before = inbound();
+  const inbound = () => store.listMessages('p1').filter((m) => m.direction === 'in');
+  const before = inbound().length;
   await bot.handleUpdate(voiceUpdate(CHAT));
-  assert.equal(h.lastSent(calls).text, i18n.t('es', 'voice_unavailable'));
-  assert.equal(inbound(), before);
+  assert.equal(h.lastSent(calls).text, unheard());
+  assert.equal(inbound().length, before + 1, 'the attempt is logged for the nurse');
+  assert.equal(inbound().at(-1).text, '[voice note]');
+  assert.equal(store.getPatient('p1').checkin.state, 'weight', 'nothing was answered');
   assert.ok(!fetches.some((u) => u.startsWith('https://api.groq.com/')));
 });
 
@@ -96,7 +101,7 @@ test('an empty transcript also asks the patient to type', async () => {
   groqText = '';
   const { bot, calls } = await mariaMidCheckin();
   await bot.handleUpdate(voiceUpdate(CHAT));
-  assert.equal(h.lastSent(calls).text, i18n.t('es', 'voice_unavailable'));
+  assert.equal(h.lastSent(calls).text, unheard());
 });
 
 test('a failed Telegram download falls back to asking the patient to type', async () => {
@@ -106,7 +111,7 @@ test('a failed Telegram download falls back to asking the patient to type', asyn
     },
   });
   await bot.handleUpdate(voiceUpdate(CHAT));
-  assert.equal(h.lastSent(calls).text, i18n.t('es', 'voice_unavailable'));
+  assert.equal(h.lastSent(calls).text, unheard());
 });
 
 test('an oversized voice note is refused before downloading', async () => {

@@ -104,12 +104,13 @@ test('an image sent as a file keeps its own mime type', async () => {
   assert.equal(audit.data.mime, 'image/png');
 });
 
-test('non-image documents are ignored', async () => {
+test('a document that is not an image is never treated as a photo (it gets the "could not read that" path)', async () => {
   const { bot, calls } = await linkedMaria();
-  const before = calls.length;
   await bot.handleUpdate(documentUpdate(CHAT, { mime: 'application/pdf' }));
-  assert.equal(calls.length, before);
   assert.equal(photoAudits().length, 0);
+  assert.equal(fetches.length, 0, 'never downloaded');
+  assert.ok(!calls.some((c) => c.method === 'getFile'));
+  assert.equal(store.listMessages('p1').filter((m) => m.direction === 'in').at(-1).text, '[file]');
 });
 
 test('a photo over 8 MB is refused with a friendly message and never downloaded', async () => {

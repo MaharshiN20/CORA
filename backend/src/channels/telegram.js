@@ -22,6 +22,7 @@ import { t, localize } from '../core/i18n.js';
 import { transcribe, tts } from '../integrations/speech.js';
 import * as llm from '../core/llm/index.js';
 import * as clock from '../core/clock.js';
+import { redLock } from '../core/escalation.js';
 import * as twilio from './twilio.js';
 import * as sec from '../security.js';
 import { createRateLimiter, createDedupe, retryTransformer, describePollingError, readBodyCapped, scrub } from './resilience.js';
@@ -408,7 +409,7 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
         if (err instanceof FileTooLargeError) return ctx.reply(await say(lang, 'file_too_large'));
         console.error('[telegram] voice download failed:', scrub(err));
       }
-      if (!transcript) return ctx.reply(await say(lang, 'voice_unavailable'));
+      if (!transcript) return unheard(ctx, link);
       await ctx.reply(t(lang, 'heard', { text: transcript }));
       typing(ctx);
       const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', voiceTranscript: transcript });
@@ -448,10 +449,10 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
 
   // Telegram sends several sizes of the same photo, smallest first; ctx.getFile() fetches the largest.
   dm.on('message:photo', onImage((m) => ({ size: m.photo.at(-1).file_size, mime: 'image/jpeg' })));
-  // Photos sent "as file" keep full quality and arrive as documents.
-  dm.on(
-    'message:document',
-    async (ctx, next) => (ctx.message.document.mime_type?.startsWith('image/') ? next() : undefined),
+  // Photos sent "as file" keep full quality and arrive as documents. Any other file falls through
+  // to the catch-all at the end.
+  dm.on('message:document').filter(
+    (ctx) => Boolean(ctx.message.document.mime_type?.startsWith('image/')),
     onImage((m) => ({ size: m.document.file_size, mime: m.document.mime_type })),
   );
 
@@ -470,8 +471,59 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
     await replyAll(ctx, link, replies);
   });
 
+  // --- Everything else a person can send (must stay last) ---
+  // A video note (the mic button becomes a camera with one tap), a sticker, a location, a PDF:
+  // none of them can be read, and they used to get silence. The core is told that something
+  // arrived, so the person gets an answer (the current question again, or "call 911" during a RED
+  // lock) and the nurse sees it in the conversation. Words under a video are read as words.
+  dm.on(
+    'message',
+    linked(async (ctx, link) => {
+      const kind = UNREADABLE.find(([field]) => ctx.message[field] !== undefined);
+      if (!kind) return; // a service message (a pin, a title change): nobody said anything
+      typing(ctx);
+      const text = ctx.message.caption?.trim() || kind[1];
+      const replies = await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', text });
+      await replyAll(ctx, link, replies);
+    }),
+  );
+
   b.catch((err) => console.error('[telegram] error:', scrub(err.error?.message ?? err)));
   return b;
+}
+
+// Message content no handler above can read -> how it is shown in the conversation log.
+const UNREADABLE = [
+  ['video_note', '[video note]'],
+  ['video', '[video]'],
+  ['animation', '[GIF]'],
+  ['sticker', '[sticker]'],
+  ['document', '[file]'],
+  ['location', '[location]'],
+  ['venue', '[location]'],
+  ['contact', '[contact]'],
+  ['poll', '[poll]'],
+  ['dice', '[dice]'],
+  ['story', '[story]'],
+];
+
+// A voice note nobody could transcribe (no speech key, a failed download, silence). The person is
+// asked to type, and because nobody heard what they said, told what to do in an emergency. The
+// exchange is logged so the nurse sees that they tried. During a RED lock the core answers
+// instead: "call 911" again, and the attempt goes onto the RED alert.
+async function unheard(ctx, link) {
+  const lang = langOf(link);
+  const shown = '[voice note]';
+  if (redLock(link.patient)) {
+    return replyAll(ctx, link, await handleInbound({ patientId: link.patient.id, role: link.role, channel: 'telegram', text: shown }));
+  }
+  store.addMessage({ patientId: link.patient.id, direction: 'in', from: link.role, to: link.role, text: shown, channel: 'telegram' });
+  const reply = {
+    text: `${await say(lang, 'voice_unavailable')}\n\n${await say(lang, 'safety_net_911')}`,
+    textEn: `${t('en', 'voice_unavailable')}\n\n${t('en', 'safety_net_911')}`,
+  };
+  logOut(link, reply);
+  await renderReply(ctx.api, ctx.chat.id, reply);
 }
 
 // ---------- webhook mode (the production path) ----------
