@@ -268,6 +268,7 @@ const pickEmergencyFields = (c) => ({
   ...(c.chestPain === true && { chestPain: true }),
   ...(c.confusion === true && { confusion: true }),
   ...(c.fainting === true && { fainting: true }),
+  ...(c.unresponsive === true && { otherEmergency: 'unresponsive' }),
   ...(c.breath === 'rest' && { breath: 'rest' }),
   ...(typeof c.spo2 === 'number' && { spo2: c.spo2 }),
 });
@@ -443,15 +444,19 @@ export async function handlePhoto(patient, photo) {
 
 // Emergency phrase outside a check-in ("my chest hurts"): triage + escalate right away.
 // A caregiver can report one too ("mom has chest pain"): same triage, reply addressed to them.
-// Other languages: vi / hi / zh have hand-written red-flag lists too (core/redflags-intl.js),
-// but they are not complete, and the rest have none. So when the rules find nothing there, the
-// LLM *parses* the message and the same isEmergency rule decides (the LLM never picks the
-// tier). en/es stay rules-only: the eval gate shows the rules catch them all.
+// Second opinion (audit 2026-10-11 S4): the rules read en/es/vi/hi/zh, but fresh phrasings slipped
+// past them (14 of 50) and ko / ar / pt / tl / ht have no rules at all. So whenever the rules find
+// nothing and a healthy model is up, the LLM *parses* the message and the same isEmergency rule
+// decides. It can only add an emergency, never remove one, and it never picks the tier. Questions
+// and "if I ..." sentences skip it (a 7B model reads "what should I do if I have chest pain?" as a
+// symptom report); the rules already handle those.
+const HYPOTHETICAL = /\?|^\s*(?:what|when|how|why|can|could|should|is|are|do|does|will|que|qué|cómo|como|cuándo|puedo)\b|\b(?:if|in case|si)\b/i;
 export async function handleUrgentFreeText(patient, text, { reporter = 'patient', lang } = {}) {
   let extra = parser.parseFreeText(text);
   const msgLang = lang ?? patient.language;
   const copd = copdOf(patient);
-  if (!isEmergency(extra, copd) && !hasNative(msgLang) && llm.enabled()) {
+  const askModel = !isEmergency(extra, copd) && llm.enabled() && String(text).trim().length >= 3 && (!hasNative(msgLang) || !HYPOTHETICAL.test(text));
+  if (askModel) {
     const c = await parser.parseWithLLM(text);
     if (c) {
       extra = { ...extra, ...pickEmergencyFields(c) };

@@ -354,7 +354,40 @@ function hindiLatin(text) {
   return found;
 }
 
-// -> { chestPain?, breathRest?, fainting?, confusion?, orthopnea? } (empty when nothing matched).
+// Someone collapsed and will not answer / wake, or "I feel like I am dying". The clause splitters cut
+// these sentences in half ("fell down" | "does not answer"), so they are matched on the whole
+// message (audit 2026-10-11 S4: all of them were missed with the model on). Codes as in
+// parser.OTHER_EMERGENCY: unresponsive | dying.
+const COLLAPSE_WHOLE = {
+  vi: {
+    unresponsive: /(?:ngã|té|gục|ngất|bất tỉnh|xỉu).{0,40}(?:không (?:trả lời|phản ứng|tỉnh|dậy|thức|cử động)|kêu không|gọi không)|(?:kêu|gọi|lay) (?:mãi )?không (?:tỉnh|dậy|trả lời)|không (?:còn )?phản ứng/u,
+    dying: /(?:sắp|sẽ|muốn) chết|cảm thấy mình (?:sắp )?chết/u,
+  },
+  hi: {
+    unresponsive: new RegExp(hiNorm('(?:गिर|ढेर|बेहोश)\\S*(?: \\S+){0,6} (?:जवाब|प्रतिक्रिया|होश|हरकत|आवाज)(?: \\S+){0,2} (?:नहीं|नही)|(?:उठ|जाग) (?:नहीं|नही)|(?:नहीं|नही) (?:उठ|जाग)'), 'u'),
+    dying: new RegExp(hiNorm('(?<![^ ])(?:मरने वाला|मरने वाली|मर रहा|मर रही|मर जाऊंगा|मर जाऊंगी)(?![^ ])'), 'u'),
+  },
+  zh: {
+    unresponsive: /倒在地上|[叫喊推]不醒|昏睡不醒|[没沒]有?反[应應]|不省人事/u,
+    dying: /(?<![累饿餓热熱困忙笑气氣冷渴得])我(?:觉得|感觉|覺得|感覺)?我?(?:快要?|就要|要)死(?:了|掉)/u,
+  },
+};
+
+function collapseWhole(text) {
+  const out = {};
+  const raw = String(text);
+  const s = raw.normalize('NFC').toLowerCase();
+  const h = hiNorm(s.replace(/[.,;:!?।]/g, ' ').replace(/\s+/g, ' '));
+  for (const [lang, codes] of Object.entries(COLLAPSE_WHOLE)) {
+    for (const [code, re] of Object.entries(codes)) {
+      const subject = lang === 'hi' ? h : lang === 'zh' ? raw.normalize('NFKC') : s;
+      if (re.test(subject)) out.otherEmergency ??= code;
+    }
+  }
+  return out;
+}
+
+// -> { chestPain?, breathRest?, fainting?, confusion?, orthopnea?, otherEmergency? } (empty when nothing matched).
 // Each language only runs when its script (or, for Latin-script input, its words) can be there.
 export function detectIntlRedFlags(text) {
   const s = String(text ?? '');
@@ -362,5 +395,6 @@ export function detectIntlRedFlags(text) {
   if (/[ऀ-ॿ]/.test(s)) Object.assign(found, hindi(s));
   if (/[㐀-鿿]/.test(s)) Object.assign(found, chinese(s));
   if (/\p{Script=Latin}/u.test(s)) Object.assign(found, vietnamese(s), hindiLatin(s));
+  Object.assign(found, collapseWhole(s));
   return found;
 }

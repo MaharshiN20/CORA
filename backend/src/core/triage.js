@@ -59,6 +59,8 @@ const OTHER_EMERGENCY_TEXT = {
   blue_lips: 'Blue or purple lips / fingertips',
   stroke_signs: 'Possible stroke: slurred speech, facial droop or one-sided weakness',
   arm_jaw_pain: 'Left arm or jaw pain / numbness (possible cardiac)',
+  unresponsive: 'Reported collapsed, unconscious or not responding / not waking',
+  dying: 'Says they feel they are dying',
 };
 
 // Oxygen cut-offs by patient: { red, yellow } (SpO2 below red = 911; below yellow = nurse today).
