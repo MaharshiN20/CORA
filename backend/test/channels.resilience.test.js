@@ -70,6 +70,31 @@ test('the bot drops messages over the per-chat limit before they reach the core'
   assert.deepEqual(inbound.map((m) => m.text), ['msg 1', 'msg 2'], '/start + 2 messages, the rest dropped');
 });
 
+// A dropped message is never read, so it could have been "I can't breathe". The first one of a
+// burst is answered with the 911 line (the rest stay silent, or the flood would be answered in kind).
+test('the first dropped message of a burst gets the "call 911 if..." line once, in the patient\'s language', async () => {
+  const { bot, calls } = h.makeBot({ botOptions: { rateLimit: { limit: 3, windowMs: 60_000 } } });
+  const i18n = await import('../src/core/i18n.js');
+  await quiet(async () => {
+    for (let i = 0; i < 3; i++) await bot.handleUpdate(h.textUpdate(4242, i === 0 ? '/start GARCIA1' : `msg ${i}`));
+  });
+  const before = h.sent(calls).length;
+  await quiet(async () => {
+    for (let i = 3; i < 7; i++) await bot.handleUpdate(h.textUpdate(4242, `msg ${i}`));
+  });
+  assert.deepEqual(h.sent(calls).slice(before).map((p) => p.text), [i18n.t('es', 'safety_net_911')]);
+  assert.equal(store.listAudit('p1').filter((e) => e.type === 'rate_limited').length, 1, 'one trace for the nurse');
+});
+
+test('a chat that is not linked gets the line in its app language', async () => {
+  const { bot, calls } = h.makeBot({ botOptions: { rateLimit: { limit: 1, windowMs: 60_000 } } });
+  const i18n = await import('../src/core/i18n.js');
+  await quiet(async () => {
+    for (let i = 0; i < 3; i++) await bot.handleUpdate(h.textUpdate(777, `hi ${i}`));
+  });
+  assert.equal(h.sent(calls).filter((p) => p.text === i18n.t('en', 'safety_net_911')).length, 1);
+});
+
 test('a throttled button tap is still answered so the spinner stops', async () => {
   const { bot, calls } = h.makeBot({ botOptions: { rateLimit: { limit: 1, windowMs: 60_000 } } });
   await quiet(async () => {

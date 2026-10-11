@@ -262,6 +262,11 @@ export function buildBot(token, { botInfo, rateLimit = { limit: 20, windowMs: 60
     if (!throttled.has(ctx.chat.id)) {
       throttled.add(ctx.chat.id);
       console.warn(`[telegram] chat ${ctx.chat.id} is over ${rateLimit.limit} messages/${rateLimit.windowMs / 1000}s, dropping until it slows down`);
+      // What is dropped is never read, so it could have been "I can't breathe" from someone
+      // typing in a panic. Say once per burst what to do in an emergency, and leave a trace.
+      const link = store.findByChatId(ctx.chat.id);
+      await ctx.reply(await say(link ? langOf(link) : guessLang(ctx), 'safety_net_911')).catch(() => {});
+      if (link) store.audit('rate_limited', link.patient.id, { channel: 'telegram', role: link.role, limit: rateLimit.limit, windowMs: rateLimit.windowMs });
     }
     if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => {});
   });
