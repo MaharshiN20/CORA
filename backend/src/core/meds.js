@@ -13,7 +13,7 @@ import * as clock from './clock.js';
 import * as scheduler from './scheduler.js';
 import * as channels from '../channels/index.js';
 import { t } from './i18n.js';
-import { addPlanner, occurrences, isMonitored, localDayKey } from './planning.js';
+import { addPlanner, occurrences, isMonitored, localDayKey, tzOf } from './planning.js';
 import { skipDuringRedLock } from './escalation.js';
 
 const shortId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 8);
@@ -49,7 +49,7 @@ scheduler.defineJob('med_reminder', {
 });
 
 addPlanner((p, fromMs, toMs) => {
-  for (const { at, key } of occurrences(medTimes(p), fromMs, toMs)) {
+  for (const { at, key } of occurrences(medTimes(p), fromMs, toMs, tzOf(p))) {
     if (!isMonitored(p, at)) continue;
     const time = key.slice(-5);
     scheduler.schedule({ kind: 'med_reminder', patientId: p.id, dueAt: at, key: `med_reminder:${p.id}:${key}`, payload: { time } });
@@ -117,8 +117,9 @@ export function handleButton(patient, data) {
 export function applyDiureticAnswer(patient, taken, nowIso = clock.nowISO()) {
   const doses = (patient.doses ?? []).map((d) => ({ ...d }));
   const nowMs = Date.parse(nowIso);
-  const today = localDayKey(nowMs);
-  const todays = doses.filter((d) => d.diuretic && localDayKey(Date.parse(d.ts)) === today);
+  const tz = tzOf(patient);
+  const today = localDayKey(nowMs, tz);
+  const todays = doses.filter((d) => d.diuretic && localDayKey(Date.parse(d.ts), tz) === today);
   const due = todays.filter((d) => Date.parse(d.ts) <= nowMs && d.taken == null);
   if (due.length) {
     for (const d of due) Object.assign(d, { taken, respondedAt: nowIso, confirmedBy: 'checkin' });

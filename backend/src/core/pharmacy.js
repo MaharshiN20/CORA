@@ -15,7 +15,7 @@ import * as clock from './clock.js';
 import * as scheduler from './scheduler.js';
 import * as channels from '../channels/index.js';
 import { t } from './i18n.js';
-import { addPlanner, occurrences, isMonitored } from './planning.js';
+import { addPlanner, occurrences, isMonitored, tzOf } from './planning.js';
 import { skipDuringRedLock } from './escalation.js';
 
 const GRACE_MS = 48 * clock.HOUR;
@@ -74,7 +74,7 @@ scheduler.defineJob('refill_check', {
 
 addPlanner((p, fromMs, toMs) => {
   if (!(p.prescriptions ?? []).some((rx) => !rx.pickedUpAt)) return;
-  for (const { at, key } of occurrences([CHECK_TIME], fromMs, toMs)) {
+  for (const { at, key } of occurrences([CHECK_TIME], fromMs, toMs, tzOf(p))) {
     if (!isMonitored(p, at)) continue;
     scheduler.schedule({ kind: 'refill_check', patientId: p.id, dueAt: at, key: `refill_check:${p.id}:${key}` });
   }

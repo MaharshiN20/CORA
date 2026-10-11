@@ -120,3 +120,12 @@ test('tts returns null when a long-text chunk fails to download', async () => {
   mockFetch(() => new Response('nope', { status: 503 }));
   assert.equal(await tts('Take breaks when walking. '.repeat(15), 'en'), null);
 });
+
+test('chunkText splits long text at sentence ends / spaces into pieces of at most 200 characters, losing nothing', async () => {
+  const { chunkText } = await import('../src/integrations/speech.js');
+  const text = Array.from({ length: 30 }, (_, i) => `Sentence number ${i} is here.`).join(' ') + ' ' + 'x'.repeat(450);
+  const parts = chunkText(text);
+  assert.ok(parts.length >= 5);
+  assert.ok(parts.every((p) => p.length <= 200));
+  assert.equal(parts.join('').replace(/\s/g, ''), text.replace(/\s/g, ''));
+});

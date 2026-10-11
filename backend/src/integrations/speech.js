@@ -5,7 +5,6 @@
 //
 // Both are optional extras: no key, no network or a bad response returns null and
 // the channel falls back to text. Nothing here ever throws to the caller.
-import googleTTS from 'google-tts-api';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const WHISPER_MODEL = 'whisper-large-v3';
@@ -57,7 +56,28 @@ export const speakable = (text) =>
     .replace(/ *\n */g, '\n')
     .trim();
 
-const MAX_CHUNK = 200; // google-tts-api's limit for a single URL
+const MAX_CHUNK = 200; // Google's limit for the text in a single URL
+
+// The URL the google-tts-api package used to build for us. It was the only reason for the axios
+// dependency (two high-severity advisories, audit 2026-10-11); a URL is all we ever needed from it.
+const ttsUrl = (text, lang, idx = 0, total = 1) =>
+  `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${encodeURIComponent(lang)}&total=${total}&idx=${idx}&textlen=${text.length}&client=tw-ob&prev=input&ttsspeed=0.24`;
+
+// Split at sentence ends, then spaces, then (as a last resort) mid-word, into pieces <= MAX_CHUNK.
+export function chunkText(text, max = MAX_CHUNK) {
+  const out = [];
+  let rest = text.trim();
+  while (rest.length > max) {
+    const window = rest.slice(0, max);
+    let cut = Math.max(window.lastIndexOf('. '), window.lastIndexOf('! '), window.lastIndexOf('? '), window.lastIndexOf('\n'), window.lastIndexOf('。'));
+    if (cut < max * 0.3) cut = Math.max(window.lastIndexOf(', '), window.lastIndexOf(' '));
+    if (cut < 1) cut = max - 1;
+    out.push(rest.slice(0, cut + 1).trim());
+    rest = rest.slice(cut + 1).trim();
+  }
+  if (rest) out.push(rest);
+  return out.filter(Boolean);
+}
 
 // Short text: a URL Telegram can fetch itself (no network from us).
 // Long text: the chunks are downloaded and joined into one MP3 (MP3 frames concatenate cleanly).
@@ -66,8 +86,9 @@ export async function tts(text, language = 'en') {
   if (!clean) return null;
   const lang = ttsLang(language);
   try {
-    if (clean.length <= MAX_CHUNK) return { url: googleTTS.getAudioUrl(clean, { lang, slow: true }) };
-    const parts = googleTTS.getAllAudioUrls(clean, { lang, slow: true });
+    if (clean.length <= MAX_CHUNK) return { url: ttsUrl(clean, lang) };
+    const pieces = chunkText(clean);
+    const parts = pieces.map((piece, i) => ({ url: ttsUrl(piece, lang, i, pieces.length) }));
     const buffers = [];
     for (const { url } of parts) {
       const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });

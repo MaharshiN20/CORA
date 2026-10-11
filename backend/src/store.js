@@ -122,7 +122,13 @@ export function checkWritable(file = DB_FILE) {
   }
 }
 
+// Bumped on every change event: lets a reader cache something derived from the whole store and know
+// it is stale (GET /api/patients keeps its live-risk list this way).
+let rev = 0;
+export const revision = () => rev;
+
 function emit(type, payload) {
+  rev++;
   save();
   events.emit('change', { type, payload });
 }

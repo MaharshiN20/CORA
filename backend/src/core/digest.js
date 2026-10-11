@@ -7,7 +7,7 @@ import * as scheduler from './scheduler.js';
 import * as channels from '../channels/index.js';
 import { t, hasNative, localize } from './i18n.js';
 import { adherence } from './meds.js';
-import { addPlanner, occurrences, isMonitored } from './planning.js';
+import { addPlanner, occurrences, isMonitored, tzOf, localWeekday } from './planning.js';
 import { skipDuringRedLock } from './escalation.js';
 
 const DIGEST_TIME = '18:00';
@@ -76,8 +76,8 @@ scheduler.defineJob('digest_weekly', {
 
 addPlanner((p, fromMs, toMs) => {
   if (!p.caregiver?.name) return;
-  for (const { at, key } of occurrences([DIGEST_TIME], fromMs, toMs)) {
-    if (new Date(at).getDay() !== DIGEST_WEEKDAY || !isMonitored(p, at)) continue;
+  for (const { at, key } of occurrences([DIGEST_TIME], fromMs, toMs, tzOf(p))) {
+    if (localWeekday(at, tzOf(p)) !== DIGEST_WEEKDAY || !isMonitored(p, at)) continue;
     scheduler.schedule({ kind: 'digest_weekly', patientId: p.id, dueAt: at, key: `digest_weekly:${p.id}:${key}` });
   }
 });

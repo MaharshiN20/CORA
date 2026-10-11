@@ -11,7 +11,7 @@ import * as clock from './clock.js';
 import * as scheduler from './scheduler.js';
 import * as channels from '../channels/index.js';
 import { t, hasNative, localize } from './i18n.js';
-import { addPlanner, occurrences, isMonitored } from './planning.js';
+import { addPlanner, occurrences, isMonitored, tzOf } from './planning.js';
 import { skipDuringRedLock } from './escalation.js';
 
 const SCREEN_TIME = '12:00';
@@ -68,7 +68,7 @@ scheduler.defineJob('sdoh_screen', {
 addPlanner((p, fromMs, toMs) => {
   if (p.sdoh?.screenedAt || p.sdoh?.pending?.length) return;
   const earliest = Date.parse(p.dischargedAt) + clock.DAY;
-  const slot = occurrences([SCREEN_TIME], Math.max(fromMs, earliest - 1), toMs).find(({ at }) => isMonitored(p, at));
+  const slot = occurrences([SCREEN_TIME], Math.max(fromMs, earliest - 1), toMs, tzOf(p)).find(({ at }) => isMonitored(p, at));
   if (slot) scheduler.schedule({ kind: 'sdoh_screen', patientId: p.id, dueAt: slot.at, key: `sdoh_screen:${p.id}` });
 });
 

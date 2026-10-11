@@ -225,10 +225,10 @@ const isBp = (bp) => !!bp && isNum(bp.sbp) && isNum(bp.dbp);
 // doses: [{ ts, med, taken: boolean, diuretic?: boolean }]
 // Unanswered doses (taken === null) are ignored: silence is not a missed dose.
 // Days are local calendar days (a 9pm check-in belongs to today, not UTC tomorrow).
-export function consecutiveMissedDiureticDays(doses = []) {
+export function consecutiveMissedDiureticDays(doses = [], tz = null) {
   const byDay = new Map();
   for (const d of doses.filter((x) => x.diuretic && typeof x.taken === 'boolean')) {
-    const day = localDayKey(Date.parse(d.ts));
+    const day = localDayKey(Date.parse(d.ts), tz);
     byDay.set(day, (byDay.get(day) ?? false) || d.taken);
   }
   const days = [...byDay.keys()].sort().reverse();

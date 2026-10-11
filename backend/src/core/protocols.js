@@ -14,7 +14,7 @@ import * as store from '../store.js';
 import * as clock from './clock.js';
 import * as channels from '../channels/index.js';
 import { t, hasNative, localize } from './i18n.js';
-import { atLocalTime } from './planning.js';
+import { atLocalTime, tzOf } from './planning.js';
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'conditions', 'chf', 'protocols');
 export const PROTOCOLS = Object.fromEntries(
@@ -178,7 +178,7 @@ async function applyEligible(alert, patient, check, by, protocolId) {
   const delivered = await channels.sendToPatient(patient, { text, textEn });
 
   // Follow-up: re-weigh tomorrow 08:00 (local), 24h-style SLA via dueBy.
-  const followUpAt = atLocalTime(clock.now() + DAY, protocol.followUp.at);
+  const followUpAt = atLocalTime(clock.now() + DAY, protocol.followUp.at, tzOf(patient));
   const task = store.addTask({
     patientId: patient.id,
     kind: 'protocol_followup',

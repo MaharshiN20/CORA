@@ -10,7 +10,7 @@ import * as clock from './clock.js';
 import * as scheduler from './scheduler.js';
 import * as channels from '../channels/index.js';
 import { t, hasNative, localize } from './i18n.js';
-import { addPlanner, occurrences, isMonitored } from './planning.js';
+import { addPlanner, occurrences, isMonitored, tzOf } from './planning.js';
 import { LESSONS } from '../conditions/chf/lessons.js';
 import { skipDuringRedLock } from './escalation.js';
 
@@ -71,7 +71,7 @@ scheduler.defineJob('lesson_due', {
 });
 
 addPlanner((p, fromMs, toMs) => {
-  for (const { at, key } of occurrences([LESSON_TIME], fromMs, toMs)) {
+  for (const { at, key } of occurrences([LESSON_TIME], fromMs, toMs, tzOf(p))) {
     if (!isMonitored(p, at)) continue;
     scheduler.schedule({ kind: 'lesson_due', patientId: p.id, dueAt: at, key: `lesson_due:${p.id}:${key}` });
   }

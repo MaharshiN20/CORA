@@ -105,3 +105,12 @@ test('nurse translations run at temperature 0 with a deadline', async () => {
   await nurse.sendNurseMessage('p1', { text: `${SRC} Bring your pill bottles.` }); // unique text: not cached
   assert.equal(body.temperature, 0);
 });
+
+test('a name after "Hi" / "Nurse" must survive translation unchanged', () => {
+  const ok = i18n.plausibleTranslation;
+  assert.equal(ok('zh', 'Good morning Fresh! Please weigh yourself.', '早上好 Fresh！请称一下体重。'), true);
+  assert.equal(ok('zh', 'Good morning Fresh! Please weigh yourself.', '早上好 鲜鲜！请称一下体重。'), false);
+  assert.equal(ok('zh', 'Nurse Kim will call you.', '护士 Kim 会给您打电话。'), true);
+  assert.equal(ok('zh', 'Nurse Kim will call you.', '护士金会给您打电话。'), false);
+  assert.equal(ok('zh', 'Ask about Medicare Extra Help.', '请询问医疗保险额外帮助。'), true, 'other capitalised words may be translated');
+});

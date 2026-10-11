@@ -59,7 +59,15 @@ function withLiveRisk(p) {
   };
 }
 
-api.get('/patients', (_req, res) => res.json(store.listPatients().map(withLiveRisk)));
+// Live risk for every patient costs ~27 ms at 500 patients and grows linearly (audit 2026-10-11), and the
+// dashboard polls. The list is reused until the store changes or the clock moves a minute (risk depends
+// on time of day), so repeated reads between changes are free.
+let patientsCache = { key: null, value: null };
+api.get('/patients', (_req, res) => {
+  const key = `${store.revision()}:${Math.floor(clock.now() / 60_000)}`;
+  if (patientsCache.key !== key) patientsCache = { key, value: store.listPatients().map(withLiveRisk) };
+  res.json(patientsCache.value);
+});
 
 api.get('/patients/:id', (req, res) => {
   const p = store.getPatient(req.params.id);

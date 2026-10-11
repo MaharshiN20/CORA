@@ -1,5 +1,6 @@
 // Enrollment: creating patients (FHIR import, dashboard) and on-the-fly demo patients
 // for judges who scan the QR code. Contract: docs/CONTRACTS.md.
+import { tzOf } from './planning.js';
 import crypto from 'node:crypto';
 import * as store from '../store.js';
 import { buildSeed, makePatient } from '../seed.js';
@@ -50,6 +51,9 @@ export function createPatient(data) {
     name: data.name,
     age: data.age ?? 70,
     language: isSupportedLanguage(data.language) ? data.language : 'en',
+    // IANA zone of the patient's home ("America/Chicago"); anything the runtime doesn't know is dropped
+    // and the server's local time is used. Check-ins, reminders and "today" follow it.
+    ...(tzOf({ timezone: data.timezone }) && { timezone: data.timezone }),
     dischargedAt: data.dischargedAt ?? clock.nowISO(),
     profile: { ...template.profile, priorAdmits12mo: 0, ...data.profile },
     dryWeightLb: data.dryWeightLb ?? data.weights?.at(-1)?.lb ?? null,

@@ -12,7 +12,7 @@
 import * as store from '../store.js';
 import * as clock from './clock.js';
 import { weightChange24h, weightChange7d } from './triage.js';
-import { atLocalTime, localDayKey } from './planning.js';
+import { atLocalTime, localDayKey, tzOf } from './planning.js';
 
 const dayKey = (iso) => iso.slice(0, 10);
 const SILENT_GRACE_DAYS = 3;
@@ -26,10 +26,11 @@ export function getSignals(patient) {
 
   // Check-ins: over the last 7 *finished* local days, one expected per day after the
   // discharge day. Today isn't counted as missed while it's still today.
-  const todayStart = atLocalTime(now, '00:00');
-  const dischargeDayStart = atLocalTime(discharged, '00:00');
+  const tz = tzOf(patient);
+  const todayStart = atLocalTime(now, '00:00', tz);
+  const dischargeDayStart = atLocalTime(discharged, '00:00', tz);
   const recent = (patient.checkins ?? []).filter((c) => Date.parse(c.ts) >= since7d);
-  const completedDays = new Set(recent.map((c) => localDayKey(Date.parse(c.ts)))).size;
+  const completedDays = new Set(recent.map((c) => localDayKey(Date.parse(c.ts), tz))).size;
   let expectedDays = 0;
   const doneBeforeToday = new Set();
   for (let d = 1; d <= 7; d++) {
@@ -38,7 +39,7 @@ export function getSignals(patient) {
   }
   for (const c of patient.checkins ?? []) {
     const t = Date.parse(c.ts);
-    if (t >= todayStart - 7 * clock.DAY && t < todayStart && t >= dischargeDayStart + clock.DAY) doneBeforeToday.add(localDayKey(t));
+    if (t >= todayStart - 7 * clock.DAY && t < todayStart && t >= dischargeDayStart + clock.DAY) doneBeforeToday.add(localDayKey(t, tz));
   }
   const missedCheckins7d = Math.max(0, expectedDays - doneBeforeToday.size);
 

@@ -440,6 +440,12 @@ export function plausibleTranslation(lang, source, out) {
   if (FOREIGN_SCRIPTS.some((n) => n !== own && scriptRe(n).test(text))) return false;
   if (own && !scriptRe(own).test(text)) return false; // "translated" into the wrong language
   if (/^(sure|here is|here's|certainly|translation:)/i.test(text)) return false; // chat noise around the answer
+  // A name after "Nurse", "Dr.", "Hi", "Good morning"... must come through as written (a model once
+  // turned the patient "Fresh" into "鲜鲜"). Only names introduced this way are checked, so legitimate
+  // translations of capitalised words ("Extra Help") are not rejected.
+  for (const m of src.matchAll(/\b(?:Nurse|Dr\.?|Doctor|Mr\.?|Mrs\.?|Ms\.?|Hi|Hello|Dear|Good (?:morning|afternoon|evening))\s+([A-Z][\p{L}'’-]+)/gu)) {
+    if (!text.includes(m[1])) return false;
+  }
   return true;
 }
 

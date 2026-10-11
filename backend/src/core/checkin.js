@@ -13,7 +13,7 @@ import * as parser from './parser.js';
 import * as llm from './llm.js';
 import * as clock from './clock.js';
 import { applyDiureticAnswer } from './meds.js';
-import { localDayKey } from './planning.js';
+import { localDayKey, tzOf } from './planning.js';
 import { queueReview } from './aireview.js';
 import * as companion from './companion.js';
 
@@ -373,8 +373,9 @@ export async function handle(patient, { text, buttonData }) {
 
 async function finish(patient, a, traced = null) {
   const now = clock.nowISO();
-  const today = localDayKey(clock.now());
-  const dayOf = (w) => localDayKey(Date.parse(w.ts));
+  const tz = tzOf(patient);
+  const today = localDayKey(clock.now(), tz);
+  const dayOf = (w) => localDayKey(Date.parse(w.ts), tz);
 
   // Record today's weight (replace if already logged today, by local calendar day).
   const weights = patient.weights.filter((w) => dayOf(w) !== today);
@@ -389,7 +390,7 @@ async function finish(patient, a, traced = null) {
   const reporter = patient.checkin?.reporter ?? 'patient';
   const proxy = reporter === 'caregiver';
 
-  const result = triage({ weights, answers: a, missedDiureticDays: consecutiveMissedDiureticDays(doses), dryWeightLb: patient.dryWeightLb, copd: copdOf(patient) });
+  const result = triage({ weights, answers: a, missedDiureticDays: consecutiveMissedDiureticDays(doses, tz), dryWeightLb: patient.dryWeightLb, copd: copdOf(patient) });
   if (traced) {
     // The debug drawer's third pane: which deterministic rules fired on the final answers.
     traced.data.outcome = { tier: result.tier, flags: result.flags.map((x) => ({ code: x.code, tier: x.tier, text: x.text })) };

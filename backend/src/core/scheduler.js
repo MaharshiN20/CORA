@@ -113,11 +113,20 @@ const MAX_JOBS_PER_TICK = 2000; // runaway guard
 // reminder, not after it.
 async function runDue() {
   const summary = { ran: 0, missed: 0, failed: 0 };
+  // Re-reading "everything pending" after every job scanned all retained jobs (15k after a 72 h demo
+  // jump at 500 patients: ~10 s of blocked event loop, audit 2026-10-11). The pending set is kept
+  // and only rebuilt when a job was added (follow-ups scheduled by a running job) or the array changed.
+  let all = jobs();
+  let seenLen = all.length;
+  let pending = all.filter((j) => j.status === 'pending');
   for (let n = 0; n < MAX_JOBS_PER_TICK; n++) {
     const now = clock.now();
-    const due = jobs()
-      .filter((j) => j.status === 'pending' && Date.parse(j.dueAt) <= now)
-      .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+    if (jobs() !== all || jobs().length !== seenLen) {
+      all = jobs();
+      seenLen = all.length;
+      pending = all.filter((j) => j.status === 'pending');
+    } else pending = pending.filter((j) => j.status === 'pending');
+    const due = pending.filter((j) => Date.parse(j.dueAt) <= now).sort((a, b) => a.dueAt.localeCompare(b.dueAt));
     if (!due.length) break;
 
     // Collapse overdue recurring jobs: keep only the newest per group

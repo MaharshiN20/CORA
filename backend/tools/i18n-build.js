@@ -32,7 +32,7 @@ const unwrap = (s) =>
 
 // Pure-ish core: translate `keys` for one language with an injected `complete` (tests mock it).
 // onProgress(strings, missing) runs after every key so long runs are saved and can resume.
-export async function buildLanguage({ lang, languageName, keys, enTemplate, placeholdersOf, complete, existing = {}, force = false, log = () => {}, onProgress = () => {} }) {
+export async function buildLanguage({ lang, languageName, keys, enTemplate, placeholdersOf, complete, existing = {}, force = false, accept = () => true, log = () => {}, onProgress = () => {} }) {
   const strings = { ...(force ? {} : existing) };
   const missing = [];
   // No example tokens in the prompt: small models parrot them into short strings.
@@ -49,7 +49,7 @@ export async function buildLanguage({ lang, languageName, keys, enTemplate, plac
     for (let attempt = 0; attempt < 2 && !tr; attempt++) {
       const raw = (await complete(system, `<text>${en}</text>`, 600))?.trim();
       const out = raw ? unwrap(raw) : null;
-      if (out && placeholdersMatch(en, out, placeholdersOf) && plausibleLength(en, out)) tr = out;
+      if (out && placeholdersMatch(en, out, placeholdersOf) && plausibleLength(en, out) && accept(en, out)) tr = out;
     }
     if (tr) strings[key] = tr;
     else missing.push(key);
@@ -107,7 +107,8 @@ async function main() {
       keys: i18n.templateKeys(),
       enTemplate: i18n.enTemplate,
       placeholdersOf: i18n.placeholdersOf,
-      complete: llm.complete,
+      complete: (system, user, max) => llm.complete(system, user, max, { temperature: 0 }),
+      accept: (en, out) => i18n.plausibleTranslation(lang, en, out), // same trust check as live translation
       existing,
       force,
       log: console.log,

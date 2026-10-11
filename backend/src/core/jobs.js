@@ -15,7 +15,7 @@ import { startCheckin } from './agent.js';
 import { isActive as checkinActive } from './checkin.js';
 import { scoreRisk, recordRisk } from './risk.js';
 import { getSignals } from './signals.js';
-import { occurrences, isMonitored, allPlanners } from './planning.js';
+import { occurrences, isMonitored, allPlanners, tzOf } from './planning.js';
 // Feature modules register their job kinds + planners on import.
 import './meds.js';
 import './pharmacy.js';
@@ -79,16 +79,16 @@ const SNAPSHOT_TIME = '06:00';
 // ---------- planning ----------
 
 // Re-exported so tests and callers have one import for planning.
-export { atLocalTime, occurrences, isMonitored, addPlanner } from './planning.js';
+export { atLocalTime, occurrences, isMonitored, addPlanner, tzOf } from './planning.js';
 
 export function planPatient(p, fromMs, toMs) {
   const { plan } = scoreRisk(p, getSignals(p)); // live tier (Risk v2): High risk -> 2 check-ins/day
   const times = CHECKIN_TIMES[plan.checkinsPerDay] ?? CHECKIN_TIMES[1];
-  for (const { at, key } of occurrences(times, fromMs, toMs)) {
+  for (const { at, key } of occurrences(times, fromMs, toMs, tzOf(p))) {
     if (!isMonitored(p, at)) continue;
     scheduler.schedule({ kind: 'checkin_due', patientId: p.id, dueAt: at, key: `checkin_due:${p.id}:${key}` });
   }
-  for (const { at, key } of occurrences([SNAPSHOT_TIME], fromMs, toMs)) {
+  for (const { at, key } of occurrences([SNAPSHOT_TIME], fromMs, toMs, tzOf(p))) {
     if (!isMonitored(p, at)) continue;
     scheduler.schedule({ kind: 'risk_snapshot', patientId: p.id, dueAt: at, key: `risk_snapshot:${p.id}:${key}` });
   }

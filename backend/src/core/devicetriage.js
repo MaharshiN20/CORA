@@ -9,7 +9,7 @@ import * as clock from './clock.js';
 import * as channels from '../channels/index.js';
 import { triage } from './triage.js';
 import { escalate } from './escalation.js';
-import { localDayKey } from './planning.js';
+import { localDayKey, tzOf } from './planning.js';
 import { t, localize } from './i18n.js';
 import { RANGES } from '../integrations/devices.js'; // one set of limits for the API and the virtual devices
 
@@ -60,7 +60,8 @@ export async function triageReading(patient, reading) {
   } else if (reading.type === 'hr') {
     result = triage({ weights: [], answers: { heartRate: reading.value } });
   } else if (reading.type === 'weight') {
-    const day = (ms) => localDayKey(ms);
+    const tz = tzOf(patient);
+    const day = (ms) => localDayKey(ms, tz);
     const weights = patient.weights.filter((w) => day(Date.parse(w.ts)) !== day(Date.parse(reading.ts)));
     weights.push({ ts: reading.ts, lb: reading.value });
     weights.sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
